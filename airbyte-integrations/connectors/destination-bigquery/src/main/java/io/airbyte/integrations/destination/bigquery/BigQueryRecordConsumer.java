@@ -25,12 +25,14 @@
 package io.airbyte.integrations.destination.bigquery;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.cloud.RetryHelper.RetryHelperException;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.CopyJobConfiguration;
 import com.google.cloud.bigquery.Job;
 import com.google.cloud.bigquery.JobInfo;
 import com.google.cloud.bigquery.JobInfo.CreateDisposition;
 import com.google.cloud.bigquery.JobInfo.WriteDisposition;
+import com.google.cloud.bigquery.JobStatus;
 import com.google.cloud.bigquery.QueryParameterValue;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.TableId;
@@ -96,10 +98,13 @@ public class BigQueryRecordConsumer extends FailureTrackingAirbyteMessageConsume
             String.format("Message contained record from a stream that was not in the catalog. \ncatalog: %s , \nmessage: %s",
                 Jsons.serialize(catalog), Jsons.serialize(recordMessage)));
       }
+      final BigQueryWriteConfig writer = writeConfigs.get(pair);
       try {
-        final BigQueryWriteConfig writer = writeConfigs.get(pair);
         writer.getWriter().write(ByteBuffer.wrap((Jsons.serialize(formatRecord(writer.getSchema(), recordMessage)) + "\n").getBytes(Charsets.UTF_8)));
-      } catch (IOException e) {
+      } catch (IOException | RetryHelperException e) {
+        LOGGER.error("Got an error while writing message:" + e.getMessage());
+        JobStatus status = writer.getWriter().getJob().getStatus();
+        LOGGER.debug("Failed to process a message for job with status: " + (status != null ? status.toString() : null));
         throw new RuntimeException(e);
       }
     } else {
@@ -121,6 +126,7 @@ public class BigQueryRecordConsumer extends FailureTrackingAirbyteMessageConsume
 
   @Override
   public void close(boolean hasFailed) {
+    LOGGER.info("Started closing all connections");
     try {
       writeConfigs.values().parallelStream().forEach(bigQueryWriteConfig -> Exceptions.toRuntime(() -> bigQueryWriteConfig.getWriter().close()));
       writeConfigs.values().forEach(bigQueryWriteConfig -> Exceptions.toRuntime(() -> {
@@ -129,17 +135,21 @@ public class BigQueryRecordConsumer extends FailureTrackingAirbyteMessageConsume
         }
       }));
       if (!hasFailed) {
-        LOGGER.info("executing on success close procedure.");
+        LOGGER.info("Migration finished with no explicit errors. Copying data from tmp tables to permanent");
         writeConfigs.values()
             .forEach(
                 bigQueryWriteConfig -> copyTable(bigquery, bigQueryWriteConfig.getTmpTable(), bigQueryWriteConfig.getTable(),
                     bigQueryWriteConfig.getSyncMode()));
         // BQ is still all or nothing if a failure happens in the destination.
         outputRecordCollector.accept(lastStateMessage);
+      } else {
+        LOGGER.warn("Had errors while migrations");
       }
     } finally {
       // clean up tmp tables;
+      LOGGER.info("Removing tmp tables...");
       writeConfigs.values().forEach(bigQueryWriteConfig -> bigquery.delete(bigQueryWriteConfig.getTmpTable()));
+      LOGGER.info("Finishing destination process...completed");
     }
   }
 
