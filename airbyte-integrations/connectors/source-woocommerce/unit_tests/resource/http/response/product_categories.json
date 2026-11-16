@@ -1,190 +1,32 @@
 [
   {
     "id": 15,
-    "name": "Albums",
-    "slug": "albums",
-    "parent": 11,
-    "description": "",
-    "display": "default",
-    "image": [],
-    "menu_order": 0,
-    "count": 4,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/15"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories"
-        }
-      ],
-      "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/11"
-        }
-      ]
-    }
-  },
-  {
-    "id": 9,
-    "name": "Clothing",
-    "slug": "clothing",
+    "name": "Electronics",
+    "slug": "electronics",
     "parent": 0,
-    "description": "",
+    "description": "Electronic products and gadgets",
     "display": "default",
     "image": {
-      "id": 730,
-      "date_created": "2017-03-23T00:01:07",
-      "date_created_gmt": "2017-03-23T03:01:07",
-      "date_modified": "2017-03-23T00:01:07",
-      "date_modified_gmt": "2017-03-23T03:01:07",
-      "src": "https://example.com/wp-content/uploads/2017/03/T_2_front.jpg",
-      "name": "",
-      "alt": ""
+      "id": 51,
+      "date_created": "2024-01-01T00:00:00",
+      "date_created_gmt": "2024-01-01T00:00:00",
+      "date_modified": "2024-01-01T00:00:00",
+      "date_modified_gmt": "2024-01-01T00:00:00",
+      "src": "https://test-shop.example.com/wp-content/uploads/category-electronics.jpg",
+      "name": "category-electronics",
+      "alt": "Electronics category"
     },
     "menu_order": 0,
-    "count": 36,
+    "count": 25,
     "_links": {
       "self": [
         {
-          "href": "https://example/wp-json/wc/v3/products/categories/9"
+          "href": "https://test-shop.example.com/wp-json/wc/v3/products/categories/15"
         }
       ],
       "collection": [
         {
-          "href": "https://example/wp-json/wc/v3/products/categories"
-        }
-      ]
-    }
-  },
-  {
-    "id": 10,
-    "name": "Hoodies",
-    "slug": "hoodies",
-    "parent": 9,
-    "description": "",
-    "display": "default",
-    "image": [],
-    "menu_order": 0,
-    "count": 6,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/10"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories"
-        }
-      ],
-      "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/9"
-        }
-      ]
-    }
-  },
-  {
-    "id": 11,
-    "name": "Music",
-    "slug": "music",
-    "parent": 0,
-    "description": "",
-    "display": "default",
-    "image": [],
-    "menu_order": 0,
-    "count": 7,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/11"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories"
-        }
-      ]
-    }
-  },
-  {
-    "id": 12,
-    "name": "Posters",
-    "slug": "posters",
-    "parent": 0,
-    "description": "",
-    "display": "default",
-    "image": [],
-    "menu_order": 0,
-    "count": 5,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/12"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories"
-        }
-      ]
-    }
-  },
-  {
-    "id": 13,
-    "name": "Singles",
-    "slug": "singles",
-    "parent": 11,
-    "description": "",
-    "display": "default",
-    "image": [],
-    "menu_order": 0,
-    "count": 3,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/13"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories"
-        }
-      ],
-      "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/11"
-        }
-      ]
-    }
-  },
-  {
-    "id": 14,
-    "name": "T-shirts",
-    "slug": "t-shirts",
-    "parent": 9,
-    "description": "",
-    "display": "default",
-    "image": [],
-    "menu_order": 0,
-    "count": 6,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/14"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories"
-        }
-      ],
-      "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/categories/9"
+          "href": "https://test-shop.example.com/wp-json/wc/v3/products/categories"
         }
       ]
     }

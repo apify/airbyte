@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.source.performancetest
 
@@ -17,12 +17,14 @@ abstract class AbstractSourceBasePerformanceTest : AbstractSourceConnectorTest()
      */
     protected val testColumnName
         get() = TEST_COLUMN_NAME
+
     /**
      * The stream name template will be used for a test tables. Override it if default name is not
      * valid for your source.
      */
     protected val testStreamNameTemplate
         get() = TEST_STREAM_NAME_TEMPLATE
+
     @Throws(Exception::class)
     override fun setupEnvironment(environment: TestDestinationEnv?) {
         // DO NOTHING. Mandatory to override. DB will be setup as part of each test

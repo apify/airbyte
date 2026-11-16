@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.source.relationaldb
 
@@ -13,7 +13,7 @@ object InvalidCursorInfoUtil {
         tableName: String?,
         cursorColumnName: String,
         cursorSqlType: String,
-        cause: String
+        cause: String,
     ) {
         override fun toString(): String {
             return "{" +

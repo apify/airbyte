@@ -1,0 +1,16 @@
+{
+  "list": [
+    {
+      "attached_item": {
+        "id": "attached_001",
+        "parent_item_id": "item_001",
+        "item_id": "child_item_123",
+        "type": "mandatory",
+        "quantity": 1,
+        "updated_at": 1705312800,
+        "cf_bundle_type": "Standard",
+        "cf_discount_eligible": "Yes"
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3
 
@@ -16,12 +16,14 @@ import java.util.zip.GZIPInputStream
 abstract class S3BaseJsonlGzipDestinationAcceptanceTest : S3BaseJsonlDestinationAcceptanceTest() {
     override val formatConfig: JsonNode?
         get() = // config without compression defaults to GZIP
-        Jsons.jsonNode(mapOf("format_type" to outputFormat, "flattening" to Flattening.NO.value))
+            Jsons.jsonNode(
+                mapOf("format_type" to outputFormat, "flattening" to Flattening.NO.value),
+            )
 
     @Throws(IOException::class)
     override fun getReader(s3Object: S3Object): BufferedReader {
         return BufferedReader(
-            InputStreamReader(GZIPInputStream(s3Object.objectContent), StandardCharsets.UTF_8)
+            InputStreamReader(GZIPInputStream(s3Object.objectContent), StandardCharsets.UTF_8),
         )
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.output
@@ -25,7 +25,7 @@ private const val RULE2 = "${JDBC_CLASSIFIER_PREFIX}.rules[2]"
             Property(name = "$RULE1.group", value = "grouped"),
             Property(name = "$RULE2.error", value = "system"),
             Property(name = "$RULE2.code", value = "456"),
-        ]
+        ],
 )
 class JdbcExceptionClassifierTest {
 

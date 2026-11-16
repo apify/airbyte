@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium.internals
 
@@ -23,7 +23,7 @@ internal class DebeziumConverterUtilsTest {
         var actualColumnDefaultValue = DebeziumConverterUtils.convertDefaultValue(relationalColumn)
         Assertions.assertNull(
             actualColumnDefaultValue,
-            "Default value for optional relational column should be null"
+            "Default value for optional relational column should be null",
         )
 
         Mockito.`when`(relationalColumn.isOptional).thenReturn(false)

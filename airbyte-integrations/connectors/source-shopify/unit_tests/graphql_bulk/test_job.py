@@ -5,18 +5,22 @@
 
 from os import remove
 
+import orjson
+import pendulum as pdm
 import pytest
 import requests
-from airbyte_cdk.models import SyncMode
 from source_shopify.shopify_graphql.bulk.exceptions import ShopifyBulkExceptions
+from source_shopify.shopify_graphql.bulk.retry import bulk_retry_on_exception
 from source_shopify.shopify_graphql.bulk.status import ShopifyBulkJobStatus
 from source_shopify.streams.streams import (
     Collections,
     CustomerAddress,
+    CustomerJourneySummary,
     DiscountCodes,
     FulfillmentOrders,
     InventoryItems,
     InventoryLevels,
+    MetafieldCustomers,
     MetafieldOrders,
     OrderRisks,
     ProductImages,
@@ -25,15 +29,18 @@ from source_shopify.streams.streams import (
     TransactionsGraphql,
 )
 
+from airbyte_cdk.models import FailureType, SyncMode
+
+
 _ANY_SLICE = {}
 _ANY_FILTER_FIELD = "any_filter_field"
 
 
 def test_job_manager_default_values(auth_config) -> None:
     stream = Products(auth_config)
-    
+
     # 10Mb chunk size to save the file
-    assert stream.job_manager._retrieve_chunk_size == 10485760 # 1024 * 1024 * 10
+    assert stream.job_manager._retrieve_chunk_size == 10485760  # 1024 * 1024 * 10
     assert stream.job_manager._job_max_retries == 6
     assert stream.job_manager._job_backoff_time == 5
     # running job logger constrain, every 100-ish message will be printed
@@ -48,7 +55,7 @@ def test_job_manager_default_values(auth_config) -> None:
     # currents: _job_id, _job_state, _job_created_at, _job_self_canceled
     assert not stream.job_manager._job_id
     # this string is based on ShopifyBulkJobStatus
-    assert not stream.job_manager._job_state 
+    assert not stream.job_manager._job_state
     # completed and saved Bulk Job result filename
     assert not stream.job_manager._job_result_filename
     # date-time when the Bulk Job was created on the server
@@ -56,7 +63,7 @@ def test_job_manager_default_values(auth_config) -> None:
     # indicated whether or not we manually force-cancel the current job
     assert not stream.job_manager._job_self_canceled
     # time between job status checks
-    assert stream.job_manager. _job_check_interval == 3
+    assert stream.job_manager._job_check_interval == 3
     # 0.1 ~= P2H, default value, lower boundary for slice size
     assert stream.job_manager._job_size_min == 0.1
     # last running job object count
@@ -99,8 +106,9 @@ def test_retry_on_concurrent_job(request, requests_mock, auth_config) -> None:
             {"json": request.getfixturevalue("bulk_error_with_concurrent_job")},
             # concurrent request has finished
             {"json": request.getfixturevalue("bulk_successful_response")},
-        ])
-    
+        ],
+    )
+
     stream.job_manager.create_job(_ANY_SLICE, _ANY_FILTER_FIELD)
     # call count should be 4 (3 retries, 1 - succeeded)
     assert requests_mock.call_count == 4
@@ -119,14 +127,16 @@ def test_retry_on_concurrent_job(request, requests_mock, auth_config) -> None:
     ],
     ids=[
         "max attempt reached",
-    ]
+    ],
 )
-def test_job_retry_on_concurrency(request, requests_mock, bulk_job_response, concurrent_max_retry, error_type, auth_config, expected) -> None:
+def test_job_retry_on_concurrency(
+    request, requests_mock, bulk_job_response, concurrent_max_retry, error_type, auth_config, expected
+) -> None:
     stream = MetafieldOrders(auth_config)
     # patching concurrent settings
     stream.job_manager._concurrent_max_retry = concurrent_max_retry
     stream.job_manager._concurrent_interval = 1
-    
+
     requests_mock.post(stream.job_manager.base_url, json=request.getfixturevalue(bulk_job_response))
 
     if error_type:
@@ -200,8 +210,8 @@ def test_job_check_for_completion(mocker, request, requests_mock, job_response, 
         mocker.patch("source_shopify.shopify_graphql.bulk.record.ShopifyBulkRecord.read_file", return_value=[])
         stream.job_manager._job_check_state()
         assert expected == stream.job_manager._job_result_filename
-        
-        
+
+
 @pytest.mark.parametrize(
     "job_response, error_type, expected",
     [
@@ -211,7 +221,9 @@ def test_job_check_for_completion(mocker, request, requests_mock, job_response, 
         "failed",
     ],
 )
-def test_job_failed_for_stream_with_no_bulk_checkpointing(mocker, request, requests_mock, job_response, error_type, expected, auth_config) -> None:
+def test_job_failed_for_stream_with_no_bulk_checkpointing(
+    mocker, request, requests_mock, job_response, error_type, expected, auth_config
+) -> None:
     stream = InventoryLevels(auth_config)
     # modify the sleep time for the test
     stream.job_manager._concurrent_max_retry = 1
@@ -224,6 +236,108 @@ def test_job_failed_for_stream_with_no_bulk_checkpointing(mocker, request, reque
         # another attempt will be taken with the new sync attempt.
         list(stream.job_manager.job_get_results())
     assert expected in repr(error.value)
+
+
+@pytest.mark.parametrize(
+    "job_response, object_count",
+    [
+        ("bulk_job_failed_without_result_url_response", "432"),
+        ("bulk_job_failed_with_partial_url_response", "0"),
+    ],
+    ids=["no_result_url", "partial_url_with_no_rows_collected"],
+)
+def test_job_failed_without_result_for_stream_with_bulk_checkpointing(
+    request, requests_mock, auth_config, job_response, object_count
+) -> None:
+    stream = MetafieldOrders(auth_config)
+    assert stream.job_manager._supports_checkpointing
+    # modify the sleep time for the test
+    stream.job_manager._concurrent_max_retry = 1
+    stream.job_manager._concurrent_interval = 1
+    stream.job_manager._job_check_interval = 1
+    # mocking the response for STATUS CHECKS: FAILED with nothing downloaded to checkpoint from
+    failed_response = request.getfixturevalue(job_response)
+    failed_response["data"]["node"]["objectCount"] = object_count
+    requests_mock.post(stream.job_manager.base_url, json=failed_response)
+    with pytest.raises(ShopifyBulkExceptions.BulkJobFailed) as error:
+        # nothing to checkpoint from, the failure must not be masked as a checkpoint
+        list(stream.job_manager.job_get_results())
+    assert "exited with FAILED" in repr(error.value)
+    # the failure is on the Shopify side, the platform should retry the attempt
+    assert error.value.failure_type == FailureType.system_error
+    # the signed result URL must not leak into the error, the user sees the Shopify `errorCode`
+    assert "https://" not in error.value.internal_message
+    assert "INTERNAL_SERVER_ERROR" in error.value.message
+
+
+@pytest.mark.parametrize(
+    "checkpointed_cursor",
+    [None, "2024-01-01T12:00:00+00:00"],
+    ids=["no_checkpoint_cursor", "with_checkpoint_cursor"],
+)
+def test_job_failed_with_partial_result_resumes_only_from_checkpoint_cursor(
+    request, requests_mock, auth_config, checkpointed_cursor
+) -> None:
+    stream = MetafieldOrders(auth_config)
+    failed_response = request.getfixturevalue("bulk_job_failed_with_partial_url_response")
+    requests_mock.post(stream.job_manager.base_url, json=failed_response)
+    # the partial result has no records, e.g. only the `Order` lines without metafields
+    requests_mock.get(failed_response["data"]["node"]["partialDataUrl"], text="")
+    assert list(stream.job_manager.job_get_results()) == []
+
+    slice_start, slice_end = pdm.parse("2024-01-01T00:00:00Z"), pdm.parse("2024-01-02T00:00:00Z")
+    if checkpointed_cursor:
+        assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor) == pdm.parse(checkpointed_cursor)
+        # the flag must not leak into the next checkpoint
+        assert stream.job_manager._job_checkpoint_from_failed_job is False
+    else:
+        # nothing to resume from, the rest of the slice must not be skipped
+        with pytest.raises(ShopifyBulkExceptions.BulkJobFailed) as error:
+            stream.job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor)
+        assert error.value.failure_type == FailureType.system_error
+
+
+def test_job_failed_with_access_denied_is_config_error(request, requests_mock, auth_config) -> None:
+    stream = MetafieldOrders(auth_config)
+    failed_response = request.getfixturevalue("bulk_job_failed_with_partial_url_response")
+    failed_response["data"]["node"]["errorCode"] = "ACCESS_DENIED"
+    requests_mock.post(stream.job_manager.base_url, json=failed_response)
+    # the missing access scopes can only be granted by the user, retrying or checkpointing does not help
+    with pytest.raises(ShopifyBulkExceptions.BulkJobAccessDenied) as error:
+        list(stream.job_manager.job_get_results())
+    assert error.value.failure_type == FailureType.config_error
+
+
+def test_job_expired(request, requests_mock, auth_config) -> None:
+    stream = MetafieldOrders(auth_config)
+    expired_response = request.getfixturevalue("bulk_job_failed_response")
+    expired_response["data"]["node"]["status"] = "EXPIRED"
+    requests_mock.post(stream.job_manager.base_url, json=expired_response)
+    with pytest.raises(ShopifyBulkExceptions.BulkJobFailed) as error:
+        list(stream.job_manager.job_get_results())
+    assert "exited with EXPIRED" in repr(error.value)
+
+
+def test_bulk_exception_shows_internal_message_to_the_user() -> None:
+    error = ShopifyBulkExceptions.BulkJobCheckpointCollisionError("Try to increase the `BULK Job checkpoint (rows collected)`.")
+    assert error.message == "Try to increase the `BULK Job checkpoint (rows collected)`."
+
+
+def test_bulk_retry_on_exception_retries_more_exceptions(mocker) -> None:
+    class _Job:
+        _job_max_retries = 1
+        _job_backoff_time = 0
+        http_client = mocker.Mock()
+        calls = 0
+
+        @bulk_retry_on_exception(more_exceptions=(ValueError,))
+        def run(self) -> str:
+            self.calls += 1
+            if self.calls == 1:
+                raise ValueError("transient")
+            return "done"
+
+    assert _Job().run() == "done"
 
 
 @pytest.mark.parametrize(
@@ -253,28 +367,72 @@ def test_job_failed_for_stream_with_no_bulk_checkpointing(mocker, request, reque
         "BulkJobBadResponse",
     ],
 )
-def test_retry_on_job_creation_exception(request, requests_mock, auth_config, job_response, job_state, error_type, max_retry, call_count_expected, expected_msg) -> None:
+def test_retry_on_job_creation_exception(
+    request, requests_mock, auth_config, job_response, job_state, error_type, max_retry, call_count_expected, expected_msg
+) -> None:
     stream = MetafieldOrders(auth_config)
     stream.job_manager._job_backoff_time = 0
     stream.job_manager._job_max_retries = max_retry
     # patching the method to get the right ID checks
     if job_response:
         stream.job_manager._job_id = request.getfixturevalue(job_response).get("data", {}).get("node", {}).get("id")
-    
+
     if job_state:
         # setting job_state to simulate the error-in-the-middle
         stream.job_manager._job_state = request.getfixturevalue(job_response).get("data", {}).get("node", {}).get("status")
-        
+
     # mocking the response for STATUS CHECKS
     json_mock_response = request.getfixturevalue(job_response) if job_response else None
     requests_mock.post(stream.job_manager.base_url, json=json_mock_response)
-    
+
     # testing raised exception and backoff
     with pytest.raises(error_type) as error:
         stream.job_manager.create_job(_ANY_SLICE, _ANY_FILTER_FIELD)
-        
+
     # we expect different call_count, because we set the different max_retries
     assert expected_msg in repr(error.value) and requests_mock.call_count == call_count_expected
+
+
+@pytest.mark.parametrize(
+    "job_response, expected_error_type, expected_failure_type, expected_msg",
+    [
+        pytest.param(
+            "bulk_response_with_auth_error",
+            ShopifyBulkExceptions.BulkJobAuthFailedError,
+            FailureType.config_error,
+            "Shopify access token is invalid or has expired.",
+            id="auth_error_from_server_errors_string",
+        ),
+        pytest.param(
+            "bulk_response_with_auth_error_in_user_errors",
+            ShopifyBulkExceptions.BulkJobAuthFailedError,
+            FailureType.config_error,
+            "Shopify access token is invalid or has expired.",
+            id="auth_error_from_user_errors_dict",
+        ),
+        pytest.param(
+            "bulk_successful_response_with_errors",
+            ShopifyBulkExceptions.BulkJobNonHandableError,
+            FailureType.system_error,
+            "Non-handable error occured",
+            id="non_auth_error_stays_system_error",
+        ),
+    ],
+)
+def test_auth_error_classified_as_config_error(
+    request, requests_mock, auth_config, job_response, expected_error_type, expected_failure_type, expected_msg
+) -> None:
+    stream = MetafieldOrders(auth_config)
+    stream.job_manager._job_backoff_time = 0
+    stream.job_manager._job_max_retries = 0
+
+    requests_mock.post(stream.job_manager.base_url, json=request.getfixturevalue(job_response))
+
+    with pytest.raises(expected_error_type) as error:
+        stream.job_manager.create_job(_ANY_SLICE, _ANY_FILTER_FIELD)
+
+    assert expected_msg in str(error.value)
+    assert error.value.failure_type == expected_failure_type
 
 
 @pytest.mark.parametrize(
@@ -302,11 +460,11 @@ def test_job_check_with_running_scenario(request, requests_mock, job_response, a
     job_result_url = test_job_status_response.json().get("data", {}).get("node", {}).get("url")
     # test the state of the job isn't assigned
     assert stream.job_manager._job_state == None
-    
+
     # mocking the nested request call to retrieve the data from result URL
     stream.job_manager._job_id = job_id
     requests_mock.get(job_result_url, json=request.getfixturevalue(job_response))
-    
+
     # calling the sceario processing
     stream.job_manager._job_track_running()
     assert stream.job_manager._job_state == expected
@@ -316,13 +474,13 @@ def test_job_check_with_running_scenario(request, requests_mock, job_response, a
     "running_job_response, canceled_job_response, expected",
     [
         (
-            "bulk_job_running_with_object_count_and_url_response", 
-            "bulk_job_canceled_with_object_count_and_url_response", 
+            "bulk_job_running_with_object_count_and_url_response",
+            "bulk_job_canceled_with_object_count_and_url_response",
             "bulk-123456789.jsonl",
         ),
         (
-            "bulk_job_running_with_object_count_no_url_response", 
-            "bulk_job_canceled_with_object_count_no_url_response", 
+            "bulk_job_running_with_object_count_no_url_response",
+            "bulk_job_canceled_with_object_count_no_url_response",
             None,
         ),
     ],
@@ -331,7 +489,9 @@ def test_job_check_with_running_scenario(request, requests_mock, job_response, a
         "self-canceled with no url",
     ],
 )
-def test_job_running_with_canceled_scenario(mocker, request, requests_mock, running_job_response, canceled_job_response, auth_config, expected) -> None:
+def test_job_running_with_canceled_scenario(
+    mocker, request, requests_mock, running_job_response, canceled_job_response, auth_config, expected
+) -> None:
     stream = MetafieldOrders(auth_config)
     # modify the sleep time for the test
     stream.job_manager._job_check_interval = 0
@@ -339,7 +499,7 @@ def test_job_running_with_canceled_scenario(mocker, request, requests_mock, runn
     job_id = request.getfixturevalue(running_job_response).get("data", {}).get("node", {}).get("id")
     # mocking the response for STATUS CHECKS
     requests_mock.post(
-        stream.job_manager.base_url, 
+        stream.job_manager.base_url,
         [
             {"json": request.getfixturevalue(running_job_response)},
             {"json": request.getfixturevalue(canceled_job_response)},
@@ -348,7 +508,7 @@ def test_job_running_with_canceled_scenario(mocker, request, requests_mock, runn
     job_result_url = request.getfixturevalue(canceled_job_response).get("data", {}).get("node", {}).get("url")
     # test the state of the job isn't assigned
     assert stream.job_manager._job_state == None
-    
+
     stream.job_manager._job_id = job_id
     stream.job_manager._job_checkpoint_interval = 5
     # faking self-canceled job
@@ -361,6 +521,169 @@ def test_job_running_with_canceled_scenario(mocker, request, requests_mock, runn
     # clean up
     if expected:
         remove(expected)
+
+
+def test_job_self_canceled_on_checkpoint_with_no_url_retries_slice_without_checkpointing(request, requests_mock, auth_config) -> None:
+    stream = MetafieldOrders(auth_config)
+    stream.job_manager._job_check_interval = 0
+    running_response = request.getfixturevalue("bulk_job_running_with_object_count_no_url_response")
+    canceled_response = request.getfixturevalue("bulk_job_canceled_with_object_count_no_url_response")
+    stream.job_manager._job_id = running_response["data"]["node"]["id"]
+    stream.job_manager._job_created_at = pdm.now().to_rfc3339_string()
+    # the `objectCount` from the fixture is `4`, so the job is self-canceled on checkpointing
+    stream.job_manager._job_checkpoint_interval = 4
+    requests_mock.post(stream.job_manager.base_url, [{"json": running_response}, {"json": canceled_response}])
+
+    assert list(stream.job_manager.job_get_results()) == []
+    assert stream.job_manager._job_result_filename is None
+
+    slice_start = pdm.parse("2024-01-01T00:00:00Z")
+    slice_end = pdm.parse("2024-01-02T00:00:00Z")
+    # the slice is not consumed, it is re-run with the checkpointing disabled
+    assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, None, None) == slice_start
+    assert stream.job_manager._job_checkpoint_disabled is True
+    stream.job_manager._job_last_rec_count = 100
+    assert stream.job_manager._job_should_checkpoint is False
+    # the checkpointing stays disabled for the rest of the sync, once the re-run slice is done
+    assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, None, None) == slice_end
+    assert stream.job_manager._job_checkpoint_disabled is True
+    assert stream.job_manager._job_should_checkpoint is False
+
+
+@pytest.mark.parametrize(
+    "checkpointed_cursor",
+    [None, "2024-01-01T12:00:00+00:00"],
+    ids=["no_checkpoint_cursor", "with_checkpoint_cursor"],
+)
+def test_job_self_canceled_on_checkpoint_with_url_resumes_only_from_checkpoint_cursor(
+    request, requests_mock, auth_config, checkpointed_cursor
+) -> None:
+    stream = MetafieldOrders(auth_config)
+    stream.job_manager._job_check_interval = 0
+    running_response = request.getfixturevalue("bulk_job_running_with_object_count_and_url_response")
+    canceled_response = request.getfixturevalue("bulk_job_canceled_with_object_count_and_url_response")
+    stream.job_manager._job_id = running_response["data"]["node"]["id"]
+    stream.job_manager._job_created_at = pdm.now().to_rfc3339_string()
+    # the `objectCount` from the fixture is `15`, so the job is self-canceled on checkpointing
+    stream.job_manager._job_checkpoint_interval = 15
+    requests_mock.post(stream.job_manager.base_url, [{"json": running_response}, {"json": canceled_response}])
+    # the result has no records, e.g. only the `Order` lines without metafields
+    requests_mock.get(canceled_response["data"]["node"]["url"], text="")
+    assert list(stream.job_manager.job_get_results()) == []
+
+    slice_start, slice_end = pdm.parse("2024-01-01T00:00:00Z"), pdm.parse("2024-01-02T00:00:00Z")
+    if checkpointed_cursor:
+        assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor) == pdm.parse(checkpointed_cursor)
+        # the flag must not leak into the next checkpoint
+        assert stream.job_manager._job_checkpoint_from_self_cancel is False
+        assert stream.job_manager._job_checkpoint_disabled is False
+    else:
+        # nothing to resume from, the slice is re-run with the checkpointing disabled
+        assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor) == slice_start
+        assert stream.job_manager._job_checkpoint_from_self_cancel is False
+        assert stream.job_manager._job_checkpoint_disabled is True
+        # the re-run slice is not re-run again
+        assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, None, None) == slice_end
+
+
+@pytest.mark.parametrize(
+    "checkpointed_cursor, filter_checkpointed_cursor, last_checkpoint_cursor, expected_end, checkpoint_disabled",
+    [
+        ("2024-01-01T12:00:00+00:00", None, None, None, True),
+        ("2024-01-02T00:00:00+00:00", None, None, None, True),
+        ("2024-01-01T12:00:00+00:00", None, "2024-01-01T12:00:00+00:00", None, True),
+        ("2024-01-02T12:00:00+00:00", None, None, "2024-01-02T12:00:00+00:00", False),
+        (123, "2024-01-01T12:00:00+00:00", None, None, True),
+        (123, "2024-01-02T12:00:00+00:00", None, "2024-01-02T12:00:00+00:00", False),
+    ],
+    ids=[
+        "stale_string_cursor",
+        "cursor_at_slice_start",
+        "stale_cursor_matching_last_checkpoint",
+        "string_cursor_within_slice",
+        "stale_filter_cursor_for_integer_cursor",
+        "filter_cursor_within_slice_for_integer_cursor",
+    ],
+)
+def test_job_self_canceled_checkpoint_only_resumes_from_cursor_within_slice(
+    auth_config, checkpointed_cursor, filter_checkpointed_cursor, last_checkpoint_cursor, expected_end, checkpoint_disabled
+) -> None:
+    job_manager = MetafieldOrders(auth_config).job_manager
+    slice_start, slice_end = pdm.parse("2024-01-02T00:00:00Z"), pdm.parse("2024-01-03T00:00:00Z")
+    job_manager._job_adjust_slice_from_checkpoint = True
+    job_manager._job_checkpoint_from_self_cancel = True
+    job_manager._job_last_checkpoint_cursor_value = last_checkpoint_cursor
+
+    adjusted_end = job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor, filter_checkpointed_cursor)
+
+    assert adjusted_end == (pdm.parse(expected_end) if expected_end else slice_start)
+    assert job_manager._job_checkpoint_disabled is checkpoint_disabled
+    assert job_manager._job_checkpoint_from_self_cancel is False
+
+
+@pytest.mark.parametrize(
+    "checkpointed_cursor, expected_end",
+    [
+        ("2024-01-01T12:00:00+00:00", None),
+        ("2024-01-02T12:00:00+00:00", "2024-01-02T12:00:00+00:00"),
+    ],
+    ids=["stale_cursor_has_no_records_to_resume", "cursor_within_slice_resumes"],
+)
+def test_job_failed_checkpoint_only_resumes_from_cursor_within_slice(auth_config, checkpointed_cursor, expected_end) -> None:
+    job_manager = MetafieldOrders(auth_config).job_manager
+    slice_start, slice_end = pdm.parse("2024-01-02T00:00:00Z"), pdm.parse("2024-01-03T00:00:00Z")
+    job_manager._job_adjust_slice_from_checkpoint = True
+    job_manager._job_checkpoint_from_failed_job = True
+
+    if expected_end:
+        assert job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor) == pdm.parse(expected_end)
+    else:
+        with pytest.raises(ShopifyBulkExceptions.BulkJobFailed) as error:
+            job_manager.get_adjusted_job_end(slice_start, slice_end, checkpointed_cursor)
+        assert "has no records" in repr(error.value)
+
+
+@pytest.mark.parametrize("object_count", ["0", "20000"], ids=["no_rows_collected", "rows_collected_above_checkpoint"])
+def test_job_failed_with_no_partial_url_for_stream_with_bulk_checkpointing(request, requests_mock, auth_config, object_count) -> None:
+    stream = MetafieldOrders(auth_config)
+    stream.job_manager._concurrent_max_retry = 1
+    stream.job_manager._concurrent_interval = 1
+    stream.job_manager._job_check_interval = 1
+    stream.job_manager._job_checkpoint_interval = 15000
+    failed_response = request.getfixturevalue("bulk_job_failed_response")
+    failed_response["data"]["node"]["objectCount"] = object_count
+    requests_mock.post(stream.job_manager.base_url, json=failed_response)
+    with pytest.raises(ShopifyBulkExceptions.BulkJobFailed) as error:
+        list(stream.job_manager.job_get_results())
+    assert "returned no partial result" in repr(error.value)
+    # the FAILED job is not the self-canceled checkpoint, so the slice re-run is not scheduled
+    assert stream.job_manager._job_retry_slice_without_checkpoint is False
+    assert stream.job_manager._job_checkpoint_disabled is False
+
+
+def test_job_long_running_canceled_with_no_url_reduces_slice_with_checkpointing_disabled(request, requests_mock, auth_config) -> None:
+    stream = MetafieldOrders(auth_config)
+    stream.job_manager._job_check_interval = 0
+    # the checkpointing was disabled by the previous slice, that returned no data on checkpointing
+    stream.job_manager._job_checkpoint_disabled = True
+    running_response = request.getfixturevalue("bulk_job_running_with_object_count_no_url_response")
+    canceled_response = request.getfixturevalue("bulk_job_canceled_with_object_count_no_url_response")
+    stream.job_manager._job_id = running_response["data"]["node"]["id"]
+    # the job runs longer than expected, so it is self-canceled to reduce the slice
+    stream.job_manager._job_created_at = pdm.now().subtract(seconds=stream.job_manager._job_max_elapsed_time + 60).to_rfc3339_string()
+    stream.job_manager._job_checkpoint_interval = 4
+    requests_mock.post(stream.job_manager.base_url, [{"json": running_response}, {"json": canceled_response}])
+    job_size_before = stream.job_manager._job_size
+
+    assert list(stream.job_manager.job_get_results()) == []
+
+    slice_start = pdm.parse("2024-01-01T00:00:00Z")
+    slice_end = pdm.parse("2024-01-02T00:00:00Z")
+    # the slice is re-run with the reduced size, not treated as consumed
+    assert stream.job_manager.get_adjusted_job_end(slice_start, slice_end, None, None) == slice_start
+    assert stream.job_manager._job_size < job_size_before
+    assert stream.job_manager._job_retry_slice_without_checkpoint is False
+    assert stream.job_manager._job_checkpoint_disabled is True
 
 
 def test_job_read_file_invalid_filename(mocker, auth_config) -> None:
@@ -378,6 +701,7 @@ def test_job_read_file_invalid_filename(mocker, auth_config) -> None:
     "stream, json_content_example, expected",
     [
         (CustomerAddress, "customer_address_jsonl_content_example", "customer_address_parse_response_expected_result"),
+        (CustomerJourneySummary, "customer_journey_jsonl_content_example", "customer_journey_parse_response_expected_result"),
         (MetafieldOrders, "metafield_jsonl_content_example", "metafield_parse_response_expected_result"),
         (FulfillmentOrders, "filfillment_order_jsonl_content_example", "fulfillment_orders_response_expected_result"),
         (DiscountCodes, "discount_codes_jsonl_content_example", "discount_codes_response_expected_result"),
@@ -392,6 +716,7 @@ def test_job_read_file_invalid_filename(mocker, auth_config) -> None:
     ],
     ids=[
         "CustomerAddress",
+        "CustomerJourneySummary",
         "MetafieldOrders",
         "FulfillmentOrders",
         "DiscountCodes",
@@ -430,6 +755,54 @@ def test_bulk_stream_parse_response(
         assert test_records == expected_result
 
 
+def test_discount_codes_parse_more_than_100_grouped_redeem_codes(requests_mock, bulk_job_completed_response, auth_config) -> None:
+    stream = DiscountCodes(auth_config)
+    parent_id = "gid://shopify/DiscountCodeNode/945205379261"
+    parent_record = {
+        "__typename": "DiscountCodeNode",
+        "id": parent_id,
+        "codeDiscount": {
+            "__typename": "DiscountCodeFreeShipping",
+            "updatedAt": "2023-12-07T11:40:44Z",
+            "createdAt": "2021-07-08T12:40:37Z",
+            "discountType": "SHIPPING",
+            "startsAt": "2021-07-08T12:40:13Z",
+            "endsAt": "2024-01-02T07:59:59Z",
+            "status": "EXPIRED",
+            "title": "HZAVNV2487WC",
+            "usageLimit": None,
+            "appliesOncePerCustomer": False,
+            "asyncUsageCount": 0,
+            "codesCount": {"count": 101},
+            "totalSales": None,
+            "summary": "Free shipping",
+        },
+    }
+    child_records = [
+        {
+            "__typename": "DiscountRedeemCode",
+            "usageCount": 0,
+            "code": f"CODE-{index:03d}",
+            "id": f"gid://shopify/DiscountRedeemCode/{11545139282109 + index}",
+            "createdBy": None,
+            "__parentId": parent_id,
+        }
+        for index in range(101)
+    ]
+    jsonl_content = "\n".join(orjson.dumps(record).decode() for record in [parent_record, *child_records]) + "\n"
+    test_result_url = bulk_job_completed_response.get("data", {}).get("node", {}).get("url")
+
+    requests_mock.post(stream.job_manager.base_url, json=bulk_job_completed_response)
+    requests_mock.get(test_result_url, text=jsonl_content)
+
+    test_records = list(stream.read_records(SyncMode.full_refresh, stream_slice={}))
+
+    assert len(test_records) == 101
+    assert test_records[0]["code"] == "CODE-000"
+    assert test_records[-1]["code"] == "CODE-100"
+    assert {record["price_rule_id"] for record in test_records} == {945205379261}
+
+
 @pytest.mark.parametrize(
     "stream, stream_state, with_start_date, expected_start",
     [
@@ -448,9 +821,9 @@ def test_bulk_stream_parse_response(
 )
 def test_stream_slices(
     auth_config,
-    stream, 
-    stream_state, 
-    with_start_date, 
+    stream,
+    stream_state,
+    with_start_date,
     expected_start,
 ) -> None:
     # simulating `None` for `start_date` and `config migration`
@@ -462,7 +835,7 @@ def test_stream_slices(
     test_result = list(stream.stream_slices(stream_state=stream_state))
     assert test_result[0].get("start") == expected_start
 
-    
+
 @pytest.mark.parametrize(
     "stream, json_content_example, last_job_elapsed_time, previous_slice_size, adjusted_slice_size",
     [
@@ -471,7 +844,7 @@ def test_stream_slices(
     ids=[
         "Expand Slice Size",
     ],
-)   
+)
 def test_expand_stream_slices_job_size(
     request,
     requests_mock,
@@ -483,7 +856,6 @@ def test_expand_stream_slices_job_size(
     adjusted_slice_size,
     auth_config,
 ) -> None:
-    
     stream = stream(auth_config)
     # get the mocked job_result_url
     test_result_url = bulk_job_completed_response.get("data").get("node").get("url")
@@ -495,7 +867,7 @@ def test_expand_stream_slices_job_size(
     # for the sake of simplicity we fake some parts to simulate the `current_job_time_elapsed`
     # fake current slice interval value
     stream.job_manager._job_size = previous_slice_size
-    # fake `last job elapsed time` 
+    # fake `last job elapsed time`
     if last_job_elapsed_time:
         stream.job_manager._job_last_elapsed_time = last_job_elapsed_time
 
@@ -503,3 +875,45 @@ def test_expand_stream_slices_job_size(
     list(stream.read_records(SyncMode.incremental, stream_slice=first_slice))
     # check the next slice
     assert stream.job_manager._job_size == adjusted_slice_size
+
+
+def test_effective_checkpoint_cursor_uses_parent_cursor_for_parent_backed_stream(auth_config) -> None:
+    """Reproduces the bug behind airbytehq/oncall#12004.
+
+    When a bulk job checkpoints mid-output for a stream whose emitted records'
+    cursor differs from the slice filter field, the next slice must not be
+    advanced using the child record's cursor. For `MetafieldCustomers` the
+    slice is filtered on `customers.updated_at` but emitted records carry
+    `metafield.updated_at`, which can be arbitrarily far outside the slice
+    window. Using the child cursor as the next-slice start silently skips
+    every customer between the current slice's end and the child's timestamp.
+
+    The fix is to source the checkpoint cursor from the bulk record
+    producer's tracked parent cursor, which is bounded by the slice upper
+    bound.
+    """
+    stream = MetafieldCustomers(auth_config)
+
+    # Simulate the pathological state captured in the oncall log:
+    #   - child record cursor advanced to a timestamp way past slice_end
+    #   - parent cursor tracked by the record producer stayed in-window
+    stream._checkpoint_cursor = "2026-02-26T01:31:14+00:00"
+    stream.job_manager.record_producer._parent_stream_cursor_value = "2023-06-28T00:00:00+00:00"
+
+    # Must NOT return the child cursor — that's what skipped 2.67 years of
+    # customers in oncall#12004's production sync.
+    assert stream._effective_checkpoint_cursor() == "2023-06-28T00:00:00+00:00"
+
+
+def test_effective_checkpoint_cursor_falls_back_when_no_parent_state(auth_config) -> None:
+    """Streams without a parent, or with no parent cursor yet tracked, keep
+    the pre-fix behavior of using `self._checkpoint_cursor`."""
+    stream = MetafieldOrders(auth_config)  # no parent_stream_class
+    stream._checkpoint_cursor = "2024-01-15T10:00:00+00:00"
+    assert stream._effective_checkpoint_cursor() == "2024-01-15T10:00:00+00:00"
+
+    # Parent-backed stream but producer hasn't seen any parent yet.
+    stream = MetafieldCustomers(auth_config)
+    stream._checkpoint_cursor = "2024-01-15T10:00:00+00:00"
+    stream.job_manager.record_producer._parent_stream_cursor_value = None
+    assert stream._effective_checkpoint_cursor() == "2024-01-15T10:00:00+00:00"

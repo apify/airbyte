@@ -1,40 +1,9 @@
 [
   {
-    "id": 33,
-    "name": "Express",
-    "slug": "express",
-    "description": "",
-    "count": 0,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/shipping_classes/33"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/shipping_classes"
-        }
-      ]
-    }
-  },
-  {
-    "id": 32,
-    "name": "Priority",
-    "slug": "priority",
-    "description": "",
-    "count": 0,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/shipping_classes/32"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/shipping_classes"
-        }
-      ]
-    }
+    "id": 1,
+    "name": "Standard",
+    "slug": "standard",
+    "description": "Standard shipping class",
+    "count": 10
   }
 ]

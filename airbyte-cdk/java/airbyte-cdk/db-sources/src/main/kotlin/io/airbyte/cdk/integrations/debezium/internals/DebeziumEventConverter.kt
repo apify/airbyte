@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium.internals
 
@@ -19,7 +19,7 @@ interface DebeziumEventConverter {
             source: JsonNode?,
             cdcMetadataInjector: CdcMetadataInjector<*>,
             emittedAt: Instant,
-            data: JsonNode?
+            data: JsonNode?,
         ): AirbyteMessage {
             val streamNamespace = cdcMetadataInjector.namespace(source)
             val streamName = cdcMetadataInjector.name(source)
@@ -41,7 +41,7 @@ interface DebeziumEventConverter {
             baseNode: ObjectNode,
             source: JsonNode,
             cdcMetadataInjector: CdcMetadataInjector<*>,
-            isDelete: Boolean
+            isDelete: Boolean,
         ): JsonNode {
             val transactionMillis = source["ts_ms"].asLong()
             val transactionTimestamp = Instant.ofEpochMilli(transactionMillis).toString()

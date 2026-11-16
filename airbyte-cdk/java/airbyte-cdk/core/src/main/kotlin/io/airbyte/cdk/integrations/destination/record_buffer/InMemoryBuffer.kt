@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.record_buffer
 
@@ -9,6 +9,7 @@ import java.nio.file.Files
 import java.util.*
 
 private val LOGGER = KotlinLogging.logger {}
+
 /**
  * Instead of storing buffered data on disk like the [FileBuffer], this [BufferStorage] accumulates
  * message data in-memory instead. Thus, a bigger heap size would be required.

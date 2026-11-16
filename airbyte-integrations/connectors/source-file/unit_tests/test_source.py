@@ -8,6 +8,8 @@ from copy import deepcopy
 
 import jsonschema
 import pytest
+from source_file.source import SourceFile
+
 from airbyte_cdk.models import (
     AirbyteConnectionStatus,
     AirbyteMessage,
@@ -20,9 +22,9 @@ from airbyte_cdk.models import (
     SyncMode,
     Type,
 )
+from airbyte_cdk.models import Type as MessageType
 from airbyte_cdk.utils import AirbyteTracedException
-from airbyte_protocol.models.airbyte_protocol import Type as MessageType
-from source_file.source import SourceFile
+
 
 logger = logging.getLogger("airbyte")
 
@@ -170,8 +172,8 @@ def test_discover_dropbox_link(source, config_dropbox_link):
 
 def test_discover(source, config, client):
     catalog = source.discover(logger=logger, config=config)
-    catalog = AirbyteMessage(type=Type.CATALOG, catalog=catalog).dict(exclude_unset=True)
-    schemas = [stream["json_schema"] for stream in catalog["catalog"]["streams"]]
+    catalog = AirbyteMessage(type=Type.CATALOG, catalog=catalog)
+    schemas = [stream.json_schema for stream in catalog.catalog.streams]
     for schema in schemas:
         jsonschema.Draft7Validator.check_schema(schema)
 

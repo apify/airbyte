@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.factory
 
@@ -28,7 +28,7 @@ object ConnectionFactory {
         username: String?,
         password: String?,
         connectionProperties: Map<String?, String?>,
-        jdbcConnectionString: String?
+        jdbcConnectionString: String?,
     ): Connection {
         try {
             val properties = Properties()

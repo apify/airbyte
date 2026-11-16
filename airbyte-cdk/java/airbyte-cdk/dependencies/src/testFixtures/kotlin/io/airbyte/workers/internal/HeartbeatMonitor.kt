@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.workers.internal
 
@@ -19,12 +19,12 @@ class HeartbeatMonitor
 @VisibleForTesting
 constructor(
     private val heartBeatFreshDuration: Duration?,
-    private val nowSupplier: Supplier<Instant>
+    private val nowSupplier: Supplier<Instant>,
 ) {
     private val lastBeat = AtomicReference<Instant>(null)
 
     constructor(
-        heartBeatFreshDuration: Duration?
+        heartBeatFreshDuration: Duration?,
     ) : this(heartBeatFreshDuration, Supplier<Instant> { Instant.now() })
 
     /** Register a heartbeat */
@@ -34,9 +34,8 @@ constructor(
 
     val isBeating: Boolean
         /**
-         *
          * @return true if the last heartbeat is still "fresh". i.e. time since last heartbeat is
-         * less than heartBeatFreshDuration. otherwise, false.
+         *   less than heartBeatFreshDuration. otherwise, false.
          */
         get() {
             val instantFetched = lastBeat.get()

@@ -4,10 +4,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "airbyte-destination-chroma"
-version = "0.0.31"
+version = "0.0.56"
 description = "Airbyte destination implementation for Chroma."
 authors = ["Airbyte <contact@airbyte.io>"]
-license = "MIT"
+license = "ELv2"
 readme = "README.md"
 documentation = "https://docs.airbyte.com/integrations/destinations/chroma"
 homepage = "https://airbyte.com"
@@ -17,9 +17,9 @@ repository = "https://github.com/airbytehq/airbyte"
 include = "destination_chroma"
 
 [tool.poetry.dependencies]
-python = "^3.9,<3.12"
-airbyte-cdk = {version = "0.81.6", extras = ["vector-db-based"]}
-chromadb = "*"
+python = "^3.10,<3.12"
+airbyte-cdk = { version = ">=7.7.0,<8.0.0", extras = ["vector-db-based"] }
+chromadb = "0.6.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
@@ -28,3 +28,11 @@ mypy = "^1.9.0"
 
 [tool.poetry.scripts]
 destination-chroma = "destination_chroma.run:run"
+
+
+[tool.poe]
+include = [
+    # Shared tasks definition file(s) can be imported here.
+    # Run `poe` or `poe --help` to see the list of available tasks.
+    "${POE_GIT_DIR}/poe-tasks/poetry-connector-tasks.toml",
+]

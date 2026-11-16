@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3.util
 
@@ -19,7 +19,7 @@ object ConfigTestUtils {
   "s3_bucket_region": "us-east-2",
   "access_key_id": "some-test-key-id",
   "secret_access_key": "some-test-access-key",
-  "format": $formatConfig}"""
+  "format": $formatConfig}""",
         )
     }
 

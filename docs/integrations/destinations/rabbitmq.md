@@ -19,14 +19,15 @@ Each stream will be output a RabbitMQ message with properties. The message prope
 
 The `AirbyteRecord` data will be serialized as JSON and set as the RabbitMQ message body.
 
-#### Features
+## Supported sync modes
 
-| Feature                        | Supported?\(Yes/No\) | Notes |
-| :----------------------------- | :------------------- | :---- |
-| Full Refresh Sync              | Yes                  |       |
-| Incremental - Append Sync      | Yes                  |       |
-| Incremental - Append + Deduped | No                   |       |
-| Namespaces                     | Yes                  |       |
+| Sync mode | Supported? |
+| :--- | :--- |
+| [Full Refresh - Overwrite](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite) | No |
+| [Full Refresh - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-append) | Yes |
+| [Full Refresh - Overwrite + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite-deduped) | No |
+| [Incremental Sync - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append) | Yes |
+| [Incremental Sync - Append + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append-deduped) | No |
 
 ## Getting started
 
@@ -41,6 +42,10 @@ To use the RabbitMQ destination, you'll need:
 - RabbitMQ port is optional (it defaults to 5672).
 - RabbitMQ virtual host is also optional.
 
+## Namespace support
+
+This destination does not support [namespaces](https://docs.airbyte.com/platform/using-airbyte/core-concepts/namespaces).
+
 ## Changelog
 
 <details>
@@ -48,6 +53,27 @@ To use the RabbitMQ destination, you'll need:
 
 | Version | Date             | Pull Request                                              | Subject                                         |
 |:--------| :--------------- | :-------------------------------------------------------- | :---------------------------------------------- |
+| 0.1.43 | 2025-05-24 | [60586](https://github.com/airbytehq/airbyte/pull/60586) | Update dependencies |
+| 0.1.42 | 2025-05-10 | [59812](https://github.com/airbytehq/airbyte/pull/59812) | Update dependencies |
+| 0.1.41 | 2025-05-03 | [58696](https://github.com/airbytehq/airbyte/pull/58696) | Update dependencies |
+| 0.1.40 | 2025-04-19 | [58287](https://github.com/airbytehq/airbyte/pull/58287) | Update dependencies |
+| 0.1.39 | 2025-04-12 | [57602](https://github.com/airbytehq/airbyte/pull/57602) | Update dependencies |
+| 0.1.38 | 2025-04-05 | [56629](https://github.com/airbytehq/airbyte/pull/56629) | Update dependencies |
+| 0.1.37 | 2025-03-22 | [56125](https://github.com/airbytehq/airbyte/pull/56125) | Update dependencies |
+| 0.1.36 | 2025-03-08 | [55350](https://github.com/airbytehq/airbyte/pull/55350) | Update dependencies |
+| 0.1.35 | 2025-03-01 | [54857](https://github.com/airbytehq/airbyte/pull/54857) | Update dependencies |
+| 0.1.34 | 2025-02-22 | [54261](https://github.com/airbytehq/airbyte/pull/54261) | Update dependencies |
+| 0.1.33 | 2025-02-15 | [53921](https://github.com/airbytehq/airbyte/pull/53921) | Update dependencies |
+| 0.1.32 | 2025-02-01 | [52952](https://github.com/airbytehq/airbyte/pull/52952) | Update dependencies |
+| 0.1.31 | 2025-01-25 | [52176](https://github.com/airbytehq/airbyte/pull/52176) | Update dependencies |
+| 0.1.30 | 2025-01-18 | [51287](https://github.com/airbytehq/airbyte/pull/51287) | Update dependencies |
+| 0.1.29 | 2024-12-28 | [50506](https://github.com/airbytehq/airbyte/pull/50506) | Update dependencies |
+| 0.1.28 | 2024-12-21 | [50180](https://github.com/airbytehq/airbyte/pull/50180) | Update dependencies |
+| 0.1.27 | 2024-12-14 | [49305](https://github.com/airbytehq/airbyte/pull/49305) | Update dependencies |
+| 0.1.26 | 2024-11-25 | [48642](https://github.com/airbytehq/airbyte/pull/48642) | Update dependencies |
+| 0.1.25 | 2024-10-29 | [47101](https://github.com/airbytehq/airbyte/pull/47101) | Update dependencies |
+| 0.1.24 | 2024-10-12 | [46859](https://github.com/airbytehq/airbyte/pull/46859) | Update dependencies |
+| 0.1.23 | 2024-10-05 | [46437](https://github.com/airbytehq/airbyte/pull/46437) | Update dependencies |
 | 0.1.22 | 2024-09-28 | [46139](https://github.com/airbytehq/airbyte/pull/46139) | Update dependencies |
 | 0.1.21 | 2024-09-21 | [45814](https://github.com/airbytehq/airbyte/pull/45814) | Update dependencies |
 | 0.1.20 | 2024-09-14 | [45293](https://github.com/airbytehq/airbyte/pull/45293) | Update dependencies |

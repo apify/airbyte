@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.jdbc.copy.azure
 
@@ -10,7 +10,7 @@ class AzureBlobStorageConfig(
     val endpointDomainName: String = DEFAULT_STORAGE_ENDPOINT_DOMAIN_NAME,
     val accountName: String,
     val containerName: String,
-    val sasToken: String
+    val sasToken: String,
 ) {
 
     val endpointUrl: String
@@ -26,7 +26,7 @@ class AzureBlobStorageConfig(
                 else config["azure_blob_storage_endpoint_domain_name"].asText(),
                 config["azure_blob_storage_account_name"].asText(),
                 config["azure_blob_storage_container_name"].asText(),
-                config["azure_blob_storage_sas_token"].asText()
+                config["azure_blob_storage_sas_token"].asText(),
             )
         }
     }

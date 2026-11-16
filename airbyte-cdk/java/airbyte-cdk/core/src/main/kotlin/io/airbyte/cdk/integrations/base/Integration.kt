@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.base
 
@@ -23,7 +23,8 @@ interface Integration {
      *
      * @param config
      * - integration-specific configuration object as json. e.g. { "username": "airbyte",
-     * "password": "super secure" }
+     *   "password": "super secure" }
+     *
      * @return Whether or not the connection was successful. Optional message if it was not.
      * @throws Exception
      * - any exception.

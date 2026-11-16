@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.base.destination.typing_deduping
 
@@ -29,7 +29,7 @@ object FutureUtils {
     @Throws(Exception::class)
     fun reduceExceptions(
         potentialExceptions: Collection<CompletableFuture<Optional<Exception>>>,
-        initialMessage: String
+        initialMessage: String,
     ) {
         val exceptions =
             potentialExceptions

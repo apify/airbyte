@@ -1,5 +1,7 @@
 plugins {
     id 'airbyte-java-connector'
+    id "io.airbyte.gradle.docker"
+    id 'airbyte-connector-docker-convention'
 }
 
 airbyteJavaConnector {
@@ -16,5 +18,5 @@ dependencies {
 
     implementation 'com.teradata.jdbc:terajdbc:20.00.00.06'
 
-    testImplementation 'org.testcontainers:jdbc:1.19.4'
+    testImplementation 'org.testcontainers:jdbc:1.21.4'
 }

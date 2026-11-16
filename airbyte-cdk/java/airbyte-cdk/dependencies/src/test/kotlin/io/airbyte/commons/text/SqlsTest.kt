@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.text
 
@@ -25,7 +25,7 @@ internal class SqlsTest {
     fun testInFragment() {
         Assertions.assertEquals(
             "('value_two','value_three')",
-            Sqls.toSqlInFragment(Lists.newArrayList(E1.VALUE_TWO, E1.value_three))
+            Sqls.toSqlInFragment(Lists.newArrayList(E1.VALUE_TWO, E1.value_three)),
         )
     }
 }

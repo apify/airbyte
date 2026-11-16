@@ -5,10 +5,10 @@ data:
   connectorSubtype: database
   connectorType: source
   definitionId: acb5f973-a565-441e-992f-4946f3e65662
-  dockerImageTag: 0.1.23
+  dockerImageTag: 0.1.56
   dockerRepository: airbyte/source-firebase-realtime-database
   githubIssueLabel: source-firebase-realtime-database
-  license: MIT
+  license: ELv2
   name: Firebase Realtime Database
   remoteRegistries:
     pypi:
@@ -31,5 +31,15 @@ data:
   connectorTestSuitesOptions:
     - suite: unitTests
   connectorBuildOptions:
-    baseImage: docker.io/airbyte/python-connector-base:2.0.0@sha256:c44839ba84406116e8ba68722a0f30e8f6e7056c726f447681bb9e9ece8bd916
+    baseImage: docker.io/airbyte/python-connector-base:4.1.1@sha256:a268b44c733ae699a60f5fbc06a324945dba98945c6e2ab7f8609f2f895b0d28
+  externalDocumentationUrls:
+    - title: Firebase Realtime Database REST API
+      url: https://firebase.google.com/docs/reference/rest/database
+      type: api_reference
+    - title: Firebase authentication
+      url: https://firebase.google.com/docs/database/rest/auth
+      type: authentication_guide
+    - title: Firebase Status Dashboard
+      url: https://status.firebase.google.com/
+      type: status_page
 metadataSpecVersion: "1.0"

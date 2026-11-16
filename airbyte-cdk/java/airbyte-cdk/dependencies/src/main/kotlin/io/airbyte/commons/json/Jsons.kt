@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.json
 
@@ -307,7 +307,7 @@ object Jsons {
     private fun replaceNested(
         json: JsonNode,
         keys: List<String>,
-        typedReplacement: BiConsumer<ObjectNode, String>
+        typedReplacement: BiConsumer<ObjectNode, String>,
     ) {
         Preconditions.checkArgument(!keys.isEmpty(), "Must pass at least one key")
         val nodeContainingFinalKey = navigateTo(json, keys.subList(0, keys.size - 1))
@@ -365,7 +365,7 @@ object Jsons {
     fun flatten(node: JsonNode, applyFlattenToArray: Boolean = false): Map<String?, Any> {
         if (node.isObject) {
             val output: MutableMap<String, Any> = HashMap()
-            val it = node.fields()
+            val it = node.properties().iterator()
             while (it.hasNext()) {
                 val entry = it.next()
                 val field = entry.key

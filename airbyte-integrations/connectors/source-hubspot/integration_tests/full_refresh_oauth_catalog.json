@@ -38,15 +38,6 @@
     },
     {
       "stream": {
-        "name": "contacts_list_memberships",
-        "json_schema": {},
-        "supported_sync_modes": ["full_refresh"]
-      },
-      "sync_mode": "full_refresh",
-      "destination_sync_mode": "overwrite"
-    },
-    {
-      "stream": {
         "name": "deal_pipelines",
         "json_schema": {},
         "supported_sync_modes": ["full_refresh"]
@@ -104,6 +95,15 @@
     },
     {
       "stream": {
+        "name": "engagements_task_pipelines",
+        "json_schema": {},
+        "supported_sync_modes": ["full_refresh"]
+      },
+      "sync_mode": "full_refresh",
+      "destination_sync_mode": "overwrite"
+    },
+    {
+      "stream": {
         "name": "form_submissions",
         "json_schema": {},
         "supported_sync_modes": ["full_refresh"]
@@ -132,6 +132,24 @@
     {
       "stream": {
         "name": "goals",
+        "json_schema": {},
+        "supported_sync_modes": ["full_refresh"]
+      },
+      "sync_mode": "full_refresh",
+      "destination_sync_mode": "overwrite"
+    },
+    {
+      "stream": {
+        "name": "leads",
+        "json_schema": {},
+        "supported_sync_modes": ["full_refresh"]
+      },
+      "sync_mode": "full_refresh",
+      "destination_sync_mode": "overwrite"
+    },
+    {
+      "stream": {
+        "name": "listings",
         "json_schema": {},
         "supported_sync_modes": ["full_refresh"]
       },
@@ -209,7 +227,16 @@
     },
     {
       "stream": {
-        "name": "contacts_merged_audit",
+        "name": "properties",
+        "json_schema": {},
+        "supported_sync_modes": ["full_refresh"]
+      },
+      "sync_mode": "full_refresh",
+      "destination_sync_mode": "overwrite"
+    },
+    {
+      "stream": {
+        "name": "account_details",
         "json_schema": {},
         "supported_sync_modes": ["full_refresh"]
       },

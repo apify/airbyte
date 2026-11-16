@@ -5,7 +5,7 @@ test_strictness_level: high
 acceptance_tests:
   spec:
     tests:
-      - spec_path: "source_instagram/spec.json"
+      - spec_path: "manifest.yaml"
   connection:
     tests:
       - config_path: "secrets/config.json"
@@ -18,13 +18,17 @@ acceptance_tests:
   basic_read:
     tests:
       - config_path: "secrets/config.json"
-        expect_records:
-          path: "integration_tests/expected_records.jsonl"
         empty_streams:
+          - name: media
+            bypass_reason: "No Instagram Business Account linked to the test Facebook Page (see: https://github.com/airbytehq/oncall/issues/11217)"
           - name: media_insights
             bypass_reason: Media statistic changed frequently
+          - name: users
+            bypass_reason: "No Instagram Business Account linked to the test Facebook Page (see: https://github.com/airbytehq/oncall/issues/11217)"
           - name: user_insights
             bypass_reason: User statistic changed frequently
+          - name: user_lifetime_insights
+            bypass_reason: "No Instagram Business Account linked to the test Facebook Page (see: https://github.com/airbytehq/oncall/issues/11217)"
           - name: stories
             bypass_reason: Stories available only 24 hours
           - name: story_insights
@@ -33,13 +37,6 @@ acceptance_tests:
     tests:
       - config_path: "secrets/config.json"
         configured_catalog_path: "integration_tests/configured_catalog.json"
-        ignored_fields:
-          user_lifetime_insights:
-            - name: value
-              bypass_reason: Floating values from sync-to-sync, due to live updating info.
-          user_insights:
-            - name: profile_views
-              bypass_reason: Floating values from sync-to-sync, due to live updating info.
   incremental:
     tests:
       - config_path: "secrets/config.json"

@@ -1,14 +1,17 @@
 import com.github.spotbugs.snom.Confidence
 import com.github.spotbugs.snom.Effort
 import com.github.spotbugs.snom.SpotBugsTask
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id 'base'
-    id 'com.github.spotbugs' version '6.0.7'
-    id 'org.jetbrains.kotlin.jvm' version '2.0.0'
-    id 'com.google.devtools.ksp' version '2.0.0-1.0.24'
+    id 'com.github.spotbugs' version '6.5.13'
+    id 'org.jetbrains.kotlin.jvm' version '2.4.21'
+    // Not 2.3.12+: it changed effectiveJavaModifiers and breaks micronaut-inject-kotlin < 5.3.
+    id 'com.google.devtools.ksp' version '2.3.10'
 }
 
 allprojects {
@@ -19,6 +22,7 @@ allprojects {
     apply plugin: 'org.jetbrains.kotlin.jvm'
     apply plugin: 'com.google.devtools.ksp'
     apply plugin: 'idea'
+    apply plugin: 'project-report'
 
 
     // By default gradle uses directory as the project name. That works very well in a single project environment but
@@ -55,16 +59,16 @@ allprojects {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
         compileJava {
-            options.compilerArgs += ["-Werror", "-Xlint:all,-serial,-processing"]
+            options.compilerArgs += ["-Xlint:all,-serial,-processing"] + getJavaCompilerArgs()
         }
         compileTestJava {
             //rawtypes and unchecked are necessary for mockito
             //deprecation and removal are removed from error since we should still test those constructs.
-            options.compilerArgs += ["-Werror", "-Xlint:all,-serial,-processing,-rawtypes,-unchecked,-deprecation,-removal"]
+            options.compilerArgs += ["-Xlint:all,-serial,-processing,-rawtypes,-unchecked,-deprecation,-removal"] + getJavaCompilerArgs()
         }
         compileTestFixturesJava {
             //rawtypes and unchecked are necessary for mockito
-            options.compilerArgs += ["-Werror", "-Xlint:all,-serial,-processing,-rawtypes,-unchecked"]
+            options.compilerArgs += ["-Xlint:all,-serial,-processing,-rawtypes,-unchecked"] + getJavaCompilerArgs()
         }
     }
 
@@ -72,37 +76,25 @@ allprojects {
         dependsOn tasks.matching { it.name == 'generate' }
     }
 
-    compileKotlin {
+    // Applies to every Kotlin compile task, including the integrationTest* source sets
+    // that connectors add on top of main/test/testFixtures.
+    tasks.withType(KotlinCompile).configureEach {
         compilerOptions {
             jvmTarget = JvmTarget.JVM_21
-            languageVersion = KotlinVersion.KOTLIN_1_9
-            allWarningsAsErrors = true
-            freeCompilerArgs = ["-Xjvm-default=all"]
+            languageVersion = KotlinVersion.KOTLIN_2_4
+            apiVersion = KotlinVersion.KOTLIN_2_4
+            // Same binary shape as the former -Xjvm-default=all free argument.
+            jvmDefault = JvmDefaultMode.NO_COMPATIBILITY
+            freeCompilerArgs = getKotlinCompilerArgs()
         }
         dependsOn {
             tasks.matching { it.name == 'generate' }
         }
     }
-    compileTestKotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_21
-            languageVersion = KotlinVersion.KOTLIN_1_9
-            allWarningsAsErrors = true
-            freeCompilerArgs = ["-Xjvm-default=all"]
-        }
-        dependsOn {
-            tasks.matching { it.name == 'generate' }
-        }
-    }
-    compileTestFixturesKotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_21
-            languageVersion = KotlinVersion.KOTLIN_1_9
-            allWarningsAsErrors = true
-            freeCompilerArgs = ["-Xjvm-default=all"]
-        }
-        dependsOn {
-            tasks.matching { it.name == 'generate' }
+    // -Werror stays scoped to the source sets that were already held to it.
+    ['compileKotlin', 'compileTestKotlin', 'compileTestFixturesKotlin'].each { taskName ->
+        tasks.named(taskName) {
+            compilerOptions.allWarningsAsErrors = isInCi()
         }
     }
 
@@ -125,7 +117,7 @@ allprojects {
         excludeFilter.set rootProject.file('spotbugs-exclude-filter-file.xml')
         reportLevel = Confidence.valueOf('HIGH')
         showProgress = false
-        toolVersion = '4.8.3'
+        toolVersion = '4.10.5'
     }
 
     test {
@@ -133,8 +125,7 @@ allprojects {
         testLogging() {
             events 'skipped', 'started', 'passed', 'failed'
             exceptionFormat 'full'
-            // Swallow the logs when running in airbyte-ci, rely on test reports instead.
-            showStandardStreams = !System.getenv().containsKey("RUN_IN_AIRBYTE_CI")
+            showStandardStreams = true
         }
         reports {
             junitXml {
@@ -192,16 +183,20 @@ allprojects {
         if (project.hasProperty('JunitMethodExecutionTimeout')) {
             junitMethodExecutionTimeout = project.property('JunitMethodExecutionTimeout').toString()
         } else {
-            junitMethodExecutionTimeout = '1 m'
+            junitMethodExecutionTimeout = '1m'
         }
+
+        systemProperty 'junit.jupiter.execution.timeout.default', junitMethodExecutionTimeout
+        systemProperty 'kotlinx.coroutines.test.default_timeout', junitMethodExecutionTimeout
+        // This is used by the "old" cdk (i.e. airbyte-cdk/java)
         systemProperty 'JunitMethodExecutionTimeout', junitMethodExecutionTimeout
     }
 
     dependencies {
         // JUnit dependencies.
         def vAssertJ = "3.25.3"
-        def vJUnit = "5.10.2"
-        def vJUnitJupiter = "5.11.0"
+        def vJUnit = "5.14.0"
+        def vJUnitJupiter = "5.24.0"
 
         testFixturesImplementation platform("org.junit:junit-bom:${vJUnit}")
         testFixturesImplementation "org.junit.jupiter:junit-jupiter-api:${vJUnit}"
@@ -218,10 +213,17 @@ allprojects {
 
         testRuntimeOnly platform("org.junit:junit-bom:${vJUnit}")
         testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${vJUnit}"
+        // Gradle no longer injects the JUnit Platform launcher (Gradle 9 removes it); declare it explicitly.
+        // JUnit 5.14's engine also needs a launcher of the same version on the test runtime classpath:
+        // without this, Gradle falls back to its bundled (older) launcher and discovery fails with
+        // "OutputDirectoryCreator not available".
+        testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 
         // Spotbugs dependencies.
-        def vSpotbugs = "4.8.3"
+        def vSpotbugs = "4.10.5"
         implementation "com.github.spotbugs:spotbugs-annotations:${vSpotbugs}"
+        // KGP >= 2.0.10 (KT-68278): testFixtures no longer inherits main's implementation deps.
+        testFixturesImplementation "com.github.spotbugs:spotbugs-annotations:${vSpotbugs}"
     }
 
     tasks.withType(SpotBugsTask).configureEach {
@@ -234,5 +236,25 @@ allprojects {
 
     javadoc {
         options.addStringOption('Xdoclint:none', '-quiet')
+    }
+}
+
+static def isInCi() {
+    return System.getenv("CI") == "true"
+}
+
+static def getJavaCompilerArgs() {
+    if (isInCi()) {
+        return ["-Werror"]
+    } else {
+        return []
+    }
+}
+
+static def getKotlinCompilerArgs() {
+    if (isInCi()) {
+        return []
+    } else {
+        return ["-Xdebug"]
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3
@@ -22,8 +22,7 @@ import io.airbyte.cdk.integrations.destination.s3.util.StreamTransferManagerFact
 import io.airbyte.cdk.integrations.util.ConnectorExceptionUtil
 import io.airbyte.commons.exceptions.ConfigErrorException
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.IOException
-import java.io.OutputStream
+import java.io.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
@@ -40,7 +39,7 @@ private val logger = KotlinLogging.logger {}
 open class S3StorageOperations(
     private val nameTransformer: NamingConventionTransformer,
     var s3Client: AmazonS3,
-    private val s3Config: S3DestinationConfig
+    private val s3Config: S3DestinationConfig,
 ) : BlobStorageOperations() {
     private val s3FilenameTemplateManager: S3FilenameTemplateManager = S3FilenameTemplateManager()
 
@@ -51,7 +50,7 @@ open class S3StorageOperations(
         namespace: String?,
         streamName: String,
         writeDatetime: DateTime,
-        customFormat: String
+        customFormat: String,
     ): String {
         val namespaceStr: String =
             nameTransformer.getNamespace(if (!namespace.isNullOrBlank()) namespace else "")
@@ -166,7 +165,7 @@ open class S3StorageOperations(
      * Upload the file from `recordsData` to S3 and simplify the filename as <partId>.<extension>.
      *
      * @return the uploaded filename, which is different from the serialized buffer filename
-     * </extension></partId>
+     *   </extension></partId>
      */
     @VisibleForTesting
     fun getFileName(
@@ -194,15 +193,32 @@ open class S3StorageOperations(
         } while (objectNameByPrefix.getValue(objectPath).contains(fullObjectKey))
         return fullObjectKey
     }
+
     @Throws(IOException::class)
     private fun loadDataIntoBucket(
         objectPath: String,
         recordsData: SerializableBuffer,
-        generationId: Long
+        generationId: Long,
+    ): String {
+        val fullObjectKey: String = getFileName(objectPath, recordsData)
+        return loadDataIntoBucket(
+            fullObjectKey,
+            recordsData.filename,
+            recordsData.inputStream!!,
+            generationId,
+        )
+    }
+
+    @Throws(IOException::class)
+    public fun loadDataIntoBucket(
+        fullObjectKey: String,
+        fileName: String,
+        fileContent: InputStream,
+        generationId: Long,
     ): String {
         val partSize: Long = DEFAULT_PART_SIZE.toLong()
         val bucket: String? = s3Config.bucketName
-        val fullObjectKey: String = getFileName(objectPath, recordsData)
+
         val metadata: MutableMap<String, String> = HashMap()
         for (blobDecorator: BlobDecorator in blobDecorators) {
             blobDecorator.updateMetadata(metadata, getMetadataMapping())
@@ -232,13 +248,13 @@ open class S3StorageOperations(
 
         try {
             rawOutputStream.use { outputStream ->
-                recordsData.inputStream!!.use { dataStream ->
+                fileContent.use { dataStream ->
                     dataStream.transferTo(outputStream)
                     succeeded = true
                 }
             }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to load data into storage $objectPath" }
+            logger.error(e) { "Failed to load data into storage $fullObjectKey" }
             throw RuntimeException(e)
         } finally {
             if (!succeeded) {
@@ -253,7 +269,7 @@ open class S3StorageOperations(
         }
         val newFilename: String = getFilename(fullObjectKey)
         logger.info {
-            "Uploaded buffer file to storage: ${recordsData.filename} -> $fullObjectKey (filename: $newFilename)"
+            "Uploaded buffer file to storage: $fileName -> $fullObjectKey (filename: $newFilename)"
         }
         return newFilename
     }
@@ -295,7 +311,7 @@ open class S3StorageOperations(
     private fun forObjectsByPage(
         objectPath: String,
         maxKeysPerPage: Int = 1000,
-        pageConsumer: (List<S3ObjectSummary>) -> Unit
+        pageConsumer: (List<S3ObjectSummary>) -> Unit,
     ) {
         val bucket: String = s3Config.bucketName!!
         var objects: ObjectListing =
@@ -324,7 +340,7 @@ open class S3StorageOperations(
         namespace: String?,
         streamName: String,
         objectPath: String,
-        pathFormat: String
+        pathFormat: String,
     ) {
         val bucket: String = s3Config.bucketName!!
         val regexFormat: Pattern =
@@ -356,7 +372,7 @@ open class S3StorageOperations(
         namespace: String?,
         streamName: String,
         objectPath: String,
-        pathFormat: String
+        pathFormat: String,
     ): Long? {
         return getStageGenerationInternal(namespace, streamName, objectPath, pathFormat)
     }
@@ -367,7 +383,7 @@ open class S3StorageOperations(
         streamName: String,
         objectPath: String,
         pathFormat: String,
-        maxKeysPerPage: Int = 1000
+        maxKeysPerPage: Int = 1000,
     ): Long? {
         val bucket: String = s3Config.bucketName!!
         val regexFormat: Pattern =
@@ -399,12 +415,10 @@ open class S3StorageOperations(
             }
         }
 
-        if (lastModifiedObject == null) {
-            // Nothing to retrieve, fallback to null genId behavior
-            return null
-        }
+        // Nothing to retrieve, fallback to null genId behavior
+        val lastModified = lastModifiedObject ?: return null
         // If genId is missing or not parseable we return null
-        return getGenerationIdFromMetadata(bucket, lastModifiedObject!!.key).getOrNull()
+        return getGenerationIdFromMetadata(bucket, lastModified.key).getOrNull()
     }
 
     private fun getGenerationIdFromMetadata(bucket: String, key: String): Optional<Long> {
@@ -478,7 +492,7 @@ open class S3StorageOperations(
         streamName: String,
         objectPath: String,
         pathFormat: String,
-        currentGenerationId: Long?
+        currentGenerationId: Long?,
     ): List<String> {
         val regexFormat: Pattern =
             Pattern.compile(getRegexFormat(namespace, streamName, pathFormat))
@@ -505,13 +519,13 @@ open class S3StorageOperations(
 
     private fun filterObjectsByGenerationLessThan(
         keyList: List<S3ObjectSummary>,
-        maxGenerationId: Long
+        maxGenerationId: Long,
     ): List<S3ObjectSummary> {
         val bucket = s3Config.bucketName!!
         // Sort the list by lastModified first
         val sortedList =
             keyList.sortedWith(
-                Comparator.comparingLong { o: S3ObjectSummary -> o.lastModified.time }
+                Comparator.comparingLong { o: S3ObjectSummary -> o.lastModified.time },
             )
         if (sortedList.isEmpty()) return listOf()
 
@@ -564,7 +578,7 @@ open class S3StorageOperations(
 
     protected open fun cleanUpObjects(
         bucket: String?,
-        keysToDelete: List<DeleteObjectsRequest.KeyVersion>
+        keysToDelete: List<DeleteObjectsRequest.KeyVersion>,
     ) {
         if (keysToDelete.isNotEmpty()) {
             logger.info {
@@ -611,7 +625,8 @@ open class S3StorageOperations(
         private const val FORMAT_VARIABLE_EPOCH: String = "\${EPOCH}"
         private const val FORMAT_VARIABLE_UUID: String = "\${UUID}"
         private const val GZ_FILE_EXTENSION: String = "gz"
-        private const val GENERATION_ID_USER_META_KEY = "ab-generation-id"
+        const val GENERATION_ID_USER_META_KEY = "ab-generation-id"
+
         @VisibleForTesting
         @JvmStatic
         fun getFilename(fullPath: String): String {

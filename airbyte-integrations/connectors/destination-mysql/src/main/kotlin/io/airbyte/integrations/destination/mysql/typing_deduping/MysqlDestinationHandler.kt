@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.destination.mysql.typing_deduping
@@ -38,6 +38,7 @@ class MysqlDestinationHandler(
     ) {
     override val stateTableUpdatedAtType: DataType<*> =
         DefaultDataType(SQLDialect.MYSQL, String::class.java, "datetime")
+
     override fun toJdbcTypeName(airbyteType: AirbyteType): String =
         // This is mostly identical to the postgres implementation, but swaps jsonb to json
         if (airbyteType is AirbyteProtocolType) {

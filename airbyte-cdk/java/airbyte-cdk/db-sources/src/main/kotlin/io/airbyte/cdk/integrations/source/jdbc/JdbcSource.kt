@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.source.jdbc
 
@@ -19,7 +19,7 @@ class JdbcSource :
     AbstractJdbcSource<JDBCType>(
         DatabaseDriver.POSTGRESQL.driverClassName,
         Supplier { AdaptiveStreamingQueryConfig() },
-        JdbcUtils.defaultSourceOperations
+        JdbcUtils.defaultSourceOperations,
     ),
     Source {
     // no-op for JdbcSource since the config it receives is designed to be use for JDBC.

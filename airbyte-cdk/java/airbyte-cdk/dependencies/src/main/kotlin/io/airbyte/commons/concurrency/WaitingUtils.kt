@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.concurrency
 
@@ -12,16 +12,19 @@ object WaitingUtils {
      *
      * @param interval
      * - frequency with which condition and timeout should be checked.
+     *
      * @param timeout
      * - how long to wait in total
+     *
      * @param condition
      * - supplier that returns whether the condition has been met.
+     *
      * @return true if condition was met before the timeout was reached, otherwise false.
      */
     fun waitForCondition(
         interval: Duration,
         timeout: Duration,
-        condition: Supplier<Boolean>
+        condition: Supplier<Boolean>,
     ): Boolean {
         var timeWaited = Duration.ZERO
         while (true) {

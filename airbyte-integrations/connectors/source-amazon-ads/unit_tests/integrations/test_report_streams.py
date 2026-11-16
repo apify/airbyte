@@ -1,432 +1,1188 @@
-# Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+# Copyright (c) 2025 Airbyte, Inc., all rights reserved.
 
+import gzip
 import json
-import uuid
-from unittest import TestCase
+from pathlib import Path
+from typing import Any, Callable, Mapping, Optional
+from unittest.mock import call, patch
 
-import pendulum
+import pytest
 import requests_mock
-from airbyte_cdk.test.mock_http import HttpMocker, HttpRequestMatcher
-from airbyte_protocol.models import Level as LogLevel
-from airbyte_protocol.models import SyncMode
-from source_amazon_ads.streams.report_streams import brands_report, brands_video_report, display_report, products_report
+import yaml
+from components import _DUPLICATE_REPORT_MAX_ATTEMPTS, _DUPLICATE_REPORT_RETRY_WAIT_SECONDS
 
-from .ad_requests import (
-    OAuthRequestBuilder,
-    ProfilesRequestBuilder,
-    ReportCheckStatusRequestBuilder,
-    ReportDownloadRequestBuilder,
-    SponsoredBrandsReportRequestBuilder,
-    SponsoredBrandsV3ReportRequestBuilder,
-    SponsoredBrandsVideoReportRequestBuilder,
-    SponsoredDisplayReportRequestBuilder,
-    SponsoredProductsReportRequestBuilder,
+from airbyte_cdk.models import FailureType, SyncMode
+from airbyte_cdk.models import Level as LogLevel
+from airbyte_cdk.test.catalog_builder import CatalogBuilder
+from airbyte_cdk.test.entrypoint_wrapper import EntrypointOutput, read
+from airbyte_cdk.test.state_builder import StateBuilder
+from airbyte_cdk.utils.datetime_helpers import ab_datetime_now
+from unit_tests.conftest import get_source
+
+
+_MANIFEST_PATH = Path(__file__).parent.parent.parent / "manifest.yaml"
+_MANIFEST = yaml.safe_load(_MANIFEST_PATH.read_text())
+
+
+def _report_stream_configurations(predicate=None) -> list:
+    """`(stream_name, report configuration, schema)` for every report stream in the manifest.
+
+    A report stream is one whose `creation_requester.requester` sends a `configuration` carrying a
+    `reportTypeId`. Callers narrow the set with `predicate(stream_name, configuration)`.
+    """
+    configurations = []
+    for name, stream in _MANIFEST["definitions"]["streams"].items():
+        creation_requester = stream.get("retriever", {}).get("creation_requester", {})
+        configuration = creation_requester.get("requester", {}).get("request_body_json", {}).get("configuration")
+        if not configuration or "reportTypeId" not in configuration:
+            continue
+        if predicate and not predicate(name, configuration):
+            continue
+        schema = _MANIFEST["schemas"][stream["schema_loader"]["schema"]["$ref"].split("/")[-1]]
+        configurations.append((name, configuration, schema))
+    return configurations
+
+
+def _report_stream_names(predicate) -> list:
+    return [name for name, _, _ in _report_stream_configurations(predicate)]
+
+
+# Derived from the manifest rather than hardcoded. These lists were previously maintained by hand in
+# three separate places, so a stream could be added to the manifest and silently miss every read test.
+_ALL_DAILY_STREAMS = _report_stream_names(lambda name, configuration: configuration["timeUnit"] == "DAILY")
+_ALL_SPONSORED_PRODUCTS_SUMMARY_STREAMS = _report_stream_names(
+    lambda name, configuration: configuration["timeUnit"] == "SUMMARY" and name.startswith("sponsored_products_")
 )
-from .ad_responses import (
-    ErrorResponseBuilder,
-    OAuthResponseBuilder,
-    ProfilesResponseBuilder,
-    ReportCheckStatusResponseBuilder,
-    ReportDownloadResponseBuilder,
-    ReportInitResponseBuilder,
-)
-from .ad_responses.records import (
-    ErrorRecordBuilder,
-    ProfilesRecordBuilder,
-    ReportCheckStatusRecordBuilder,
-    ReportFileRecordBuilder,
-    ReportInitResponseRecordBuilder,
-)
-from .config import ConfigBuilder
-from .utils import get_log_messages_by_log_level, read_stream
+
+# Metrics the removed V2 `sponsored_brands_video_report_stream` returned, under their V3 names.
+# `vtr` became `viewabilityRate` and `vctr` became `viewClickThroughRate`. Amazon does not offer
+# every one of them on every Sponsored Brands report type, so the expectations differ per stream.
+_V2_VIDEO_METRICS = {
+    "video5SecondViewRate",
+    "video5SecondViews",
+    "videoCompleteViews",
+    "videoFirstQuartileViews",
+    "videoMidpointViews",
+    "videoThirdQuartileViews",
+    "videoUnmutes",
+    "viewabilityRate",
+}
+
+_SPONSORED_BRANDS_VIDEO_METRICS = {
+    "sponsored_brands_campaigns_report_stream": _V2_VIDEO_METRICS | {"viewableImpressions", "viewClickThroughRate"},
+    "sponsored_brands_adgroups_report_stream": _V2_VIDEO_METRICS,
+    "sponsored_brands_ads_report_stream": _V2_VIDEO_METRICS | {"viewableImpressions"},
+}
 
 
-class TestDisplayReportStreams(TestCase):
-    @property
-    def _config(self):
-        return ConfigBuilder().build()
+# Fixture for the configuration with a valid region value
+@pytest.fixture(name="config")
+def config_fixture() -> Mapping[str, Any]:
+    return {
+        "client_id": "amzn.app-oa2-client.test",
+        "client_secret": "test-secret",
+        "refresh_token": "test-refresh-token",
+        "region": "NA",
+        "report_wait_timeout": 3600,
+        "report_generation_max_retry": 5,
+    }
 
-    def _given_oauth_and_profiles(self, http_mocker: HttpMocker, config: dict) -> None:
+
+# Fixture to mock OAuth token endpoint
+@pytest.fixture(name="mock_oauth")
+def mock_oauth_fixture(requests_mock: requests_mock.Mocker) -> None:
+    requests_mock.post(
+        "https://api.amazon.com/auth/o2/token",
+        json={"access_token": "test-access-token", "token_type": "bearer", "expires_in": 3600},
+        status_code=200,
+    )
+
+
+# Fixture to mock profiles endpoint
+@pytest.fixture(name="mock_profiles")
+def mock_profiles_fixture(requests_mock: requests_mock.Mocker) -> None:
+    requests_mock.get(
+        "https://advertising-api.amazon.com/v2/profiles?profileTypeFilter=seller,vendor",
+        json=[{"profileId": 1, "timezone": "UTC"}],
+        status_code=200,
+        request_headers={"Authorization": "Bearer test-access-token"},
+    )
+
+
+def get_log_messages_by_log_level(logs, level: LogLevel) -> list:
+    """Utility to extract log messages by log level."""
+    return [log.log.message for log in logs if log.type == "LOG" and log.log.level == level]
+
+
+_REPORTS_URL = "https://advertising-api.amazon.com/reporting/reports"
+_DUPLICATE_REPORT_ID = "ba240045-7bcc-4c6b-b710-adf13d14074d"
+
+
+def _duplicate_report_response(detail: str = f"The Request is a duplicate of : {_DUPLICATE_REPORT_ID}") -> dict:
+    """A requests_mock response for Amazon's HTTP 425 on report creation."""
+    return {"status_code": 425, "json": {"code": "425", "detail": detail}}
+
+
+def _creation_calls(mocker: requests_mock.Mocker) -> list:
+    return [r for r in mocker.request_history if r.method == "POST" and r.url.endswith("/reporting/reports")]
+
+
+def _report_calls(mocker: requests_mock.Mocker, report_id: str) -> list:
+    return [r for r in mocker.request_history if r.method == "GET" and r.url.endswith(f"/reporting/reports/{report_id}")]
+
+
+def _existing_report(
+    mocker: requests_mock.Mocker, status: str, url: Optional[str] = None, changes: Optional[Mapping[str, Any]] = None
+) -> Callable:
+    """requests_mock JSON callback for the report a 425 names, built from the last report creation request so
+    that by default it is a genuine duplicate of it. Its columns come back reversed and an empty filter list
+    as null, which must still count as a match. `changes` sets fields by dotted path, such as
+    `configuration.timeUnit`, to make the report differ from the request."""
+
+    def callback(request, context) -> Mapping[str, Any]:
+        requested = json.loads(_creation_calls(mocker)[-1].body)
+        configuration = requested["configuration"]
+        report = {
+            "reportId": _DUPLICATE_REPORT_ID,
+            "status": status,
+            "url": url,
+            "startDate": requested["startDate"].strip(),
+            "endDate": requested["endDate"].strip(),
+            "configuration": {**configuration, "columns": configuration["columns"][::-1], "filters": configuration.get("filters") or None},
+        }
+        for path, value in (changes or {}).items():
+            *parents, field = path.split(".")
+            target = report
+            for parent in parents:
+                target = target[parent]
+            target[field] = value
+        return report
+
+    return callback
+
+
+class TestDisplayReportStreams:
+    @staticmethod
+    def _read(config: Mapping[str, Any], stream_name: str, sync_mode: SyncMode = SyncMode.full_refresh) -> EntrypointOutput:
+        catalog = CatalogBuilder().with_stream(stream_name, sync_mode).build()
+        state = StateBuilder().build()
+        source = get_source(config, state)
+        return read(source, config, catalog, state)
+
+    def test_given_file_when_read_brands_v3_report_then_return_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
         """
-        Authenticate and get profiles
+        Check Sponsored Brands V3 report stream: normal stream read flow
+        In this test, we prepare HTTP mocks to handle report initiation, status checks, and file downloads.
+        Request structure:
+            1. POST request to initiate report processing.
+            2. GET request to check report status and retrieve the download URL.
+            3. GET request to download the gzipped report file.
         """
-        http_mocker.post(
-            OAuthRequestBuilder.oauth_endpoint(client_id=config["client_id"], client_secred=config["client_secret"], refresh_token=config["refresh_token"]).build(),
-            OAuthResponseBuilder.token_response().build()
+        report_id = "report-id-brands-v3"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
         )
-        http_mocker.get(
-            ProfilesRequestBuilder.profiles_endpoint(client_id=config["client_id"], client_access_token=config["access_token"]).build(),
-            ProfilesResponseBuilder.profiles_response().with_record(ProfilesRecordBuilder.profiles_record()).build()
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
         )
-
-    @HttpMocker()
-    def test_given_file_when_read_display_report_then_return_records(self, http_mocker):
-        """
-        Check display report stream: normal stream read flow
-        In this test we prepare http mocker to handle all report types and tactics as well as workaround to handle gzipped file content
-        Request structure:
-            1. Request report for start processing
-            2. Check status and get a download link
-            3. Download report file using the link
-        """
-        self._given_oauth_and_profiles(http_mocker, self._config)
-
-        profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-        start_date = pendulum.today(tz=profile_timezone).date()
-
-        for report_type, metrics in display_report.METRICS_MAP.items():
-            for tactic in display_report.TACTICS:
-                report_id = str(uuid.uuid4())
-                http_mocker.post(
-                    SponsoredDisplayReportRequestBuilder._init_report_endpoint(
-                        self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, tactic, metrics, start_date
-                    ).build(),
-                    ReportInitResponseBuilder.report_init_response().with_record(
-                        ReportInitResponseRecordBuilder.init_response_record().with_status("PENDING").with_id(report_id)
-                    ).with_status_code(202).build()
-                )
-                download_request_builder = ReportDownloadRequestBuilder.download_endpoint(report_id)
-                http_mocker.get(
-                    ReportCheckStatusRequestBuilder.check_sponsored_display_report_status_endpoint(
-                        self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_id
-                    ).build(),
-                    ReportCheckStatusResponseBuilder.check_status_response().with_record(
-                        ReportCheckStatusRecordBuilder.status_record().with_status("COMPLETED").with_url(download_request_builder.url)
-                    ).build()
-                )
-
-                # a workaround to pass compressed document to the mocked response
-                gzip_file_report_response = ReportDownloadResponseBuilder.download_report().with_record(ReportFileRecordBuilder.report_file_record()).build()
-                request_matcher = HttpRequestMatcher(download_request_builder.build(), minimum_number_of_expected_match=1)
-                http_mocker._matchers.append(request_matcher)
-
-                http_mocker._mocker.get(
-                    requests_mock.ANY,
-                    additional_matcher=http_mocker._matches_wrapper(request_matcher),
-                    response_list=[{"content": gzip_file_report_response.body, "status_code": gzip_file_report_response.status_code}],
-                )
-
-        output = read_stream("sponsored_display_report_stream", SyncMode.full_refresh, self._config)
-        assert len(output.records) == 10
-
-    @HttpMocker()
-    def test_given_file_when_read_products_report_then_return_records(self, http_mocker):
-        """
-        Check products report stream: normal stream read flow.
-        In this test we prepare http mocker to handle all report types based on metrics defined for the report stream
-        as well as workaround to handle gzipped file content.
-        Request structure:
-            1. Request report for start processing
-            2. Check status and get a download link
-            3. Download report file using the link
-        """
-        self._given_oauth_and_profiles(http_mocker, self._config)
-
-        profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-        start_date = pendulum.today(tz=profile_timezone).date()
-
-        for report_type, metrics in products_report.METRICS_MAP.items():
-            report_id = str(uuid.uuid4())
-            http_mocker.post(
-                SponsoredProductsReportRequestBuilder._init_report_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, metrics, start_date
-                ).build(),
-                ReportInitResponseBuilder.report_init_response().with_record(
-                    ReportInitResponseRecordBuilder.init_response_record().with_status("PENDING").with_id(report_id)
-                ).with_status_code(200).build()
-            )
-            download_request_builder = ReportDownloadRequestBuilder.download_endpoint(report_id)
-            http_mocker.get(
-                ReportCheckStatusRequestBuilder.check_sponsored_products_report_status_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_id
-                ).build(),
-                ReportCheckStatusResponseBuilder.check_status_response().with_record(
-                    ReportCheckStatusRecordBuilder.status_record().with_status("COMPLETED").with_url(download_request_builder.url)
-                ).build()
-            )
-
-            # a workaround to pass compressed document to the mocked response
-            gzip_file_report_response = ReportDownloadResponseBuilder.download_report().with_record(
-                ReportFileRecordBuilder.report_file_record()
-            ).build()
-            request_matcher = HttpRequestMatcher(download_request_builder.build(), minimum_number_of_expected_match=1)
-            http_mocker._matchers.append(request_matcher)
-
-            http_mocker._mocker.get(
-                requests_mock.ANY,
-                additional_matcher=http_mocker._matches_wrapper(request_matcher),
-                response_list=[{"content": gzip_file_report_response.body, "status_code": gzip_file_report_response.status_code}],
-            )
-
-        output = read_stream("sponsored_products_report_stream", SyncMode.full_refresh, self._config)
-        assert len(output.records) == 7
-
-    @HttpMocker()
-    def test_given_file_when_read_brands_video_report_then_return_records(self, http_mocker):
-        """
-        Check brands video report stream: normal stream read flow.
-        In this test we prepare http mocker to handle all report types based on metrics defined for the report stream
-        as well as workaround to handle gzipped file content
-        Request structure:
-            1. Request report for start processing
-            2. Check status and get a download link
-            3. Download report file using the link
-        """
-        self._given_oauth_and_profiles(http_mocker, self._config)
-
-        profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-        start_date = pendulum.today(tz=profile_timezone).date()
-
-        for report_type, metrics in brands_video_report.METRICS_MAP.items():
-            report_id = str(uuid.uuid4())
-            http_mocker.post(
-                SponsoredBrandsVideoReportRequestBuilder._init_report_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, metrics, start_date
-                ).build(),
-                ReportInitResponseBuilder.report_init_response().with_record(
-                    ReportInitResponseRecordBuilder.init_response_record().with_status("PENDING").with_id(report_id)
-                ).with_status_code(202).build()
-            )
-            download_request_builder = ReportDownloadRequestBuilder.download_endpoint(report_id)
-            http_mocker.get(
-                ReportCheckStatusRequestBuilder.check_sponsored_brands_video_report_status_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_id
-                ).build(),
-                ReportCheckStatusResponseBuilder.check_status_response().with_record(
-                    ReportCheckStatusRecordBuilder.status_record().with_status("COMPLETED").with_url(download_request_builder.url)
-                ).build()
-            )
-
-            # a workaround to pass compressed document to the mocked response
-            gzip_file_report_response = ReportDownloadResponseBuilder.download_report().with_record(
-                ReportFileRecordBuilder.report_file_record()
-            ).build()
-            request_matcher = HttpRequestMatcher(download_request_builder.build(), minimum_number_of_expected_match=1)
-            http_mocker._matchers.append(request_matcher)
-
-            http_mocker._mocker.get(
-                requests_mock.ANY,
-                additional_matcher=http_mocker._matches_wrapper(request_matcher),
-                response_list=[{"content": gzip_file_report_response.body, "status_code": gzip_file_report_response.status_code}],
-            )
-
-        output = read_stream("sponsored_brands_video_report_stream", SyncMode.full_refresh, self._config)
-        assert len(output.records) == 3
-
-    @HttpMocker()
-    def test_given_file_when_read_brands_report_then_return_records(self, http_mocker):
-        """
-        Check brands report stream: normal stream read flow.
-        In this test we prepare http mocker to handle all report types based on metrics defined for the report stream
-        as well as workaround to handle gzipped file content.
-        Request structure:
-            1. Request report for start processing
-            2. Check status and get a download link
-            3. Download report file using the link
-        """
-        self._given_oauth_and_profiles(http_mocker, self._config)
-
-        profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-        start_date = pendulum.today(tz=profile_timezone).date()
-
-        for report_type, metrics in brands_report.METRICS_MAP.items():
-            report_id = str(uuid.uuid4())
-            http_mocker.post(
-                SponsoredBrandsReportRequestBuilder._init_report_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, metrics, start_date
-                ).build(),
-                ReportInitResponseBuilder.report_init_response().with_record(
-                    ReportInitResponseRecordBuilder.init_response_record().with_status("PENDING").with_id(report_id)
-                ).with_status_code(202).build()
-            )
-            download_request_builder = ReportDownloadRequestBuilder.download_endpoint(report_id)
-            http_mocker.get(
-                ReportCheckStatusRequestBuilder.check_sponsored_brands_report_status_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_id
-                ).build(),
-                ReportCheckStatusResponseBuilder.check_status_response().with_record(
-                    ReportCheckStatusRecordBuilder.status_record().with_status("COMPLETED").with_url(download_request_builder.url)
-                ).build()
-            )
-
-            # a workaround to pass compressed document to the mocked response
-            gzip_file_report_response = ReportDownloadResponseBuilder.download_report().with_record(
-                ReportFileRecordBuilder.report_file_record()
-            ).build()
-            request_matcher = HttpRequestMatcher(download_request_builder.build(), minimum_number_of_expected_match=1)
-            http_mocker._matchers.append(request_matcher)
-
-            http_mocker._mocker.get(
-                requests_mock.ANY,
-                additional_matcher=http_mocker._matches_wrapper(request_matcher),
-                response_list=[{"content": gzip_file_report_response.body, "status_code": gzip_file_report_response.status_code}],
-            )
-
-        output = read_stream("sponsored_brands_report_stream", SyncMode.full_refresh, self._config)
-        assert len(output.records) == 3
-
-    @HttpMocker()
-    def test_given_file_when_read_brands_v3_report_then_return_records(self, http_mocker):
-        """
-        Check brands v3 report stream: normal stream read flow.
-        In this test we prepare http mocker to handle all report types based on metrics defined for the report stream
-        as well as workaround to handle gzipped file content.
-        Request structure:
-            1. Request report for start processing
-            2. Check status and get a download link
-            3. Download report file using the link
-        """
-        self._given_oauth_and_profiles(http_mocker, self._config)
-
-        profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-        start_date = pendulum.today(tz=profile_timezone).date()
-
-        for report_type, metrics in brands_report.METRICS_MAP_V3.items():
-            report_id = str(uuid.uuid4())
-            http_mocker.post(
-                SponsoredBrandsV3ReportRequestBuilder._init_report_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, metrics, start_date
-                ).build(),
-                ReportInitResponseBuilder.report_init_response().with_record(
-                    ReportInitResponseRecordBuilder.init_response_record().with_status("PENDING").with_id(report_id)
-                ).with_status_code(200).build()
-            )
-            download_request_builder = ReportDownloadRequestBuilder.download_endpoint(report_id)
-            http_mocker.get(
-                ReportCheckStatusRequestBuilder.check_sponsored_brands_v3_report_status_endpoint(
-                    self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_id
-                ).build(),
-                ReportCheckStatusResponseBuilder.check_status_response().with_record(
-                    ReportCheckStatusRecordBuilder.status_record().with_status("COMPLETED").with_url(download_request_builder.url)
-                ).build()
-            )
-
-            # a workaround to pass compressed document to the mocked response
-            gzip_file_report_response = ReportDownloadResponseBuilder.download_report().with_record(
-                ReportFileRecordBuilder.report_file_record()
-            ).build()
-            request_matcher = HttpRequestMatcher(download_request_builder.build(), minimum_number_of_expected_match=1)
-            http_mocker._matchers.append(request_matcher)
-
-            http_mocker._mocker.get(
-                requests_mock.ANY,
-                additional_matcher=http_mocker._matches_wrapper(request_matcher),
-                response_list=[{"content": gzip_file_report_response.body, "status_code": gzip_file_report_response.status_code}],
-            )
-
-        output = read_stream("sponsored_brands_v3_report_stream", SyncMode.full_refresh, self._config)
+        report_data = gzip.compress(b'[{"record": "data"}]')
+        requests_mock.get(
+            download_url,
+            content=report_data,
+            status_code=200,
+        )
+        output = self._read(config, "sponsored_brands_v3_report_stream", SyncMode.incremental)
+        start_date = ab_datetime_now()
+        assert output.most_recent_state.stream_state.states == [
+            {"cursor": {"reportDate": start_date.strftime("%Y-%m-%d")}, "partition": {"parent_slice": {}, "profileId": 1}}
+        ]
         assert len(output.records) == 1
 
-    @HttpMocker()
-    def test_given_known_error_when_read_brands_v3_report_then_skip_report(self, http_mocker):
-        """
-        Check brands v3 stream: non-breaking errors are ignored.
-        When error of this kind happen, we warn and then keep syncing another reports if possible.
-        In this test all report init requests are failed with known error and skipped
-        """
-        self._given_oauth_and_profiles(http_mocker, self._config)
+    def test_given_429_then_202_on_report_creation_then_retries_and_returns_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        report_id = "report-id-brands-v3-creation-429"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            [
+                {"status_code": 429, "headers": {"Retry-After": "0"}, "json": {"message": "Too many requests"}},
+                {"status_code": 202, "json": {"reportId": report_id, "status": "PENDING"}},
+            ],
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(download_url, content=gzip.compress(b'[{"record": "data"}]'), status_code=200)
 
+        with patch("time.sleep", return_value=None):
+            output = self._read(config, "sponsored_brands_v3_report_stream", SyncMode.incremental)
+
+        creation_calls = [r for r in requests_mock.request_history if r.method == "POST" and r.url.endswith("/reporting/reports")]
+        assert len(creation_calls) == 2
+        assert len(output.records) == 1
+
+    @pytest.mark.parametrize(
+        "stream_name, changes",
+        [
+            pytest.param("sponsored_brands_v3_report_stream", None, id="summary"),
+            pytest.param("sponsored_display_campaigns_report_stream_daily", None, id="daily"),
+            pytest.param(
+                "sponsored_products_keywords_report_stream",
+                {"configuration.filters": [{"field": "keywordType", "values": ["EXACT", "PHRASE", "BROAD"]}]},
+                id="filter-values-in-different-order",
+            ),
+        ],
+    )
+    def test_given_425_naming_matching_report_then_reuses_existing_report(
+        self,
+        requests_mock: requests_mock.Mocker,
+        config: Mapping[str, Any],
+        mock_oauth,
+        mock_profiles,
+        stream_name: str,
+        changes: Optional[Mapping[str, Any]],
+    ):
+        """Amazon can reject a report creation POST with HTTP 425 and a body naming the already-running
+        duplicate report. Once a lookup confirms that report holds what this request asked for, the
+        connector must poll it until it completes, without sending another creation request."""
+        download_url = f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}/download"
+        requests_mock.post(_REPORTS_URL, [_duplicate_report_response()], request_headers={"Authorization": "Bearer test-access-token"})
+        requests_mock.get(
+            f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}",
+            [
+                {"status_code": 200, "json": _existing_report(requests_mock, "PENDING", changes=changes)},
+                {"status_code": 200, "json": _existing_report(requests_mock, "PENDING", changes=changes)},
+                {
+                    "status_code": 200,
+                    "json": _existing_report(requests_mock, "COMPLETED", url=download_url, changes=changes),
+                },
+            ],
+            request_headers={
+                "Authorization": "Bearer test-access-token",
+                "Amazon-Advertising-API-Scope": "1",
+            },
+        )
+        report_data = b'[{"date": "2023-01-01", "record": "data"}]' if stream_name.endswith("_daily") else b'[{"record": "data"}]'
+        requests_mock.get(download_url, content=gzip.compress(report_data), status_code=200)
+
+        with patch("time.sleep", return_value=None):
+            output = self._read(config, stream_name)
+
+        assert output.errors == []
+        assert len(output.records) == 1
+        assert len(_creation_calls(requests_mock)) == 1
+        # One lookup before the report is reused, then two status checks by the polling requester.
+        assert len(_report_calls(requests_mock, _DUPLICATE_REPORT_ID)) == 3
+        assert all(r.headers["Amazon-Advertising-API-Scope"] == "1" for r in _report_calls(requests_mock, _DUPLICATE_REPORT_ID))
+
+    def test_given_425_naming_matching_report_and_401_on_lookup_then_retries_and_reuses_report(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        """Amazon's status endpoint returns transient 401s. The lookup before reuse must retry them, as
+        polling does, instead of failing the sync."""
+        download_url = f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}/download"
+        requests_mock.post(_REPORTS_URL, [_duplicate_report_response()], request_headers={"Authorization": "Bearer test-access-token"})
+        requests_mock.get(
+            f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}",
+            [
+                {"status_code": 401, "json": {"code": "UNAUTHORIZED", "details": "Not authorized"}},
+                {"status_code": 200, "json": _existing_report(requests_mock, "COMPLETED", url=download_url)},
+            ],
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(download_url, content=gzip.compress(b'[{"record": "data"}]'), status_code=200)
+
+        with patch("time.sleep", return_value=None):
+            output = self._read(config, "sponsored_brands_v3_report_stream")
+
+        assert output.errors == []
+        assert len(output.records) == 1
+        assert len(_creation_calls(requests_mock)) == 1
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            pytest.param({"configuration.timeUnit": "DAILY"}, id="daily_report_for_summary_request"),
+            pytest.param({"configuration.reportTypeId": "spPurchasedProduct"}, id="different_report_type"),
+            pytest.param({"configuration.columns": ["purchasedAsin", "sales14d"]}, id="different_columns"),
+            pytest.param({"startDate": "2020-01-01"}, id="different_dates"),
+            pytest.param({"status": "FAILED"}, id="failed_report"),
+        ],
+    )
+    def test_given_425_naming_report_that_differs_from_request_then_waits_and_requests_new_report(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles, changes: Mapping[str, Any]
+    ):
+        """Amazon has flagged requests that differ, such as the summary and daily variants of one report
+        type, as duplicates of each other. Reusing the named report would sync another request's rows
+        under this stream, so the connector must decline it, wait, and request its own report again."""
+        new_report_id = "report-id-after-duplicate-cleared"
+        new_download_url = f"{_REPORTS_URL}/{new_report_id}/download"
+        duplicate_download_url = f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}/download"
+        requests_mock.post(
+            _REPORTS_URL,
+            [_duplicate_report_response(), {"status_code": 200, "json": {"reportId": new_report_id}}],
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}",
+            json=_existing_report(requests_mock, "COMPLETED", url=duplicate_download_url, changes=changes),
+        )
+        requests_mock.get(duplicate_download_url, content=gzip.compress(b'[{"record": "another request\'s report"}]'), status_code=200)
+        requests_mock.get(
+            f"{_REPORTS_URL}/{new_report_id}", json={"reportId": new_report_id, "status": "COMPLETED", "url": new_download_url}
+        )
+        requests_mock.get(new_download_url, content=gzip.compress(b'[{"record": "requested report"}]'), status_code=200)
+
+        with patch("time.sleep", return_value=None) as sleep:
+            output = self._read(config, "sponsored_brands_v3_report_stream")
+
+        assert output.errors == []
+        assert [record.record.data["record"] for record in output.records] == ["requested report"]
+        assert len(_creation_calls(requests_mock)) == 2
+        # Looked up once to compare it with the request, and never polled or downloaded.
+        assert len(_report_calls(requests_mock, _DUPLICATE_REPORT_ID)) == 1
+        assert call(_DUPLICATE_REPORT_RETRY_WAIT_SECONDS) in sleep.call_args_list
+
+    @pytest.mark.parametrize("status_code", [403, 404])
+    def test_given_425_naming_report_that_cannot_be_looked_up_then_waits_and_requests_new_report(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles, status_code: int
+    ):
+        """A report requested by another app (403) or one Amazon no longer has (404) cannot be confirmed
+        or polled. The lookup must not fail the stream (by default a 403 is a config error that stops
+        every report job in it), and the connector requests its own report again instead."""
+        new_report_id = "report-id-after-duplicate-cleared"
+        new_download_url = f"{_REPORTS_URL}/{new_report_id}/download"
+        requests_mock.post(
+            _REPORTS_URL,
+            [_duplicate_report_response(), {"status_code": 200, "json": {"reportId": new_report_id}}],
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(f"{_REPORTS_URL}/{_DUPLICATE_REPORT_ID}", status_code=status_code, json={"code": str(status_code)})
+        requests_mock.get(
+            f"{_REPORTS_URL}/{new_report_id}", json={"reportId": new_report_id, "status": "COMPLETED", "url": new_download_url}
+        )
+        requests_mock.get(new_download_url, content=gzip.compress(b'[{"record": "requested report"}]'), status_code=200)
+
+        with patch("time.sleep", return_value=None):
+            output = self._read(config, "sponsored_brands_v3_report_stream")
+
+        assert output.errors == []
+        assert [record.record.data["record"] for record in output.records] == ["requested report"]
+        assert len(_creation_calls(requests_mock)) == 2
+        assert len(_report_calls(requests_mock, _DUPLICATE_REPORT_ID)) == 1
+
+    def test_given_425_without_report_id_then_waits_and_requests_report_again(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        """A 425 that names no report clears once the earlier report finishes. The orchestrator retries a
+        failed creation with no delay, so the connector must wait before it requests the report again."""
+        new_report_id = "report-id-after-duplicate-cleared"
+        new_download_url = f"{_REPORTS_URL}/{new_report_id}/download"
+        requests_mock.post(
+            _REPORTS_URL,
+            [_duplicate_report_response("Too early"), {"status_code": 200, "json": {"reportId": new_report_id}}],
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"{_REPORTS_URL}/{new_report_id}", json={"reportId": new_report_id, "status": "COMPLETED", "url": new_download_url}
+        )
+        requests_mock.get(new_download_url, content=gzip.compress(b'[{"record": "data"}]'), status_code=200)
+
+        with patch("time.sleep", return_value=None) as sleep:
+            output = self._read(config, "sponsored_brands_v3_report_stream")
+
+        assert output.errors == []
+        assert len(output.records) == 1
+        assert len(_creation_calls(requests_mock)) == 2
+        assert sleep.call_args_list.count(call(_DUPLICATE_REPORT_RETRY_WAIT_SECONDS)) == 1
+
+    @pytest.mark.parametrize(
+        "detail",
+        [
+            pytest.param("Too early", id="no_report_id"),
+            pytest.param("The Request is a duplicate of : a previous request", id="text_instead_of_report_id"),
+        ],
+    )
+    def test_given_425_without_report_id_on_report_creation_then_fails_with_transient_error(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles, detail: str
+    ):
+        """A 425 whose body names no report cannot be reused. If it persists after waiting, it must surface
+        as a transient error, which the platform retries, rather than a config error, and nothing may be
+        polled."""
+        requests_mock.post(
+            _REPORTS_URL, [_duplicate_report_response(detail)], request_headers={"Authorization": "Bearer test-access-token"}
+        )
+
+        catalog = CatalogBuilder().with_stream("sponsored_brands_v3_report_stream", SyncMode.incremental).build()
+        state = StateBuilder().build()
+        source = get_source(config, state)
+        with patch("time.sleep", return_value=None) as sleep:
+            output = read(source, config, catalog, state, expecting_exception=True)
+
+        # Only the errors raised for the 425 itself: the CDK's stream-level summary errors, and the
+        # order they arrive in relative to these, differ between CDK versions.
+        duplicate_errors = [
+            message.trace.error
+            for message in output.errors
+            if "duplicate of a report that is still being generated" in message.trace.error.message
+        ]
+        assert duplicate_errors, f"expected a duplicate-report trace message, got: {output.errors}"
+        assert all(error.failure_type == FailureType.transient_error for error in duplicate_errors)
+        assert call(_DUPLICATE_REPORT_RETRY_WAIT_SECONDS) in sleep.call_args_list
+        report_lookup_calls = [r for r in requests_mock.request_history if r.method == "GET" and "/reporting/reports/" in r.url]
+        assert report_lookup_calls == []
+        # The orchestrator retries a creation that raised up to `job_max_retry` (3) times, and each retry
+        # runs this requester's own attempts and waits again.
+        assert len(_creation_calls(requests_mock)) == _DUPLICATE_REPORT_MAX_ATTEMPTS * 3
+        assert sleep.call_args_list.count(call(_DUPLICATE_REPORT_RETRY_WAIT_SECONDS)) == (_DUPLICATE_REPORT_MAX_ATTEMPTS - 1) * 3
+
+    def test_given_400_retention_window_error_when_create_report_then_emit_descriptive_error(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        requests_mock.post(
+            _REPORTS_URL,
+            json={
+                "code": "400",
+                "detail": "startDate (2026-08-24) must be equal to or after report type data retention start date (2026-08-25)",
+            },
+            status_code=400,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+
+        catalog = CatalogBuilder().with_stream("sponsored_brands_v3_report_stream", SyncMode.incremental).build()
+        state = StateBuilder().build()
+        source = get_source(config, state)
+        output = read(source, config, catalog, state, expecting_exception=True)
+        trace_errors = [message.trace.error for message in output.errors]
+
+        expected_message = (
+            "Amazon Ads rejected the report request because its start date is earlier than Amazon's data retention window "
+            "for this report type."
+        )
+        assert any(
+            error.message == expected_message
+            and error.failure_type == FailureType.system_error
+            and "retention start date (2026-08-25)" in error.internal_message
+            for error in trace_errors
+        ), f"expected a descriptive retention-window error, got: {output.errors}"
+        assert all(
+            error.message != "HTTP Status Code: 400. Error: Bad request. Please check your request parameters." for error in trace_errors
+        )
+
+    def test_given_unrecognized_400_when_create_report_then_emit_amazon_detail(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        requests_mock.post(
+            _REPORTS_URL,
+            json={"code": "400", "detail": "Invalid column: fooBar"},
+            status_code=400,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+
+        catalog = CatalogBuilder().with_stream("sponsored_brands_v3_report_stream", SyncMode.incremental).build()
+        state = StateBuilder().build()
+        source = get_source(config, state)
+        output = read(source, config, catalog, state, expecting_exception=True)
+        trace_errors = [message.trace.error for message in output.errors]
+
+        assert any(
+            error.message == "Amazon Ads rejected the report request: Invalid column: fooBar"
+            and error.failure_type == FailureType.system_error
+            for error in trace_errors
+        ), f"expected Amazon's 400 detail in the error, got: {output.errors}"
+
+    def test_given_429_then_200_on_report_polling_then_retries_and_returns_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        report_id = "report-id-brands-v3-polling-429"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            [
+                {"status_code": 429, "headers": {"Retry-After": "0"}, "json": {"message": "Too many requests"}},
+                {"status_code": 200, "json": {"status": "COMPLETED", "url": download_url}},
+            ],
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(download_url, content=gzip.compress(b'[{"record": "data"}]'), status_code=200)
+
+        with patch("time.sleep", return_value=None):
+            output = self._read(config, "sponsored_brands_v3_report_stream", SyncMode.incremental)
+
+        polling_calls = [
+            r for r in requests_mock.request_history if r.method == "GET" and r.url.endswith(f"/reporting/reports/{report_id}")
+        ]
+        assert len(polling_calls) == 2
+        assert len(output.records) == 1
+
+    def test_given_file_when_read_brands_campaigns_report_then_return_cost_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        report_id = "report-id-brands-campaigns"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        report_data = gzip.compress(b'[{"campaignId": "c1", "cost": 12.34, "clicks": 5, "impressions": 100}]')
+        requests_mock.get(
+            download_url,
+            content=report_data,
+            status_code=200,
+        )
+        output = self._read(config, "sponsored_brands_campaigns_report_stream", SyncMode.incremental)
+        created_report_request = next(
+            request.json() for request in requests_mock.request_history if request.url.endswith("/reporting/reports")
+        )
+
+        assert created_report_request["configuration"]["reportTypeId"] == "sbCampaigns"
+        assert created_report_request["configuration"]["groupBy"] == ["campaign"]
+        assert "cost" in created_report_request["configuration"]["columns"]
+        assert len(output.records) == 1
+        assert output.records[0].record.data["cost"] == 12.34
+
+    def test_given_file_when_read_brands_adgroups_report_then_return_cost_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        report_id = "report-id-brands-adgroups"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        report_data = gzip.compress(b'[{"adGroupId": "a1", "adGroupName": "group", "cost": 4.56, "clicks": 3, "impressions": 50}]')
+        requests_mock.get(
+            download_url,
+            content=report_data,
+            status_code=200,
+        )
+        output = self._read(config, "sponsored_brands_adgroups_report_stream", SyncMode.incremental)
+        created_report_request = next(
+            request.json() for request in requests_mock.request_history if request.url.endswith("/reporting/reports")
+        )
+
+        assert created_report_request["configuration"]["reportTypeId"] == "sbAdGroup"
+        assert created_report_request["configuration"]["groupBy"] == ["adGroup"]
+        assert "cost" in created_report_request["configuration"]["columns"]
+        assert len(output.records) == 1
+        assert output.records[0].record.data["cost"] == 4.56
+
+    def test_given_file_when_read_brands_ads_report_then_return_video_metrics(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        report_id = "report-id-brands-ads"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        # Reporting v3 returns numeric ids; the stream schema declares `adId` as integer.
+        report_data = gzip.compress(b'[{"adId": 275827446150944, "cost": 1.5, "videoCompleteViews": 42, "video5SecondViews": 90}]')
+        requests_mock.get(download_url, content=report_data, status_code=200)
+
+        output = self._read(config, "sponsored_brands_ads_report_stream", SyncMode.incremental)
+        created_report_request = next(
+            request.json() for request in requests_mock.request_history if request.url.endswith("/reporting/reports")
+        )
+        configuration = created_report_request["configuration"]
+
+        assert configuration["reportTypeId"] == "sbAds"
+        assert configuration["groupBy"] == ["ads"]
+        assert "adId" in configuration["columns"]
+        assert len(output.records) == 1
+        assert output.records[0].record.data["videoCompleteViews"] == 42
+
+    @pytest.mark.parametrize("stream_name, expected_metrics", sorted(_SPONSORED_BRANDS_VIDEO_METRICS.items()))
+    def test_sponsored_brands_reports_request_video_metrics(self, stream_name: str, expected_metrics: set) -> None:
+        """The V2 `sponsored_brands_video_report_stream` was removed in 6.0.0; its metrics live on
+        these V3 report types and must stay in the requested column lists."""
+        manifest = yaml.safe_load(_MANIFEST_PATH.read_text())
+        for name in (stream_name, f"{stream_name}_daily"):
+            columns = set(
+                manifest["definitions"]["streams"][name]["retriever"]["creation_requester"]["requester"]["request_body_json"][
+                    "configuration"
+                ]["columns"]
+            )
+            assert expected_metrics <= columns, f"{name} is missing {sorted(expected_metrics - columns)}"
+
+    def test_given_file_when_read_display_report_then_return_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        """
+        Check display report streams: normal stream read flow for multiple streams
+        This test iterates over several Sponsored Display report streams, mocking the API responses for each.
+        It ensures that each stream can successfully initiate, check status, and download a report.
+        Request structure:
+            1. POST request to initiate report processing for each stream.
+            2. GET request to check report status and retrieve the download URL for each stream.
+            3. GET request to download the gzipped report file for each stream.
+        """
+        number_of_records = 0
+        for stream_name in (
+            "sponsored_display_campaigns_report_stream",
+            "sponsored_display_adgroups_report_stream",
+            "sponsored_display_productads_report_stream",
+            "sponsored_display_targets_report_stream",
+            "sponsored_display_asins_report_stream",
+        ):
+            report_id = f"report-id-display-{stream_name}"
+            download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+            requests_mock.post(
+                "https://advertising-api.amazon.com/reporting/reports",
+                json={"reportId": report_id, "status": "PENDING"},
+                status_code=202,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            requests_mock.get(
+                f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+                json={"status": "COMPLETED", "url": download_url},
+                status_code=200,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            report_data = gzip.compress(b'[{"record": "data"}]')
+            requests_mock.get(
+                download_url,
+                content=report_data,
+                status_code=200,
+            )
+            output = self._read(config, stream_name)
+            number_of_records += len(output.records)
+        assert number_of_records == 5
+
+    def test_given_file_when_read_products_report_then_return_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        """
+        Check Sponsored Products report streams: normal stream read flow for multiple streams
+        This test iterates over several Sponsored Products report streams, mocking the API responses for each.
+        It ensures that each stream can successfully initiate, check status, and download a report.
+        Request structure:
+            1. POST request to initiate report processing for each stream.
+            2. GET request to check report status and retrieve the download URL for each stream.
+            3. GET request to download the gzipped report file for each stream.
+        """
+        for stream_name in _ALL_SPONSORED_PRODUCTS_SUMMARY_STREAMS:
+            report_id = f"report-id-products-{stream_name}"
+            download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+            requests_mock.post(
+                "https://advertising-api.amazon.com/reporting/reports",
+                json={"reportId": report_id, "status": "PENDING"},
+                status_code=202,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            requests_mock.get(
+                f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+                json={"status": "COMPLETED", "url": download_url},
+                status_code=200,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            report_data = gzip.compress(b'[{"record": "data"}]')
+            requests_mock.get(
+                download_url,
+                content=report_data,
+                status_code=200,
+            )
+            output = self._read(config, stream_name)
+            # Asserted per stream rather than as a total across the loop: a single sum lets a stream
+            # silently drop out of the list as long as someone also adjusts the total, which hides
+            # exactly the regression this test exists to catch.
+            assert len(output.records) == 1, f"{stream_name}: expected 1 record, got {len(output.records)}"
+
+    @pytest.mark.parametrize(
+        "stream_name, expected_time_unit",
+        [
+            ("sponsored_products_search_terms_report_stream", "SUMMARY"),
+            ("sponsored_products_search_terms_report_stream_daily", "DAILY"),
+        ],
+    )
+    def test_search_terms_report_requests_sp_search_term_report_type(
+        self,
+        requests_mock: requests_mock.Mocker,
+        config: Mapping[str, Any],
+        mock_oauth,
+        mock_profiles,
+        stream_name: str,
+        expected_time_unit: str,
+    ):
+        """Pin the report request the search terms streams send to Amazon.
+
+        The generic read tests register a catch-all POST and never inspect the body, so swapping
+        `reportTypeId` or `groupBy` for another report type's values leaves them green while the
+        stream silently returns a different report. Amazon rejects an unknown `reportTypeId`
+        outright, but an unintended *valid* one (`spTargeting`, say) fails only as wrong data.
+        """
+        report_id = f"report-id-{stream_name}-request-body"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(download_url, content=gzip.compress(b"[]"), status_code=200)
+
+        self._read(config, stream_name)
+        created_report_request = next(
+            request.json() for request in requests_mock.request_history if request.url.endswith("/reporting/reports")
+        )
+        configuration = created_report_request["configuration"]
+
+        assert configuration["adProduct"] == "SPONSORED_PRODUCTS"
+        assert configuration["reportTypeId"] == "spSearchTerm"
+        assert configuration["groupBy"] == ["searchTerm"]
+        assert configuration["timeUnit"] == expected_time_unit
+        assert configuration["format"] == "GZIP_JSON"
+        # `searchTerm` is the grouping dimension, so its columns are what distinguish this report
+        # from the keywords/targets reports that share most of the metric list.
+        assert {"searchTerm", "targeting", "keywordType"} <= set(configuration["columns"])
+        # Unlike the keywords stream (BROAD/PHRASE/EXACT) and the targets stream
+        # (TARGETING_EXPRESSION*), this stream deliberately requests all five keyword types in one
+        # report. Pinned so narrowing the filter shows up as a test change, not a quiet data loss.
+        assert configuration["filters"] == [
+            {
+                "field": "keywordType",
+                "values": ["BROAD", "PHRASE", "EXACT", "TARGETING_EXPRESSION", "TARGETING_EXPRESSION_PREDEFINED"],
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        "stream_name, cursor_field",
+        [
+            ("sponsored_products_search_terms_report_stream", "reportDate"),
+            ("sponsored_products_search_terms_report_stream_daily", "date"),
+        ],
+    )
+    def test_search_terms_report_record_carries_every_primary_key_field(
+        self,
+        requests_mock: requests_mock.Mocker,
+        config: Mapping[str, Any],
+        mock_oauth,
+        mock_profiles,
+        stream_name: str,
+        cursor_field: str,
+    ):
+        """Read a realistically shaped report row and check the composite PK survives to the record.
+
+        The other read tests download placeholder payloads (`{"record": "data"}`) whose fields are
+        in neither schema, so they cannot show that the PK fields are actually populated -
+        `profileId` and `reportDate` come from `transformation_report_add_fields` rather than from
+        Amazon, and a broken transformation would leave the PK partly null without failing a read.
+        """
+        report_id = f"report-id-{stream_name}-records"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        report_row = {
+            "searchTerm": "wireless headphones",
+            "targeting": "wireless headphones",
+            "keywordType": "BROAD",
+            "keywordId": 987654321,
+            "keyword": "headphones",
+            "matchType": "BROAD",
+            "campaignId": 111,
+            "campaignName": "Test Campaign",
+            "adGroupId": 222,
+            "adGroupName": "Test Ad Group",
+            "impressions": 1000,
+            "clicks": 25,
+            "cost": 12.34,
+            "sales7d": 99.99,
+        }
+        if cursor_field == "date":
+            # Only DAILY reports carry `date`; the SUMMARY stream gets its `reportDate` injected.
+            report_row["date"] = "2023-01-15"
+        requests_mock.get(
+            download_url,
+            content=gzip.compress(json.dumps([report_row]).encode()),
+            status_code=200,
+        )
+
+        output = self._read(config, stream_name, SyncMode.incremental)
+
+        assert len(output.records) == 1
+        record = output.records[0].record.data
+        primary_key = _MANIFEST["definitions"]["streams"][stream_name]["primary_key"]
+        assert primary_key == ["profileId", cursor_field, "searchTerm", "keywordId"]
+        for field in primary_key:
+            assert record.get(field) is not None, f"{stream_name}: primary key field '{field}' is missing or null"
+        assert record["searchTerm"] == "wireless headphones"
+        assert record["keywordType"] == "BROAD"
+        assert record["cost"] == 12.34
+        assert output.most_recent_state.stream_state.states[0]["cursor"][cursor_field] is not None
+
+    def test_given_known_error_when_read_brands_v3_report_then_skip_report(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        """
+        Check error handling for Sponsored Brands V3 report stream
+        This test simulates known errors (400, 401, 406) by mocking API responses to return empty reports.
+        It verifies that the stream skips the report gracefully without logging warnings.
+        Request structure:
+            1. POST request to initiate report processing.
+            2. GET request to check report status and retrieve the download URL.
+            3. GET request to download the gzipped empty report file.
+        """
         ERRORS = [
             (400, "KDP authors do not have access to Sponsored Brands functionality"),
             (401, "Not authorized to access scope 0001"),
             (406, "Report date is too far in the past."),
         ]
-
         for status_code, msg in ERRORS:
-            profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-            start_date = pendulum.today(tz=profile_timezone).date()
-            non_breaking_error = ErrorRecordBuilder.non_breaking_error().with_error_message(msg)
-
-            for report_type, metrics in brands_report.METRICS_MAP_V3.items():
-                http_mocker.post(
-                    SponsoredBrandsV3ReportRequestBuilder._init_report_endpoint(
-                        self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, metrics, start_date
-                    ).build(),
-                    ErrorResponseBuilder.non_breaking_error_response().with_record(non_breaking_error).with_status_code(status_code).build(),
-                )
-
-            output = read_stream("sponsored_brands_v3_report_stream", SyncMode.full_refresh, self._config)
-            assert len(output.records) == 0
-
-            warning_logs = get_log_messages_by_log_level(output.logs, LogLevel.WARN)
-            expected_warning_log = (
-                f"Unexpected HTTP status code {status_code} when registering purchasedAsin, "
-                f"SponsoredBrandsV3ReportStream for 1 profile: {json.dumps(non_breaking_error.build())}"
+            report_id = f"report-id-brands-v3-{status_code}"
+            download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+            requests_mock.post(
+                "https://advertising-api.amazon.com/reporting/reports",
+                json={"reportId": report_id, "status": "PENDING"},
+                status_code=202,
+                request_headers={"Authorization": "Bearer test-access-token"},
             )
-            assert any([expected_warning_log in warn for warn in warning_logs])
+            requests_mock.get(
+                f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+                json={"status": "COMPLETED", "url": download_url},
+                status_code=200,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            report_data = gzip.compress(b"[]")
+            requests_mock.get(
+                download_url,
+                content=report_data,
+                status_code=200,
+            )
+            output = self._read(config, "sponsored_brands_v3_report_stream")
+            assert len(output.records) == 0
+            warning_logs = get_log_messages_by_log_level(output.logs, LogLevel.WARN)
+            assert len(warning_logs) == 0
+            requests_mock.reset()
 
-    @HttpMocker()
-    def test_given_known_error_when_read_display_report_then_partially_skip_records(self, http_mocker):
+    def test_given_known_error_when_read_display_report_then_partially_skip_records(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
         """
-        Check brands v3 stream: non-breaking errors are ignored.
-        When error of this kind happen, we warn and then keep syncing another reports if possible.
-        In this test half of report init requests are failed with known error and skipped while another half of reports successfully processed
+        Check partial error handling for Sponsored Display report streams
+        This test simulates errors for some streams by mocking empty reports for odd-indexed streams.
+        It ensures that the source skips failed streams gracefully while processing successful ones.
+        Request structure:
+            1. POST request to initiate report processing for each stream.
+            2. GET request to check report status and retrieve the download URL for each stream.
+            3. GET request to download the gzipped report file (data for even-indexed, empty for odd-indexed).
         """
-        self._given_oauth_and_profiles(http_mocker, self._config)
+        streams = (
+            "sponsored_display_campaigns_report_stream",
+            "sponsored_display_adgroups_report_stream",
+            "sponsored_display_productads_report_stream",
+            "sponsored_display_targets_report_stream",
+            "sponsored_display_asins_report_stream",
+        )
+        number_of_records = 0
+        for i, stream_name in enumerate(streams):
+            report_id = f"report-id-display-{stream_name}"
+            download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+            requests_mock.post(
+                "https://advertising-api.amazon.com/reporting/reports",
+                json={"reportId": report_id, "status": "PENDING"},
+                status_code=202,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            requests_mock.get(
+                f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+                json={"status": "COMPLETED", "url": download_url},
+                status_code=200,
+                request_headers={"Authorization": "Bearer test-access-token"},
+            )
+            report_data = gzip.compress(b'[{"record": "data"}]') if i % 2 == 0 else gzip.compress(b"[]")
+            requests_mock.get(
+                download_url,
+                content=report_data,
+                status_code=200,
+            )
+            output = self._read(config, stream_name)
+            number_of_records += len(output.records)
+            if i % 2 == 1:
+                warning_logs = get_log_messages_by_log_level(output.logs, LogLevel.WARN)
+                assert len(warning_logs) == 0
+        assert number_of_records == 3
 
-        ERRORS = [
-            (400, "Tactic T00030 is not supported for report API in marketplace ABC00030."),
-        ]
+    @pytest.mark.parametrize("stream_name", _ALL_DAILY_STREAMS)
+    def test_daily_stream(self, requests_mock, config, mock_oauth, mock_profiles, stream_name):
+        """
+        Check daily report streams: parameterized test for all daily streams
+        This test verifies that each daily stream can fetch and process records with the 'date' field.
+        It uses HTTP mocks to simulate report initiation, status checks, and downloading gzipped daily data.
+        Request structure:
+            1. POST request to initiate report processing for the specified stream.
+            2. GET request to check report status and retrieve the download URL.
+            3. GET request to download the gzipped report file containing daily data.
+        """
+        report_id = f"report-id-{stream_name}"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        report_data = gzip.compress(b'[{"date": "2023-01-01", "record": "data1"}, {"date": "2023-01-02", "record": "data2"}]')
+        requests_mock.get(
+            download_url,
+            content=report_data,
+            status_code=200,
+        )
+        output = self._read(config, stream_name)
+        assert len(output.records) == 2
+        assert all("date" in record.record.data for record in output.records)
+        assert [record.record.data["date"] for record in output.records] == ["2023-01-01", "2023-01-02"]
 
-        for status_code, msg in ERRORS:
-            profile_timezone = ProfilesRecordBuilder.profiles_record().build().get("timezone")
-            start_date = pendulum.today(tz=profile_timezone).date()
-            non_breaking_error = ErrorRecordBuilder.non_breaking_error().with_error_message(msg)
-            
-            for report_type, metrics in display_report.METRICS_MAP.items():
-                report_id = str(uuid.uuid4())
-                tactic = display_report.TACTICS[0]
-                http_mocker.post(
-                    SponsoredDisplayReportRequestBuilder._init_report_endpoint(
-                        self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, tactic, metrics, start_date
-                    ).build(),
-                    ReportInitResponseBuilder.report_init_response().with_record(
-                        ReportInitResponseRecordBuilder.init_response_record().with_status("PENDING").with_id(report_id)
-                    ).with_status_code(202).build()
-                )
-                download_request_builder = ReportDownloadRequestBuilder.download_endpoint(report_id)
-                http_mocker.get(
-                    ReportCheckStatusRequestBuilder.check_sponsored_display_report_status_endpoint(
-                        self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_id
-                    ).build(),
-                    ReportCheckStatusResponseBuilder.check_status_response().with_record(
-                        ReportCheckStatusRecordBuilder.status_record().with_status("COMPLETED").with_url(download_request_builder.url)
-                    ).build()
-                )
+    @pytest.mark.parametrize(
+        "stream_name",
+        [
+            "sponsored_brands_v3_report_stream_daily",
+            "sponsored_brands_campaigns_report_stream_daily",
+            "sponsored_brands_adgroups_report_stream_daily",
+            "sponsored_brands_ads_report_stream_daily",
+            "sponsored_display_campaigns_report_stream_daily",
+            "sponsored_display_targets_report_stream_daily",
+            "sponsored_products_campaigns_report_stream_daily",
+            "sponsored_products_search_terms_report_stream_daily",
+        ],
+    )
+    def test_daily_stream_uses_date_as_cursor(self, requests_mock, config, mock_oauth, mock_profiles, stream_name):
+        """
+        Verify that daily streams use the 'date' field from the API response as the cursor field
+        instead of the synthetic 'reportDate'. This ensures correct deduplication when using
+        incremental + dedup sync mode with a 30-day step.
+        """
+        report_id = f"report-id-{stream_name}-date-cursor"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        report_data = gzip.compress(b'[{"date": "2023-01-15", "campaignId": "c1"}, {"date": "2023-01-16", "campaignId": "c2"}]')
+        requests_mock.get(
+            download_url,
+            content=report_data,
+            status_code=200,
+        )
+        output = self._read(config, stream_name, SyncMode.incremental)
+        assert len(output.records) == 2
+        # Daily streams should use 'date' as cursor field, not 'reportDate'
+        dates = [record.record.data["date"] for record in output.records]
+        assert dates == ["2023-01-15", "2023-01-16"]
+        # reportDate is still populated (from stream_interval.end_time via the shared transformation)
+        assert "reportDate" in output.records[0].record.data
+        # Verify the cursor state uses 'date' field
+        assert output.most_recent_state.stream_state.states[0]["cursor"]["date"] is not None
 
-                # a workaround to pass compressed document to the mocked response
-                gzip_file_report_response = ReportDownloadResponseBuilder.download_report().with_record(ReportFileRecordBuilder.report_file_record()).build()
-                request_matcher = HttpRequestMatcher(download_request_builder.build(), minimum_number_of_expected_match=1)
-                http_mocker._matchers.append(request_matcher)
+    def test_non_daily_stream_uses_report_date_as_cursor(
+        self, requests_mock: requests_mock.Mocker, config: Mapping[str, Any], mock_oauth, mock_profiles
+    ):
+        """
+        Verify that non-daily (SUMMARY) streams continue to use 'reportDate' as the cursor field
+        with the value set from stream_interval.end_time.
+        """
+        report_id = "report-id-brands-v3-summary"
+        download_url = f"https://advertising-api.amazon.com/reporting/reports/{report_id}/download"
+        requests_mock.post(
+            "https://advertising-api.amazon.com/reporting/reports",
+            json={"reportId": report_id, "status": "PENDING"},
+            status_code=202,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        requests_mock.get(
+            f"https://advertising-api.amazon.com/reporting/reports/{report_id}",
+            json={"status": "COMPLETED", "url": download_url},
+            status_code=200,
+            request_headers={"Authorization": "Bearer test-access-token"},
+        )
+        report_data = gzip.compress(b'[{"campaignId": "c1", "impressions": 100}]')
+        requests_mock.get(
+            download_url,
+            content=report_data,
+            status_code=200,
+        )
+        output = self._read(config, "sponsored_brands_v3_report_stream", SyncMode.incremental)
+        assert len(output.records) == 1
+        # SUMMARY streams should still use 'reportDate' as cursor, set from stream_interval.end_time
+        assert "reportDate" in output.records[0].record.data
+        assert output.records[0].record.data["reportDate"] is not None
+        # Verify cursor state uses 'reportDate' field
+        assert output.most_recent_state.stream_state.states[0]["cursor"]["reportDate"] is not None
 
-                http_mocker._mocker.get(
-                    requests_mock.ANY,
-                    additional_matcher=http_mocker._matches_wrapper(request_matcher),
-                    response_list=[{"content": gzip_file_report_response.body, "status_code": gzip_file_report_response.status_code}],
-                )
 
-            for report_type, metrics in display_report.METRICS_MAP.items():
-                tactic = display_report.TACTICS[1]
-                http_mocker.post(
-                    SponsoredDisplayReportRequestBuilder._init_report_endpoint(
-                        self._config["client_id"], self._config["access_token"], self._config["profiles"][0], report_type, tactic, metrics, start_date
-                    ).build(),
-                    ErrorResponseBuilder.non_breaking_error_response().with_record(non_breaking_error).with_status_code(status_code).build(),
-                )
+@pytest.mark.parametrize("stream_name", _ALL_DAILY_STREAMS)
+def test_daily_stream_schema_has_date_in_properties(stream_name: str) -> None:
+    """Verify that the `date` field used as PK/cursor is inside `properties`."""
+    schema = _MANIFEST["schemas"][stream_name]
+    assert "date" in schema["properties"], (
+        f"{stream_name}: 'date' field is missing from the schema's 'properties' block. "
+        "It may be misplaced at the schema root level due to a YAML indentation error."
+    )
 
-            output = read_stream("sponsored_display_report_stream", SyncMode.full_refresh, self._config)
-            assert len(output.records) == 5
 
-            expected_warning_logs = [
-                (
-                    f"Unexpected HTTP status code {status_code} when registering {report_type}, "
-                    f"SponsoredDisplayReportStream for 1 profile: {json.dumps(non_breaking_error.build())}"
-                ) for report_type in display_report.METRICS_MAP.keys()
-            ]
-            for expected_warning_log in expected_warning_logs:
-                assert any(
-                    [
-                        expected_warning_log in warn 
-                        for warn in get_log_messages_by_log_level(output.logs, LogLevel.WARN)
-                    ]
-                )
+# Bump deliberately when adding or removing a report stream. A silent drop here would empty the
+# guard tests below, and pytest reports an empty parameter set as SKIPPED rather than FAILED.
+_EXPECTED_REPORT_STREAM_COUNT = 34
+_EXPECTED_DAILY_REPORT_STREAM_COUNT = 17
+_EXPECTED_SPONSORED_PRODUCTS_SUMMARY_STREAM_COUNT = 8
+
+
+def test_report_stream_discovery_covers_every_report_stream() -> None:
+    """Kept standalone on purpose: `_report_stream_configurations()` is evaluated at import time by
+    the `@pytest.mark.parametrize` decorators below, so asserting inside it turns a count change into
+    a collection error that takes down every test in this module - including the finer column and
+    schema guards that would have named the actual regression.
+    """
+    configurations = _report_stream_configurations()
+    assert len(configurations) == _EXPECTED_REPORT_STREAM_COUNT, (
+        f"expected {_EXPECTED_REPORT_STREAM_COUNT} report stream configurations, found {len(configurations)}: "
+        "a manifest restructuring may have moved `creation_requester.requester.request_body_json` and silently "
+        "narrowed the report-column guard tests"
+    )
+    # The read tests derive their stream lists from the same helper, so the same restructuring would
+    # quietly shrink them into passing-but-empty loops. Pin those subsets too.
+    assert len(_ALL_DAILY_STREAMS) == _EXPECTED_DAILY_REPORT_STREAM_COUNT
+    assert len(_ALL_SPONSORED_PRODUCTS_SUMMARY_STREAMS) == _EXPECTED_SPONSORED_PRODUCTS_SUMMARY_STREAM_COUNT
+
+
+# `transformation_report_add_fields` (manifest.yaml) injects these into every report record, so they
+# are the only schema properties that legitimately have no matching requested column.
+_INJECTED_REPORT_FIELDS = {"profileId", "reportDate"}
+
+
+@pytest.mark.parametrize("stream_name, configuration, schema", _report_stream_configurations())
+def test_requested_report_columns_and_schema_properties_match_exactly(stream_name: str, configuration: dict, schema: dict) -> None:
+    """The requested column list and the schema must stay in lockstep in both directions.
+
+    A column requested from Amazon but absent from the schema is invisible during discovery and is
+    dropped by destinations that enforce the catalog. A property with no requested column means the
+    column was dropped from the request and the stream silently stopped emitting that metric. Tying
+    the two together means a column can only be removed by also removing its property, which makes
+    the loss show up as a schema diff in review.
+    """
+    columns = set(configuration["columns"])
+    properties = set(schema["properties"]) - _INJECTED_REPORT_FIELDS
+    undeclared = sorted(columns - properties)
+    unrequested = sorted(properties - columns)
+    assert not undeclared, f"{stream_name}: requested but not declared in schema: {undeclared}"
+    assert not unrequested, f"{stream_name}: declared in schema but never requested: {unrequested}"
+
+
+@pytest.mark.parametrize("stream_name, configuration, schema", _report_stream_configurations())
+def test_report_date_columns_match_time_unit(stream_name: str, configuration: dict, schema: dict) -> None:
+    """Amazon pairs the date columns with `timeUnit`: DAILY reports carry `date`, SUMMARY reports
+    carry `startDate`/`endDate`. Mixing them makes the report request fail.
+    See https://advertising.amazon.com/API/docs/en-us/guides/reporting/v3/get-started#timeunit-and-supported-columns
+    """
+    columns = set(configuration["columns"])
+    if configuration["timeUnit"] == "DAILY":
+        assert "date" in columns, f"{stream_name}: DAILY report is missing the `date` column"
+        assert not {"startDate", "endDate"} & columns, f"{stream_name}: DAILY report requests SUMMARY-only date columns"
+    else:
+        assert "date" not in columns, f"{stream_name}: SUMMARY report requests the DAILY-only `date` column"
+
+
+@pytest.mark.parametrize("stream_name, configuration, schema", _report_stream_configurations())
+def test_report_stream_primary_key_fields_are_declared_in_schema(stream_name: str, configuration: dict, schema: dict) -> None:
+    """Every primary key component must exist as a schema property.
+
+    A PK naming a field the schema does not declare dedupes on a value that is always null, which
+    collapses a whole sync into one row per partition. Destinations that enforce the catalog drop the
+    undeclared field before deduplication, so the damage happens downstream of any connector-level
+    error and this is the last place it can be caught cheaply.
+
+    Structural only - it cannot say whether the chosen fields are *sufficient* to make a row unique.
+    """
+    properties = set(schema["properties"])
+    stream = _MANIFEST["definitions"]["streams"][stream_name]
+    missing = [field for field in stream.get("primary_key", []) if field not in properties]
+    assert not missing, f"{stream_name}: primary key fields absent from the schema: {missing}"
+
+
+@pytest.mark.parametrize("stream_name, configuration, schema", _report_stream_configurations())
+def test_report_stream_primary_key_includes_the_cursor_field(stream_name: str, configuration: dict, schema: dict) -> None:
+    """DAILY streams must dedupe on `date` and SUMMARY streams on `reportDate`.
+
+    Report streams re-request overlapping windows, so a PK that omits the cursor makes every row of
+    a later slice collide with the same row from an earlier one and the newer metrics overwrite the
+    older ones. `test_daily_stream_uses_date_as_cursor` covers the cursor side of this pairing.
+    """
+    expected_cursor = "date" if configuration["timeUnit"] == "DAILY" else "reportDate"
+    primary_key = _MANIFEST["definitions"]["streams"][stream_name].get("primary_key", [])
+    assert expected_cursor in primary_key, (
+        f"{stream_name}: {configuration['timeUnit']} report must include `{expected_cursor}` in its "
+        f"primary key to dedupe correctly across overlapping slices, got {primary_key}"
+    )

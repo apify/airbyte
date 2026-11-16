@@ -1,25 +1,27 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.read
 
 import io.airbyte.cdk.command.JdbcSourceConfiguration
 import io.airbyte.cdk.jdbc.DefaultJdbcConstants
-import io.airbyte.cdk.output.OutputConsumer
 import jakarta.inject.Singleton
+import java.time.Instant
 
 /** Default implementation of [JdbcSharedState]. */
 @Singleton
 class DefaultJdbcSharedState(
     override val configuration: JdbcSourceConfiguration,
-    override val outputConsumer: OutputConsumer,
     override val selectQuerier: SelectQuerier,
     val constants: DefaultJdbcConstants,
-    internal val concurrencyResource: ConcurrencyResource,
-    private val globalLockResource: GlobalLockResource,
+    val concurrencyResource: ConcurrencyResource,
+    val resourceAcquirer: ResourceAcquirer,
 ) : JdbcSharedState {
 
+    // First hit to the readStartTime initializes the value.
+    override val snapshotReadStartTime: Instant by
+        lazy(LazyThreadSafetyMode.SYNCHRONIZED) { Instant.now() }
     override val withSampling: Boolean
         get() = constants.withSampling
 
@@ -49,32 +51,34 @@ class DefaultJdbcSharedState(
         )
 
     override fun tryAcquireResourcesForCreator(): JdbcPartitionsCreator.AcquiredResources? {
-        val acquiredLock: GlobalLockResource.AcquiredGlobalLock =
-            globalLockResource.tryAcquire() ?: return null
         val acquiredThread: ConcurrencyResource.AcquiredThread =
-            concurrencyResource.tryAcquire()
-                ?: run {
-                    acquiredLock.close()
-                    return null
-                }
-        return JdbcPartitionsCreator.AcquiredResources {
-            acquiredThread.close()
-            acquiredLock.close()
-        }
+            concurrencyResource.tryAcquire() ?: return null
+        return JdbcPartitionsCreator.AcquiredResources { acquiredThread.close() }
     }
 
-    override fun tryAcquireResourcesForReader(): JdbcPartitionReader.AcquiredResources? {
-        val acquiredLock: GlobalLockResource.AcquiredGlobalLock =
-            globalLockResource.tryAcquire() ?: return null
+    override fun tryAcquireResourcesForReader(
+        resourcesTypes: List<ResourceType>,
+    ): Map<ResourceType, JdbcPartitionReader.AcquiredResource>? {
+        val acquiredResources: Map<ResourceType, Resource.Acquired>? =
+            resourceAcquirer.tryAcquire(resourcesTypes)
+        return acquiredResources
+            ?.map {
+                it.key to
+                    object : JdbcPartitionReader.AcquiredResource {
+                        override val resource: Resource.Acquired? = it.value
+
+                        override fun close() {
+                            resource?.close()
+                        }
+                    }
+            }
+            ?.toMap()
+    }
+
+    override fun tryAcquireResourcesForCreatorFactory():
+        JdbcPartitionsCreatorFactory.AcquiredResources? {
         val acquiredThread: ConcurrencyResource.AcquiredThread =
-            concurrencyResource.tryAcquire()
-                ?: run {
-                    acquiredLock.close()
-                    return null
-                }
-        return JdbcPartitionReader.AcquiredResources {
-            acquiredThread.close()
-            acquiredLock.close()
-        }
+            concurrencyResource.tryAcquire() ?: return null
+        return JdbcPartitionsCreatorFactory.AcquiredResources { acquiredThread.close() }
     }
 }

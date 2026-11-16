@@ -1,71 +1,62 @@
----
-products: all
----
+# Get support
 
-# Getting Support
+If you can't find an answer to your question in the docs, use one of the following options:
 
-Hold up! Have you looked at [our docs](https://docs.airbyte.com/) yet? We recommend searching the wealth of knowledge in our documentation as many times the answer you are looking for is there!
+## In-app support agent bot
 
-## Airbyte Open Source Support
+**The in-app support agent bot is available 24/7 for Airbyte Cloud and Enterprise customers.** Look for the chat button in the bottom-right corner of the screen. The bot can help answer questions about your workspace, connections, and common troubleshooting scenarios. It has context about your current workspace, making it easier to get relevant assistance immediately. The bot can also create support tickets for the Airbyte support team if further help is needed.
 
-Running Airbyte Open Source and have questions that our docs could not clear up? Post your questions on our [Github Discussions](https://github.com/airbytehq/airbyte/discussions?_gl=1*70s0c6*_ga*MTc1OTkyOTYzNi4xNjQxMjQyMjA0*_ga_HDBMVFQGBH*MTY4OTY5MDQyOC4zNDEuMC4xNjg5NjkwNDI4LjAuMC4w) and also join our community Slack to connect with other Airbyte users.
+## Support Center
 
-### Community Slack
+**For additional help, create a ticket in Airbyte's [Support Center](https://support.airbyte.com/hc/en-us/requests/new).** Support agents are available 7 AM to 7 PM Eastern time. Response times may vary according to your plan and SLAs.
 
-**Join our Slack community** [HERE](https://slack.airbyte.com/?_gl=1*1h8mjfe*_gcl_au*MTc4MjAxMDQzOS4xNjgyOTczMDYy*_ga*MTc1OTkyOTYzNi4xNjQxMjQyMjA0*_ga_HDBMVFQGBH*MTY4Nzg4OTQ4MC4zMjUuMS4xNjg3ODkwMjE1LjAuMC4w&_ga=2.58571491.813788522.1687789276-1759929636.1641242204)!
+- For account or billing inquiries, [contact sales](https://airbyte.com/talk-to-sales).
+- We suggest signing up for Airbyte with your company email address, and not a personal one.
 
-Ask your questions first in the #ask-ai channel and if our bot can not assist you, reach out to our community in the #ask-community-for-troubleshooting channel.
+## Core (open source)
 
-If you require personalized support, reach out to our sales team to inquire about [Airbyte Enterprise](https://airbyte.com/airbyte-enterprise).
+Core users don't have access to paid support but can use the [Community Slack](#community-slack). If you need personalized help, consider upgrading to one of Airbyte's [paid plans](https://www.airbyte.com/pricing).
 
-### Airbyte Forum
+## Connector support levels
 
-We are driving our community support from our [forum](https://github.com/airbytehq/airbyte/discussions) on GitHub.
+Connector support depends on the connector's support level. See [Connector Support Levels](/integrations/connector-support-levels) for details.
 
-## Airbyte Cloud Support
+If you don't see a connector you need, see [Custom or New Connector](/integrations/custom-connectors) to request or build one.
 
-If you have questions about connector setup, error resolution, or want to report a bug, Airbyte Support is available to assist you. We recommend checking [our documentation](https://docs.airbyte.com/) and searching our [Help Center](https://support.airbyte.com/hc/en-us) before opening a support ticket.
+## GitHub discussions
 
-If you couldn't find the information you need in our docs or Help Center, open a ticket within the Airbyte Cloud platform by selecting the "Support" icon in the lower left navigation bar. Alternatively, you can submit a ticket through our [Help Center](https://support.airbyte.com/hc/en-us) by completing an Airbyte Cloud Support Request. Our team is online and availible to assist from 7AM - 7PM Eastern.
+[GitHub discussions](https://github.com/airbytehq/airbyte/discussions) are a great way to propose, vote on, and discuss data replication improvements.
 
-**If you're unsure about the supported connectors, refer to our [Connector Support Levels](https://docs.airbyte.com/project-overview/product-support-levels/) & [Connector Catalog](https://docs.airbyte.com/integrations/).**
+## Report an issue
 
-For account or credit-related inquiries, contact our [sales team](https://airbyte.com/talk-to-sales).
+If you've found a bug or issue with Airbyte or its documentation, [create an issue](https://github.com/airbytehq/airbyte/issues/new/choose) on GitHub.
 
-If you don't see a connector you need, you can submit a [connector request](https://airbyte.com/connector-requests).
+Check the [issue list](https://github.com/airbytehq/airbyte/issues) first in case the issue has already been reported.
 
-To stay updated on Airbyte's future plans, take a look at [our roadmap](https://github.com/orgs/airbytehq/projects/37/views/1).
+## Community Slack
 
-Please be sure to sign up for Airbyte with your company email address, as we do not support personal accounts.
+[Join the Slack community](https://join.slack.com/t/airbytehq/shared_invite/zt-497lmcwfo-rVj8NkG94vnVZV9H6wIkkg) for help from other users and Airbyte team members. Popular channels include:
 
-## Airbyte Enterprise (self-hosted) Support
+- `#ask-ai`
+- `#ask-community-for-troubleshooting`
 
-If you're running Airbyte Open Source with Airbyte Enterprise or have an OSS support package, we're here to help you with upgrading Airbyte versions, debugging connector issues, or troubleshooting schema changes.
+## Questions about contributions
 
-Before opening a support ticket, we recommend consulting [our documentation](https://docs.airbyte.com/) and searching our [Help Center](https://support.airbyte.com/hc/en-us). If your question remains unanswered, please submit a ticket through our Help Center. We suggest creating an [Airbyte Help Center account](https://airbyte1416.zendesk.com/auth/v2/login/signin?return_to=https%3A%2F%2Fsupport.airbyte.com%2Fhc%2Fen-us&theme=hc&locale=en-us&brand_id=15365055240347&auth_origin=15365055240347%2Ctrue%2Ctrue) to access your organization's support requests. Our team is online and availible to assist from 7AM - 7PM Eastern.
+Submitting a pull request for review?
 
-**Connector support is based on certification status of the connector.** Please see our [Connector Support Levels](https://docs.airbyte.com/project-overview/product-support-levels) if you have any questions on support provided for one of your connectors.
+- Follow all the [contribution guidelines](/community/contributing-to-airbyte/).
+- Airbyte doesn't accept platform contributions.
+- Airbyte eagerly accepts connector contributions. Limit contributions to one connector per pull request.
+- Submitting a pull request doesn't guarantee the team merges it. Airbyte evaluates contributions for quality and alignment with the project's goals.
+- Someone is going to get to your PR. Airbyte receives many contributions and only has capacity to review a certain number at a time. For status updates, check the [Community Pull Requests](https://github.com/orgs/airbytehq/projects/108/views/2?filterQuery=) board.
 
-Submitting a Pull Request for review?
+## What Airbyte doesn't support
 
-- Be sure to follow our [contribution guidelines](https://docs.airbyte.com/contributing-to-airbyte/) laid out here on our doc. Highlights include:
-  - PRs should be limited to a single change-set
-- Submit the PR as a PR Request through the Help Center Open Source Enterprise Support Request form
-- If you are submitting a Platform PR we accept Platform PRs in the areas below:
-  - Helm
-  - Environment variable configurations
-  - Bug Fixes
-  - Security version bumps
-  - **If outside these areas, please open up an issue to help the team understand the need and if we are able to consider a PR**
+The team tries its best to assist, and always tries to do the right thing for Airbyte users. That said, there are some things the team doesn't support:
 
-Submitting a PR does not guarantee its merge. The Airbyte support team will conduct an initial review, and if the PR aligns with Airbyte's roadmap, it will be prioritized based on team capacities and priorities.
-
-Although we strive to offer our utmost assistance, there are certain requests that we are unable to support. Currently, we do not provide assistance for these particular items:
-
-- Question/troubleshooting assistance with forked versions of Airbyte
+- Questions or troubleshooting with forked versions of Airbyte
 - Configuring using Octavia CLI
 - Creating and configuring custom transformation using dbt
 - Curating unique documentation and training materials
 - Configuring Airbyte to meet security requirements
-
-If you think you will need assistance when upgrading, we recommend upgrading during our support hours, Monday-Friday 7AM - 7PM ET so we can assist if support is needed. If you upgrade outside of support hours, please submit a ticket and we will assist when we are back online.
+- Marketplace connectors

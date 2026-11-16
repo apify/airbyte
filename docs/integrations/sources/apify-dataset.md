@@ -4,66 +4,90 @@ description: Web scraping and automation platform.
 
 # Apify Dataset
 
-## Overview
+[Apify](https://apify.com/) is a web scraping and web automation platform. It provides ready-made and custom scrapers (called Actors), open-source [JavaScript](https://docs.apify.com/sdk/js/) and [Python](https://docs.apify.com/sdk/python/) SDKs, proxies, and other tools for running web automation jobs at scale.
 
-[Apify](https://apify.com/) is a web scraping and web automation platform providing both ready-made and custom solutions, an open-source [JavaScript SDK](https://docs.apify.com/sdk/js/) and [Python SDK](https://docs.apify.com/sdk/python/) for web scraping, proxies, and many other tools to help you build and run web automation jobs at scale.
+This connector reads [Apify datasets](https://docs.apify.com/platform/storage/dataset), where scraping jobs usually store their results, through the [Apify API v2](https://docs.apify.com/api/v2) and syncs them to your destination.
 
-<FieldAnchor field="dataset_id">
-The results of a scraping job are usually stored in the [Apify Dataset](https://docs.apify.com/storage/dataset). This Airbyte connector provides streams to work with the datasets, including syncing their content to your chosen destination using Airbyte.
-</FieldAnchor>
+## Prerequisites
 
-To sync data from a dataset, all you need to know is your API token and dataset ID.
+- An Apify account
+- Your Apify personal API token
+- The ID of the dataset you want to sync
+
+## Set up the connector
 
 <FieldAnchor field="token">
-You can find your personal API token in the Apify Console in the [Settings -> Integrations](https://console.apify.com/account/integrations) and the dataset ID in the [Storage -> Datasets](https://console.apify.com/storage/datasets).
+
+**API token**: In Apify Console, copy your personal API token from [**Settings** > **Integrations**](https://console.apify.com/account/integrations). For details, see [API token](https://docs.apify.com/platform/integrations/api#api-token) in the Apify documentation.
+
 </FieldAnchor>
 
-### Running Airbyte sync from Apify webhook
+<FieldAnchor field="dataset_id">
 
-When your Apify job (aka [Actor run](https://docs.apify.com/platform/actors/running)) finishes, it can trigger an Airbyte sync by calling the Airbyte [API](https://airbyte-public-api-docs.s3.us-east-2.amazonaws.com/rapidoc-api-docs.html#post-/v1/connections/sync) manual connection trigger (`POST /v1/connections/sync`). The API can be called from Apify [webhook](https://docs.apify.com/platform/integrations/webhooks) which is executed when your Apify run finishes.
+**Dataset ID**: In Apify Console, find the dataset ID under [**Storage** > **Datasets**](https://console.apify.com/storage/datasets).
 
-![](../../.gitbook/assets/apify_trigger_airbyte_connection.png)
+</FieldAnchor>
 
-### Features
+### Trigger an Airbyte sync from an Apify webhook
+
+When an [Actor run](https://docs.apify.com/platform/actors/running) finishes, it can start an Airbyte sync. Configure an Apify [webhook](https://docs.apify.com/platform/integrations/webhooks) to notify an orchestrator that obtains a fresh Airbyte access token and then [creates a sync job](https://reference.airbyte.com/reference/createjob) for your connection.
+
+Airbyte Public API access tokens expire after 15 minutes. A token stored in a webhook's static Authorization header won't keep working for later Actor runs. See [Configuring API access](/platform/using-airbyte/configuring-api-access) for application credentials and token generation.
+
+![Apify webhook configured to trigger an Airbyte connection sync](/.gitbook/assets/apify_trigger_airbyte_connection.png)
+
+## Supported sync modes
 
 | Feature           | Supported? |
 | :---------------- | :--------- |
 | Full Refresh Sync | Yes        |
-| Incremental Sync  | Yes        |
+| Incremental Sync  | No         |
 
-### Performance considerations
-
-The Apify dataset connector uses [Apify Python Client](https://docs.apify.com/apify-client-python) under the hood and should handle any API limitations under normal usage.
+None of the streams have a cursor, so every sync reads the full result set again.
 
 ## Streams
 
+| Stream                                    | Endpoint                                                                                   | Primary key |
+| :---------------------------------------- | :----------------------------------------------------------------------------------------- | :---------- |
+| `dataset_collection`                      | [`GET /v2/datasets`](https://docs.apify.com/api/v2/datasets-get)                           | `id`        |
+| `dataset`                                 | [`GET /v2/datasets/{datasetId}`](https://docs.apify.com/api/v2/dataset-get)                | `id`        |
+| `item_collection`                         | [`GET /v2/datasets/{datasetId}/items`](https://docs.apify.com/api/v2/dataset-items-get)    | None        |
+| `item_collection_website_content_crawler` | [`GET /v2/datasets/{datasetId}/items`](https://docs.apify.com/api/v2/dataset-items-get)    | None        |
+
 ### `dataset_collection`
 
-- Calls `api.apify.com/v2/datasets` ([docs](https://docs.apify.com/api/v2#/reference/datasets/dataset-collection/get-list-of-datasets))
-- Properties:
-  - Apify Personal API token (you can find it [here](https://console.apify.com/account/integrations))
+Lists the datasets in your Apify account. This stream doesn't use the dataset ID from your configuration.
+
+The Apify API returns only named datasets by default, and the connector doesn't request unnamed ones. The default dataset that each Actor run creates is unnamed, so it doesn't appear in this stream unless you [name it](https://docs.apify.com/platform/storage/usage#named-and-unnamed-storages). The `dataset`, `item_collection`, and `item_collection_website_content_crawler` streams work with any dataset ID, named or unnamed.
 
 ### `dataset`
 
-- Calls `https://api.apify.com/v2/datasets/{datasetId}` ([docs](https://docs.apify.com/api/v2#/reference/datasets/dataset/get-dataset))
-- Properties:
-  - Apify Personal API token (you can find it [here](https://console.apify.com/account/integrations))
-  - Dataset ID (check the [docs](https://docs.apify.com/platform/storage/dataset))
+Returns the metadata of the dataset you configured, such as its name, item count, and creation time.
 
 ### `item_collection`
 
-- Calls `api.apify.com/v2/datasets/{datasetId}/items` ([docs](https://docs.apify.com/api/v2#/reference/datasets/item-collection/get-items))
-- Properties:
-  - Apify Personal API token (you can find it [here](https://console.apify.com/account/integrations))
-  - Dataset ID (check the [docs](https://docs.apify.com/platform/storage/dataset))
-- Limitations:
-  - The stream uses a dynamic schema (all the data are stored under the `"data"` key), so it should support all the Apify Datasets (produced by whatever Actor).
+Returns every item in the configured dataset. Because item shapes depend on the Actor that produced them, the connector wraps each item in a single `data` object instead of declaring a fixed schema. This lets the stream work with datasets from any Actor, but your destination receives each item's fields nested inside `data` rather than as separate columns.
+
+The connector doesn't request cleaned output, so items include [hidden fields](https://docs.apify.com/api/v2/dataset-items-get) (top-level fields whose names start with `#`).
+
+Limitations:
+
+- Empty items (`{}`) are skipped.
+- Since version 2.2.62, each item must be a JSON object. If the dataset contains non-object items, such as numbers or strings, the sync fails with a `TypeError`.
+- Since version 2.2.62, if an item is nested more than 200 levels deep, or contains a number outside the 64-bit float range (for example, `1e400`) or `NaN`/`Infinity`, the connector sets `data` to a string representation of the item instead of an object.
+- Since version 2.2.62, if an item has a top-level `__airbyte_apify_wrapped_item` key, the contents of that key are merged into the top level of the record next to `data`.
 
 ### `item_collection_website_content_crawler`
 
-- Calls the same endpoint and uses the same properties as the `item_collection` stream.
-- Limitations:
-  - The stream uses a static schema which corresponds to the datasets produced by [Website Content Crawler](https://apify.com/apify/website-content-crawler) Actor. So only datasets produced by this Actor are supported.
+Reads the same endpoint as `item_collection`, but uses a fixed schema that matches the output of the [Website Content Crawler](https://apify.com/apify/website-content-crawler) Actor. Use this stream only for datasets that Website Content Crawler produced. For datasets from other Actors, use `item_collection`.
+
+## Rate limits
+
+For endpoints that return lists, the connector requests 50 records per page. Apify applies a [global rate limit](https://docs.apify.com/api/v2#rate-limiting) of 250,000 requests per minute per user and a default limit of 60 requests per second per resource, such as a single dataset. When Apify returns HTTP 429, the connector retries the request with exponential backoff.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -72,6 +96,78 @@ The Apify dataset connector uses [Apify Python Client](https://docs.apify.com/ap
 
 | Version | Date       | Pull Request                                                 | Subject                                                                         |
 | :------ | :--------- | :----------------------------------------------------------- | :------------------------------------------------------------------------------ |
+| 2.2.67 | 2026-11-10 | [91349](https://github.com/airbytehq/airbyte/pull/91349) | Update dependencies |
+| 2.2.66 | 2026-11-03 | [90475](https://github.com/airbytehq/airbyte/pull/90475) | Update dependencies |
+| 2.2.65 | 2026-10-27 | [89790](https://github.com/airbytehq/airbyte/pull/89790) | Update dependencies |
+| 2.2.64 | 2026-10-20 | [89135](https://github.com/airbytehq/airbyte/pull/89135) | Update dependencies |
+| 2.2.63 | 2026-10-13 | [88544](https://github.com/airbytehq/airbyte/pull/88544) | Update dependencies |
+| 2.2.62 | 2026-10-08 | [88134](https://github.com/airbytehq/airbyte/pull/88134) | Replace the custom `item_collection` record extractor with built-in declarative transformations; record output is unchanged except for the edge cases listed under `item_collection` |
+| 2.2.61 | 2026-10-06 | [87770](https://github.com/airbytehq/airbyte/pull/87770) | Update dependencies |
+| 2.2.60 | 2026-09-29 | [87064](https://github.com/airbytehq/airbyte/pull/87064) | Update dependencies |
+| 2.2.59 | 2026-09-22 | [86526](https://github.com/airbytehq/airbyte/pull/86526) | Update dependencies |
+| 2.2.58 | 2026-09-15 | [85955](https://github.com/airbytehq/airbyte/pull/85955) | Update dependencies |
+| 2.2.57 | 2026-09-08 | [84487](https://github.com/airbytehq/airbyte/pull/84487) | Update dependencies |
+| 2.2.56 | 2026-08-11 | [83850](https://github.com/airbytehq/airbyte/pull/83850) | Update dependencies |
+| 2.2.55 | 2026-07-28 | [83194](https://github.com/airbytehq/airbyte/pull/83194) | Update to CDK 7.23.8 (fixes AirbyteCustomCodeNotPermittedError for bundled custom components) and remove the temporary Cloud version override |
+| 2.2.54 | 2026-07-28 | [1082](https://github.com/airbytehq/airbyte-python-cdk/issues/1082) | Roll Cloud back to 2.2.52 — 2.2.53 is built on SDM 7.23.7, which breaks bundled custom components |
+| 2.2.53 | 2026-07-28 | [82834](https://github.com/airbytehq/airbyte/pull/82834) | Update dependencies |
+| 2.2.52 | 2026-07-21 | [82336](https://github.com/airbytehq/airbyte/pull/82336) | Update dependencies |
+| 2.2.51 | 2026-07-14 | [81739](https://github.com/airbytehq/airbyte/pull/81739) | Update dependencies |
+| 2.2.50 | 2026-06-30 | [80961](https://github.com/airbytehq/airbyte/pull/80961) | Update dependencies |
+| 2.2.49 | 2026-06-23 | [80380](https://github.com/airbytehq/airbyte/pull/80380) | Update dependencies |
+| 2.2.48 | 2026-06-16 | [79760](https://github.com/airbytehq/airbyte/pull/79760) | Update dependencies |
+| 2.2.47 | 2026-06-09 | [79203](https://github.com/airbytehq/airbyte/pull/79203) | Update dependencies |
+| 2.2.46 | 2026-06-02 | [78578](https://github.com/airbytehq/airbyte/pull/78578) | Update dependencies |
+| 2.2.45 | 2026-04-28 | [77189](https://github.com/airbytehq/airbyte/pull/77189) | Update dependencies |
+| 2.2.44 | 2026-04-21 | [76502](https://github.com/airbytehq/airbyte/pull/76502) | Update dependencies |
+| 2.2.43 | 2026-03-31 | [75895](https://github.com/airbytehq/airbyte/pull/75895) | Update dependencies |
+| 2.2.42 | 2026-03-17 | [75003](https://github.com/airbytehq/airbyte/pull/75003) | Update dependencies |
+| 2.2.41 | 2026-03-10 | [74482](https://github.com/airbytehq/airbyte/pull/74482) | Update dependencies |
+| 2.2.40 | 2026-02-24 | [73807](https://github.com/airbytehq/airbyte/pull/73807) | Update dependencies |
+| 2.2.39 | 2026-02-03 | [72687](https://github.com/airbytehq/airbyte/pull/72687) | Update dependencies |
+| 2.2.38 | 2026-01-20 | [71876](https://github.com/airbytehq/airbyte/pull/71876) | Update dependencies |
+| 2.2.37 | 2026-01-14 | [71443](https://github.com/airbytehq/airbyte/pull/71443) | Update dependencies |
+| 2.2.36 | 2026-01-08 | [71099](https://github.com/airbytehq/airbyte/pull/71099) | Update logo |
+| 2.2.35 | 2025-12-18 | [70793](https://github.com/airbytehq/airbyte/pull/70793) | Update dependencies |
+| 2.2.34 | 2025-11-25 | [69867](https://github.com/airbytehq/airbyte/pull/69867) | Update dependencies |
+| 2.2.33 | 2025-11-18 | [69519](https://github.com/airbytehq/airbyte/pull/69519) | Update dependencies |
+| 2.2.32 | 2025-11-04 | [68843](https://github.com/airbytehq/airbyte/pull/68843) | Update dependencies |
+| 2.2.31 | 2025-10-21 | [68364](https://github.com/airbytehq/airbyte/pull/68364) | Update dependencies |
+| 2.2.30 | 2025-10-14 | [67997](https://github.com/airbytehq/airbyte/pull/67997) | Update dependencies |
+| 2.2.29 | 2025-10-07 | [67163](https://github.com/airbytehq/airbyte/pull/67163) | Update dependencies |
+| 2.2.28 | 2025-09-30 | [66273](https://github.com/airbytehq/airbyte/pull/66273) | Update dependencies |
+| 2.2.27 | 2025-08-09 | [64655](https://github.com/airbytehq/airbyte/pull/64655) | Update dependencies |
+| 2.2.26 | 2025-08-02 | [64432](https://github.com/airbytehq/airbyte/pull/64432) | Update dependencies |
+| 2.2.25 | 2025-07-26 | [63802](https://github.com/airbytehq/airbyte/pull/63802) | Update dependencies |
+| 2.2.24 | 2025-07-05 | [62540](https://github.com/airbytehq/airbyte/pull/62540) | Update dependencies |
+| 2.2.23 | 2025-06-28 | [62139](https://github.com/airbytehq/airbyte/pull/62139) | Update dependencies |
+| 2.2.22 | 2025-06-15 | [61108](https://github.com/airbytehq/airbyte/pull/61108) | Update dependencies |
+| 2.2.21 | 2025-05-17 | [60677](https://github.com/airbytehq/airbyte/pull/60677) | Update dependencies |
+| 2.2.20 | 2025-05-10 | [59857](https://github.com/airbytehq/airbyte/pull/59857) | Update dependencies |
+| 2.2.19 | 2025-05-03 | [59312](https://github.com/airbytehq/airbyte/pull/59312) | Update dependencies |
+| 2.2.18 | 2025-04-26 | [58251](https://github.com/airbytehq/airbyte/pull/58251) | Update dependencies |
+| 2.2.17 | 2025-04-12 | [57599](https://github.com/airbytehq/airbyte/pull/57599) | Update dependencies |
+| 2.2.16 | 2025-04-05 | [57134](https://github.com/airbytehq/airbyte/pull/57134) | Update dependencies |
+| 2.2.15 | 2025-03-29 | [56579](https://github.com/airbytehq/airbyte/pull/56579) | Update dependencies |
+| 2.2.14 | 2025-03-22 | [56107](https://github.com/airbytehq/airbyte/pull/56107) | Update dependencies |
+| 2.2.13 | 2025-03-08 | [55423](https://github.com/airbytehq/airbyte/pull/55423) | Update dependencies |
+| 2.2.12 | 2025-03-01 | [54885](https://github.com/airbytehq/airbyte/pull/54885) | Update dependencies |
+| 2.2.11 | 2025-02-22 | [54235](https://github.com/airbytehq/airbyte/pull/54235) | Update dependencies |
+| 2.2.10 | 2025-02-15 | [53872](https://github.com/airbytehq/airbyte/pull/53872) | Update dependencies |
+| 2.2.9 | 2025-02-08 | [53440](https://github.com/airbytehq/airbyte/pull/53440) | Update dependencies |
+| 2.2.8 | 2025-02-01 | [52904](https://github.com/airbytehq/airbyte/pull/52904) | Update dependencies |
+| 2.2.7 | 2025-01-25 | [52208](https://github.com/airbytehq/airbyte/pull/52208) | Update dependencies |
+| 2.2.6 | 2025-01-18 | [51740](https://github.com/airbytehq/airbyte/pull/51740) | Update dependencies |
+| 2.2.5 | 2025-01-11 | [51257](https://github.com/airbytehq/airbyte/pull/51257) | Update dependencies |
+| 2.2.4 | 2024-12-28 | [50468](https://github.com/airbytehq/airbyte/pull/50468) | Update dependencies |
+| 2.2.3 | 2024-12-21 | [50217](https://github.com/airbytehq/airbyte/pull/50217) | Update dependencies |
+| 2.2.2 | 2024-12-14 | [49553](https://github.com/airbytehq/airbyte/pull/49553) | Update dependencies |
+| 2.2.1 | 2024-12-12 | [48216](https://github.com/airbytehq/airbyte/pull/48216) | Update dependencies |
+| 2.2.0 | 2024-10-29 | [47286](https://github.com/airbytehq/airbyte/pull/47286) | Migrate to manifest only format |
+| 2.1.27 | 2024-10-29 | [47068](https://github.com/airbytehq/airbyte/pull/47068) | Update dependencies |
+| 2.1.26 | 2024-10-12 | [46837](https://github.com/airbytehq/airbyte/pull/46837) | Update dependencies |
+| 2.1.25 | 2024-10-01 | [46373](https://github.com/airbytehq/airbyte/pull/46373) | add user-agent header to be able to track Airbyte integration on Apify |
+| 2.1.24 | 2024-10-05 | [46430](https://github.com/airbytehq/airbyte/pull/46430) | Update dependencies |
 | 2.1.23 | 2024-09-28 | [46146](https://github.com/airbytehq/airbyte/pull/46146) | Update dependencies |
 | 2.1.22 | 2024-09-21 | [45820](https://github.com/airbytehq/airbyte/pull/45820) | Update dependencies |
 | 2.1.21 | 2024-09-14 | [45479](https://github.com/airbytehq/airbyte/pull/45479) | Update dependencies |

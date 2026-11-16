@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.base.destination.operation
@@ -12,7 +12,7 @@ import java.util.stream.Stream
 
 class DefaultFlush(
     override val optimalBatchSizeBytes: Long,
-    private val syncOperation: SyncOperation
+    private val syncOperation: SyncOperation,
 ) : DestinationFlushFunction {
     override fun flush(streamDescriptor: StreamDescriptor, stream: Stream<PartialAirbyteMessage>) {
         syncOperation.flushStream(streamDescriptor, stream)

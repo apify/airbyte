@@ -75,17 +75,6 @@
     "type": "STREAM",
     "stream": {
       "stream_state": {
-        "updatedAt": "2027-07-11T13:07:45-07:00"
-      },
-      "stream_descriptor": {
-        "name": "products_graph_ql"
-      }
-    }
-  },
-  {
-    "type": "STREAM",
-    "stream": {
-      "stream_state": {
         "updated_at": "2027-07-11T13:07:45-07:00"
       },
       "stream_descriptor": {
@@ -238,6 +227,17 @@
       },
       "stream_descriptor": {
         "name": "discount_codes"
+      }
+    }
+  },
+  {
+    "type": "STREAM",
+    "stream": {
+      "stream_state": {
+        "updated_at": "2027-07-11T13:07:45-07:00"
+      },
+      "stream_descriptor": {
+        "name": "discount_codes_sync"
       }
     }
   },
@@ -598,17 +598,6 @@
     "type": "STREAM",
     "stream": {
       "stream_state": {
-        "updated_at": "2027-07-11T13:07:45-07:00"
-      },
-      "stream_descriptor": {
-        "name": "customer_saved_search"
-      }
-    }
-  },
-  {
-    "type": "STREAM",
-    "stream": {
-      "stream_state": {
         "id": 99999999999999,
         "customers": {
           "updated_at": "2027-07-11T13:07:45-07:00"
@@ -616,6 +605,28 @@
       },
       "stream_descriptor": {
         "name": "customer_address"
+      }
+    }
+  },
+  {
+    "type": "STREAM",
+    "stream": {
+      "stream_descriptor": {
+        "name": "deleted_products"
+      },
+      "stream_state": {
+        "deleted_at": "2099-10-27T14:28:50Z"
+      }
+    }
+  },
+  {
+    "type": "STREAM",
+    "stream": {
+      "stream_descriptor": {
+        "name": "collection_products"
+      },
+      "stream_state": {
+        "collection_updated_at": "2099-06-25T17:26:54+00:00"
       }
     }
   }

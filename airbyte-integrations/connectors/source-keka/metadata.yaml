@@ -1,0 +1,59 @@
+metadataSpecVersion: "1.0"
+data:
+  allowedHosts:
+    hosts:
+      - "*.keka.com"
+  registryOverrides:
+    oss:
+      enabled: true
+    cloud:
+      enabled: true
+  remoteRegistries:
+    pypi:
+      enabled: false
+      packageName: airbyte-source-keka
+  connectorBuildOptions:
+    baseImage: docker.io/airbyte/source-declarative-manifest:7.47.0@sha256:b2ecb78040d4c4b42fa3537488d68a3b195f64b5fefcbc48ac0591479591a3f0
+  connectorSubtype: api
+  connectorType: source
+  definitionId: 54664ae8-39aa-467f-9703-9b343ee23b9b
+  dockerImageTag: 0.1.6
+  dockerRepository: airbyte/source-keka
+  githubIssueLabel: source-keka
+  icon: icon.svg
+  license: ELv2
+  name: Keka
+  releaseDate: 2025-01-29
+  releaseStage: alpha
+  releases:
+    breakingChanges:
+      0.1.0:
+        message: >-
+          All Keka sources must now configure their company subdomain instead of using
+          the hard-coded master host. Set the subdomain before the first sync after
+          upgrading. See https://docs.airbyte.com/integrations/sources/keka-migrations
+          for instructions.
+        upgradeDeadline: "2026-10-22"
+        deadlineAction: disable
+        scopedImpact:
+          - scopeType: stream
+            impactedScopes:
+              - Employees
+              - Attendance
+              - Clients
+              - Projects
+              - Project Timesheets
+              - Leave Type
+              - Leave Request
+  supportLevel: community
+  documentationUrl: https://docs.airbyte.com/integrations/sources/keka
+  tags:
+    - language:manifest-only
+    - cdk:low-code
+  ab_internal:
+    ql: 100
+    sl: 100
+  externalDocumentationUrls:
+    - title: Keka API documentation
+      url: https://developers.keka.com/
+      type: api_reference

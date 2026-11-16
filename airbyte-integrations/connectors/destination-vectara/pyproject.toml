@@ -4,10 +4,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "airbyte-destination-vectara"
-version = "0.2.25"
+version = "0.3.0"
 description = "Airbyte destination implementation for Vectara"
 authors = ["Airbyte <contact@airbyte.io>"]
-license = "MIT"
+license = "ELv2"
 readme = "README.md"
 documentation = "https://docs.airbyte.com/integrations/destinations/vectara"
 homepage = "https://airbyte.com"
@@ -17,9 +17,9 @@ repository = "https://github.com/airbytehq/airbyte"
 include = "destination_vectara"
 
 [tool.poetry.dependencies]
-python = "^3.9,<3.12"
+python = "^3.11,<3.14"
 # Note: Maintainers can bump this to the latest via `poetry add airbyte-cdk@latest`
-airbyte-cdk = "0.81.6"
+airbyte-cdk = "^7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
@@ -29,3 +29,11 @@ mypy = "^1.9.0"
 [tool.poetry.scripts]
 destination-vectara = "destination_vectara.run:run"
 
+
+
+[tool.poe]
+include = [
+    # Shared tasks definition file(s) can be imported here.
+    # Run `poe` or `poe --help` to see the list of available tasks.
+    "${POE_GIT_DIR}/poe-tasks/poetry-connector-tasks.toml",
+]

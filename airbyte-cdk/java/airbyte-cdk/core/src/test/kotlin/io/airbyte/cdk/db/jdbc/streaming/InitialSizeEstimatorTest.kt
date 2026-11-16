@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.jdbc.streaming
 
@@ -20,7 +20,7 @@ internal class InitialSizeEstimatorTest {
                 initialSampleSize,
                 minFetchSize,
                 defaultFetchSize,
-                maxFetchSize
+                maxFetchSize,
             )
 
         // size: 3 * 4 = 12
@@ -43,7 +43,7 @@ internal class InitialSizeEstimatorTest {
         Assertions.assertEquals(expectedMaxByteSize, Math.round(sizeEstimator.maxRowByteSize))
         Assertions.assertEquals(
             (bufferByteSize / expectedMaxByteSize) + 1,
-            fetchSize.get().toLong()
+            fetchSize.get().toLong(),
         ) // + 1 needed for int remainder rounding
     }
 }

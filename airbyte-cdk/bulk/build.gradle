@@ -1,8 +1,45 @@
-final File buildNumberFile = file("${getLayout().buildDirectory.get()}/generated/build.number")
+import javax.xml.parsers.DocumentBuilder
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.xpath.XPath
+import javax.xml.xpath.XPathConstants
+import javax.xml.xpath.XPathFactory
+import org.gradle.api.GradleException
+import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
+import org.w3c.dom.Document
+
+plugins {
+    id 'org.jetbrains.dokka' version '2.2.0'
+}
+
+final var baseVersionFile = file("core/base/version.properties")
+final var extractVersionFile = file("core/extract/version.properties")
+final var loadVersionFile = file("core/load/version.properties")
+
+// Base, extract, and load packages have their own independent versions
+final var baseVersion = {
+    var props = new Properties()
+    baseVersionFile.withInputStream(props::load)
+    return props.getProperty('version', 'undefined')
+}()
+
+final var extractVersion = {
+    var props = new Properties()
+    extractVersionFile.withInputStream(props::load)
+    return props.getProperty('version', 'undefined')
+}()
+
+final var loadVersion = {
+    var props = new Properties()
+    loadVersionFile.withInputStream(props::load)
+    return props.getProperty('version', 'undefined')
+}()
+
 
 allprojects {
+    version = baseVersion
     apply plugin: 'java-library'
     apply plugin: 'maven-publish'
+    apply plugin: 'org.jetbrains.dokka'
 
     group 'io.airbyte.bulk-cdk'
 
@@ -11,94 +48,246 @@ allprojects {
         enabled = false
     }
 
+    // Fail fast on Micronaut bean definitions that the JVM refuses to load (inject-kotlin 4.8-4.10
+    // emits unverifiable bytecode for Kotlin constructors mixing default values and primitives).
+    // Micronaut's service loader would otherwise drop them silently.
+    io.airbyte.gradle.MicronautBeanDefinitionVerification.configure(project)
+
     dependencies {
-        api platform('org.jetbrains.kotlin:kotlin-bom:2.0.10')
-        api platform('org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.8.1')
-        api platform('com.fasterxml.jackson:jackson-bom:2.17.2')
-        api platform('io.micronaut:micronaut-core-bom:4.6.1')
-        api platform('org.junit:junit-bom:5.10.2')
+        api platform('org.jetbrains.kotlin:kotlin-bom:2.4.21')
+        api platform('org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.11.0')
+        api platform('com.fasterxml.jackson:jackson-bom:2.21.7')
+        api platform("io.micronaut:micronaut-core-bom:$micronautVersion")
+        // micronaut-test is not managed by micronaut-core-bom and its own BOM is deliberately not
+        // imported here: an `api platform(...)` is exported in the published CDK metadata and would
+        // push every connector to the mockk version the BOM constrains. The micronaut-test artifacts
+        // carry an explicit version where they are declared (core/base, legacy-task-load-dlq).
+        api platform('org.junit:junit-bom:5.14.0')
         api platform('org.slf4j:slf4j-bom:2.0.13')
         api platform('org.apache.logging.log4j:log4j-bom:2.21.1')
-        api platform('org.testcontainers:testcontainers-bom:1.20.1')
+        api platform('org.testcontainers:testcontainers-bom:1.21.4')
 
         api 'org.jetbrains.kotlin:kotlin-stdlib'
-        api 'com.google.dagger:dagger:2.51.1'
-        ksp 'com.google.dagger:dagger-compiler:2.52'
 
-        annotationProcessor platform('io.micronaut:micronaut-core-bom:4.6.1')
-        annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
-        annotationProcessor 'io.micronaut:micronaut-inject-kotlin'
-
-        ksp platform('io.micronaut:micronaut-core-bom:4.6.1')
+        ksp platform("io.micronaut:micronaut-core-bom:$micronautVersion")
         ksp 'io.micronaut:micronaut-inject-kotlin'
-        kspTest platform('io.micronaut:micronaut-core-bom:4.6.1')
+        kspTest platform("io.micronaut:micronaut-core-bom:$micronautVersion")
         kspTest 'io.micronaut:micronaut-inject-kotlin'
+        // KSP 2 no longer applies the `ksp` configuration to the other compilations (KSP 1 did,
+        // through its deprecated ksp.allow.all.target.configuration default), so every source set
+        // that declares Micronaut beans needs the processor spelled out. Modules with an
+        // integrationTest source set declare kspIntegrationTest themselves.
+        kspTestFixtures platform("io.micronaut:micronaut-core-bom:$micronautVersion")
+        kspTestFixtures 'io.micronaut:micronaut-inject-kotlin'
+
+        // Not below 1.14.9: mockk 1.13.16-1.14.7 unbox a value class returned from any property
+        // getter regardless of the getter's declared type, so recording `every { rawData }` on a
+        // mocked DestinationRecordRaw recursed until the heap was gone (fixed upstream in 1.14.9,
+        // which needs the Kotlin 2.2+ runtime). A plain version is enough: micronaut-test-bom, which
+        // would constrain mockk to 1.13.17, is deliberately not imported above.
+        testImplementation("io.mockk:mockk:1.14.11")
     }
 
-    if (buildNumberFile.exists()) {
-        version = "0.${buildNumberFile.text.trim()}"
-        publishing {
-            publications {
-                cdk(MavenPublication) {
-                    from components.java
-                }
+    publishing {
+        publications {
+            cdk(MavenPublication) {
+                from components.java
             }
-            // This repository is only defined and used in the context of publishing artifacts
-            // It's different from the 'airbyte-public-jars' defined in settings.gradle
-            // only in its omission of the 'public' directory.
-            // Any artifacts publish here will be available in the 'airbyte-public-jars' repo.
-            repositories {
-                maven {
-                    name 'airbyte-repo'
-                    url 'https://airbyte.mycloudrepo.io/repositories/airbyte-public-jars/'
-                    credentials {
-                        username System.getenv('CLOUDREPO_USER')
-                        password System.getenv('CLOUDREPO_PASSWORD')
-                    }
+        }
+        // This repository is only defined and used in the context of publishing artifacts
+        // It's different from the 'airbyte-public-jars' defined in settings.gradle
+        // only in its omission of the 'public' directory.
+        // Any artifacts publish here will be available in the 'airbyte-public-jars' repo.
+        repositories {
+            maven {
+                name 'airbyte-repo'
+                url 'https://airbyte.mycloudrepo.io/repositories/airbyte-public-jars/'
+                credentials {
+                    username System.getenv('CLOUDREPO_USER')
+                    password System.getenv('CLOUDREPO_PASSWORD')
                 }
             }
         }
     }
 }
 
-if (buildNumberFile.exists()) {
-    tasks.register('bulkCdkBuild').configure {
-        dependsOn allprojects.collect {it.tasks.named('build')}
-    }
-    tasks.register('bulkCdkPublish').configure {
-        dependsOn allprojects.collect {it.tasks.named('publish')}
+// Define extract and load module groups (core + toolkits)
+def extractProjects = [
+    ':airbyte-cdk:bulk:core:bulk-cdk-core-extract',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-extract-cdc',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-extract-jdbc',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-extract-trigger',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-source-integration-tests',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-source-tests',
+]
+
+def loadProjects = [
+    ':airbyte-cdk:bulk:core:bulk-cdk-core-load',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-load-aws',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-load-csv',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-load-gcp',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-load-http',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-load-iceberg-parquet',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-avro',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-azure-blob-storage',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-db',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-dlq',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-gcs',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-low-code',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-object-storage',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-parquet',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-load-s3',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-legacy-task-loader',
+    ':airbyte-cdk:bulk:toolkits:bulk-cdk-toolkit-load-fusion',
+]
+
+// Override base, extract, and load packages to use their own independent versions
+project(':airbyte-cdk:bulk:core:bulk-cdk-core-base') {
+    version = baseVersion
+}
+extractProjects.each { project(it).version = extractVersion }
+loadProjects.each { project(it).version = loadVersion }
+
+// Configure Dokka (Gradle plugin V2 DSL) for all subprojects
+subprojects {
+    dokka {
+        // Keep the V1 multi-module layout (core/<module>, toolkits/<module>) so published URLs don't change.
+        modulePath.set(project.path.substring(':airbyte-cdk:bulk:'.length()).replace(':', '/'))
+
+        dokkaSourceSets.configureEach {
+            // Only document public APIs
+            documentedVisibilities.set([VisibilityModifier.Public])
+            skipEmptyPackages.set(true)
+
+            // Report undocumented members
+            reportUndocumented.set(true)
+
+            // Add external documentation links
+            externalDocumentationLinks {
+                register("kotlin") {
+                    url("https://kotlinlang.org/api/latest/jvm/stdlib/")
+                    packageListUrl("https://kotlinlang.org/api/latest/jvm/stdlib/package-list")
+                }
+                register("kotlinx-coroutines") {
+                    url("https://kotlinlang.org/api/kotlinx.coroutines/")
+                }
+                register("micronaut") {
+                    url("https://docs.micronaut.io/latest/api/")
+                }
+            }
+
+            // Source links back to GitHub
+            sourceLink {
+                localDirectory.set(file("src/main"))
+                remoteUrl("https://github.com/airbytehq/airbyte/tree/master/${rootProject.relativePath(projectDir)}/src/main")
+                remoteLineSuffix.set("#L")
+            }
+        }
     }
 }
 
-tasks.register('generateBuildNumberFile') {
-    description = 'Generates a build.number file in the build directory'
-    group = 'Custom'
-    outputs.file buildNumberFile
+// Aggregate the API docs of every module that has main Kotlin sources into one site.
+// Generate with `./gradlew :airbyte-cdk:bulk:dokkaGenerate`.
+def documentedProjects = ([':airbyte-cdk:bulk:core:bulk-cdk-core-base'] + extractProjects + loadProjects)
+    .findAll { project(it).file('src/main/kotlin').directory }
 
+dependencies {
+    documentedProjects.each { dokka project(it) }
+}
+
+dokka {
+    moduleName.set("Airbyte Kotlin Bulk CDK")
+    dokkaPublications.html {
+        outputDirectory.set(layout.buildDirectory.dir("dokka/htmlMultiModule"))
+    }
+}
+
+// Helper function to check if a version exists in the Maven repository
+def checkVersionExists(String artifactName, String versionToCheck) {
+    var repoUrl = "https://airbyte.mycloudrepo.io/public/repositories/airbyte-public-jars"
+    var groupIdUrl = "${repoUrl}/io/airbyte/bulk-cdk"
+    var artifactUrl = "${groupIdUrl}/${artifactName}"
+    var metadataXmlUrl = "${artifactUrl}/maven-metadata.xml"
+
+    var connection = metadataXmlUrl.toURL().openConnection() as HttpURLConnection
+    try {
+        connection.setRequestMethod("GET")
+        connection.setDoInput(true)
+        var responseCode = connection.getResponseCode()
+
+        if (responseCode != 200) {
+            throw new GradleException("Unexpected HTTP response code ${responseCode} from ${metadataXmlUrl} : expected 200.")
+        }
+
+        InputStream responseContent = connection.inputStream
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance()
+        DocumentBuilder builder = factory.newDocumentBuilder()
+        Document doc = builder.parse(responseContent)
+
+        doc.getDocumentElement().normalize()
+
+        XPath xpath = XPathFactory.newInstance().newXPath()
+        String expression = "/metadata/versioning/versions/version"
+
+        var versionNodes = xpath.compile(expression).evaluate(doc, XPathConstants.NODESET)
+        var allVersions = []
+        for (int i = 0; i < versionNodes.length; i++) {
+            allVersions.add(versionNodes.item(i).textContent)
+        }
+
+        if (allVersions.contains(versionToCheck)) {
+            throw new GradleException("${artifactName} version ${versionToCheck} already exists in the repository")
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
+
+tasks.register('checkBaseVersion') {
+    description = "Check that the base version doesn't exist"
     doLast {
-        var repoUrl = "https://airbyte.mycloudrepo.io/public/repositories/airbyte-public-jars"
-        var groupIdUrl = "${repoUrl}/io/airbyte/bulk-cdk"
-        var artifactUrl = "${groupIdUrl}/bulk"
-        var metadataXmlUrl = "${artifactUrl}/maven-metadata.xml"
-
-        var connection = metadataXmlUrl.toURL().openConnection() as HttpURLConnection
-        try {
-            connection.setRequestMethod("GET")
-            connection.setDoInput(true)
-            var responseCode = connection.getResponseCode()
-            if (responseCode != 200) {
-                throw new GradleException("Unexpected HTTP response code ${responseCode} from ${metadataXmlUrl} : expected 200.")
-            }
-            String responseContent = connection.inputStream.text
-            def xml = new XmlParser().parseText(responseContent)
-            String latestVersion = xml."versioning"."latest".text()
-            String buildNumber = latestVersion.replaceFirst('^0\\.', '')
-            Integer nextBuildNumber = 1 + buildNumber.toInteger()
-            buildNumberFile.parentFile.mkdirs()
-            buildNumberFile.text = "$nextBuildNumber"
-            logger.lifecycle("Wrote Bulk CDK build number ${nextBuildNumber} to ${buildNumberFile.path}.")
-        } finally {
-            connection.disconnect()
-        }
+        checkVersionExists('bulk-cdk-core-base', baseVersion.toString())
     }
+}
+
+tasks.register('checkExtractVersion') {
+    description = "Check that the extract version doesn't exist"
+    doLast {
+        checkVersionExists('bulk-cdk-core-extract', extractVersion.toString())
+    }
+}
+
+tasks.register('checkLoadVersion') {
+    description = "Check that the load version doesn't exist"
+    doLast {
+        checkVersionExists('bulk-cdk-core-load', loadVersion.toString())
+    }
+}
+
+// Build and publish tasks for individual packages
+tasks.register('baseCdkBuild') {
+    description = "Build the base CDK package"
+    dependsOn ':airbyte-cdk:bulk:core:bulk-cdk-core-base:build'
+}
+tasks.register('baseCdkPublish') {
+    description = "Publish the base CDK package"
+    dependsOn ':airbyte-cdk:bulk:core:bulk-cdk-core-base:publish'
+}
+
+tasks.register('extractCdkBuild') {
+    description = "Build the extract CDK package and toolkits (includes base as transitive dependency)"
+    dependsOn extractProjects.collect { "$it:build" }
+}
+tasks.register('extractCdkPublish') {
+    description = "Publish the extract CDK package and toolkits"
+    dependsOn extractProjects.collect { "$it:publish" }
+}
+
+tasks.register('loadCdkBuild') {
+    description = "Build the load CDK package and toolkits (includes base as transitive dependency)"
+    dependsOn loadProjects.collect { "$it:build" }
+}
+tasks.register('loadCdkPublish') {
+    description = "Publish the load CDK package and toolkits"
+    dependsOn loadProjects.collect { "$it:publish" }
 }

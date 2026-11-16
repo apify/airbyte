@@ -1,17 +1,17 @@
 data:
   ab_internal:
     ql: 200
-    sl: 100
+    sl: 300
   allowedHosts:
     hosts:
       - storage.googleapis.com
       - accounts.google.com
   connectorBuildOptions:
-    baseImage: docker.io/airbyte/python-connector-base:2.0.0@sha256:c44839ba84406116e8ba68722a0f30e8f6e7056c726f447681bb9e9ece8bd916
+    baseImage: docker.io/airbyte/python-connector-base:4.1.1@sha256:a268b44c733ae699a60f5fbc06a324945dba98945c6e2ab7f8609f2f895b0d28
   connectorSubtype: file
   connectorType: source
   definitionId: 2a8c41ae-8c23-4be0-a73f-2ab10ca1a820
-  dockerImageTag: 0.7.2
+  dockerImageTag: 0.10.42
   dockerRepository: airbyte/source-gcs
   documentationUrl: https://docs.airbyte.com/integrations/sources/gcs
   githubIssueLabel: source-gcs
@@ -19,6 +19,14 @@ data:
   license: ELv2
   maxSecondsBetweenMessages: 5400
   name: Google Cloud Storage (GCS)
+  releases:
+    rolloutConfiguration:
+      enableProgressiveRollout: true
+      defaultRolloutMode: autopilot
+      autopilotConfig:
+        autoStart: true
+        autoPromoteStages: true
+        strategy: fast
   remoteRegistries:
     pypi:
       enabled: true
@@ -29,13 +37,34 @@ data:
     oss:
       enabled: true
   releaseStage: alpha
-  supportLevel: community
+  supportLevel: certified
   tags:
     - language:python
     - cdk:python-file-based
   connectorTestSuitesOptions:
     - suite: unitTests
     - suite: integrationTests
+      testSecrets:
+        - name: SECRET_SOURCE-GCS__CREDS
+          fileName: config.json
+          secretStore:
+            type: GSM
+            alias: airbyte-connector-testing-secret-store
+        - name: SECRET_SOURCE-GCS_JSONL__CREDS
+          fileName: config_jsonl.json
+          secretStore:
+            type: GSM
+            alias: airbyte-connector-testing-secret-store
+        - name: SECRET_SOURCE-GCS_GLOB__CREDS
+          fileName: config_glob.json
+          secretStore:
+            type: GSM
+            alias: airbyte-connector-testing-secret-store
+        - name: SECRET_SOURCE-GCS_OAUTH
+          fileName: config_oauth.json
+          secretStore:
+            type: GSM
+            alias: airbyte-connector-testing-secret-store
     - suite: liveTests
       testConnections:
         - name: gcs_old_config_dev_null
@@ -64,4 +93,19 @@ data:
           secretStore:
             type: GSM
             alias: airbyte-connector-testing-secret-store
+        - name: SECRET_SOURCE-GCS_OAUTH
+          fileName: config_oauth.json
+          secretStore:
+            type: GSM
+            alias: airbyte-connector-testing-secret-store
+  externalDocumentationUrls:
+    - title: Google Cloud Storage documentation
+      url: https://cloud.google.com/storage/docs
+      type: api_reference
+    - title: GCS authentication
+      url: https://cloud.google.com/storage/docs/authentication
+      type: authentication_guide
+    - title: Google Cloud Status
+      url: https://status.cloud.google.com/
+      type: status_page
 metadataSpecVersion: "1.0"

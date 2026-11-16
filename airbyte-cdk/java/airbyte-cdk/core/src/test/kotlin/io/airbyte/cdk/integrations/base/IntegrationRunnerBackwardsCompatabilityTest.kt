@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.base
 
@@ -23,7 +23,7 @@ class IntegrationRunnerBackwardsCompatabilityTest {
                 "This is line 1 with an escaped newline \\n character\nThis is line 2 with another escaped newline \\n character",
                 "This is line 1\n\n",
                 "\nThis is line 2",
-                "\n"
+                "\n",
             )
 
         for (testInput in testInputs) {

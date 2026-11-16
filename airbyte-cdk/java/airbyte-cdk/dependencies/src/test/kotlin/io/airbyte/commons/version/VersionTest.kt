@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.version
 
@@ -12,9 +12,10 @@ internal class VersionTest {
     fun testJsonSerializationDeserialization() {
         val jsonString =
             """
-                              {"version": "1.2.3"}
-                              
-                              """.trimIndent()
+            {"version": "1.2.3"}
+
+            """
+                .trimIndent()
         val expectedVersion = Version("1.2.3")
 
         val deserializedVersion = Jsons.deserialize(jsonString, Version::class.java)

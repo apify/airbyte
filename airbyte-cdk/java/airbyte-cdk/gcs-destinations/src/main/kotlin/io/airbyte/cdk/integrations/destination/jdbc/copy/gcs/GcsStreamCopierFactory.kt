@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.jdbc.copy.gcs
 
@@ -27,7 +27,7 @@ abstract class GcsStreamCopierFactory : StreamCopierFactory<GcsConfig> {
         configuredStream: ConfiguredAirbyteStream?,
         nameTransformer: StandardNameTransformer?,
         db: JdbcDatabase?,
-        sqlOperations: SqlOperations?
+        sqlOperations: SqlOperations?,
     ): StreamCopier {
         try {
             val stream = configuredStream!!.stream
@@ -53,7 +53,7 @@ abstract class GcsStreamCopierFactory : StreamCopierFactory<GcsConfig> {
                 db,
                 config,
                 nameTransformer,
-                sqlOperations
+                sqlOperations,
             )
         } catch (e: Exception) {
             throw RuntimeException(e)
@@ -71,6 +71,6 @@ abstract class GcsStreamCopierFactory : StreamCopierFactory<GcsConfig> {
         db: JdbcDatabase?,
         gcsConfig: GcsConfig?,
         nameTransformer: StandardNameTransformer?,
-        sqlOperations: SqlOperations?
+        sqlOperations: SqlOperations?,
     ): StreamCopier
 }

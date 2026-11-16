@@ -1,4 +1,4 @@
-/* Copyright (c) 2024 Airbyte, Inc., all rights reserved. */
+/* Copyright (c) 2026 Airbyte, Inc., all rights reserved. */
 package io.airbyte.cdk.command
 
 import com.fasterxml.jackson.databind.JsonNode
@@ -69,6 +69,19 @@ object ValidatedJsonUtils {
     }
 
     fun <T> parseUnvalidated(
+        json: String,
+        klazz: Class<T>,
+    ): T {
+        val tree: JsonNode =
+            try {
+                Jsons.readTree(json)
+            } catch (e: Exception) {
+                throw ConfigErrorException("malformed json value while parsing for $klazz", e)
+            }
+        return parseUnvalidated(tree, klazz)
+    }
+
+    fun <T> parseUnvalidated(
         jsonNode: JsonNode,
         klazz: Class<T>,
     ): T =
@@ -119,7 +132,7 @@ object ValidatedJsonUtils {
                     }
                     if (!node.contains("\$ref")) {
                         // Nothing to inline here, just recurse over all object field values.
-                        for (pair in node.fields()) {
+                        for (pair in node.properties()) {
                             walk(pair.value, *visitedRefs)
                         }
                         return
@@ -134,7 +147,7 @@ object ValidatedJsonUtils {
                             ?: throw ConfigErrorException(
                                 "Undefined \$ref '$ref' found in JSON schema",
                             )
-                    for (pair in definition.fields()) {
+                    for (pair in definition.properties()) {
                         // Inline the definition in the current object.
                         // When a key is already present, keep the existing value.
                         if (!node.contains(pair.key)) {
@@ -144,7 +157,7 @@ object ValidatedJsonUtils {
                     node.remove("\$ref")
                     // Recurse over the object field values, including those which have just been
                     // inlined.
-                    for (pair in node.fields()) {
+                    for (pair in node.properties()) {
                         walk(pair.value, ref, *visitedRefs)
                     }
                 }

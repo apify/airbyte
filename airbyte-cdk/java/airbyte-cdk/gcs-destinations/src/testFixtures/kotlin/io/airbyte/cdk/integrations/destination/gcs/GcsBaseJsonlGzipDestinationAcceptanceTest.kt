@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs
 
@@ -19,12 +19,12 @@ abstract class GcsBaseJsonlGzipDestinationAcceptanceTest : GcsBaseJsonlDestinati
 
     override val formatConfig: JsonNode?
         get() = // config without compression defaults to GZIP
-        Jsons.jsonNode(Map.of("format_type", outputFormat))
+            Jsons.jsonNode(Map.of("format_type", outputFormat))
 
     @Throws(IOException::class)
     override fun getReader(s3Object: S3Object): BufferedReader {
         return BufferedReader(
-            InputStreamReader(GZIPInputStream(s3Object.objectContent), StandardCharsets.UTF_8)
+            InputStreamReader(GZIPInputStream(s3Object.objectContent), StandardCharsets.UTF_8),
         )
     }
 }

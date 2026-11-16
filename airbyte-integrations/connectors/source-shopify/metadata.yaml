@@ -7,11 +7,11 @@ data:
       - ${shop}.myshopify.com
       - shopify.com
   connectorBuildOptions:
-    baseImage: docker.io/airbyte/python-connector-base:2.0.0@sha256:c44839ba84406116e8ba68722a0f30e8f6e7056c726f447681bb9e9ece8bd916
+    baseImage: docker.io/airbyte/python-connector-base:4.1.1@sha256:a268b44c733ae699a60f5fbc06a324945dba98945c6e2ab7f8609f2f895b0d28
   connectorSubtype: api
   connectorType: source
   definitionId: 9da77001-af33-4bcd-be46-6252bf9342b9
-  dockerImageTag: 2.5.2
+  dockerImageTag: 4.3.6
   dockerRepository: airbyte/source-shopify
   documentationUrl: https://docs.airbyte.com/integrations/sources/shopify
   erdUrl: https://dbdocs.io/airbyteio/source-shopify?view=relationships
@@ -31,6 +31,13 @@ data:
       enabled: true
   releaseStage: generally_available
   releases:
+    rolloutConfiguration:
+      enableProgressiveRollout: true
+      defaultRolloutMode: autopilot
+      autopilotConfig:
+        autoStart: true
+        autoPromoteStages: true
+        strategy: slow
     breakingChanges:
       1.0.0:
         message: "This upgrade brings changes to certain streams after migration to Shopify API version `2023-07`, more details in this PR: https://github.com/airbytehq/airbyte/pull/29361."
@@ -75,6 +82,28 @@ data:
         scopedImpact:
           - scopeType: stream
             impactedScopes: ["countries"]
+      2.6.1:
+        message:
+          "The `ProductsGraphQL` and the `CustomerSavedSearch` streams have been deprecated by Shopify and removed from Airbyte.
+          Please use the `Products` stream instead. As of 2025-01-16, Shopify no longer provides data for the affected streams. More details here: https://github.com/airbytehq/airbyte/pull/51037."
+        upgradeDeadline: "2025-01-16"
+        scopedImpact:
+          - scopeType: stream
+            impactedScopes: ["products_graph_ql", "customer_saved_search"]
+      3.0.0:
+        message: "After upgrading to Source Shopify v3.0.0 latest v2025-01 API version will be used by the source. Due to API upgrade streams `Countries` and `Product Variants` contain schema changes that require Refreshing Source Schema and Clearing affected streams. Streams `Articles`, `Blogs` and `Pages` change value for field `admin_graphql_api_id`, if you rely on this value please Clear and Resync affected streams. See more details on https://docs.airbyte.com/integrations/sources/shopify-migrations."
+        upgradeDeadline: "2025-04-01"
+        scopedImpact:
+          - scopeType: stream
+            impactedScopes:
+              ["countries", "product_variants", "articles", "blogs", "pages"]
+      4.0.0:
+        message: "The `orders.processed_at` and `order_refunds.processed_at` fields are now declared as `format: date-time`. Typed destinations will change these columns from string/VARCHAR to timestamp-with-timezone. Refresh the source schema and resync the `orders` and `order_refunds` streams, and update any downstream SQL, dbt models, or BI logic that treats these columns as text. See https://docs.airbyte.com/integrations/sources/shopify-migrations."
+        upgradeDeadline: "2026-09-09"
+        deadlineAction: "disable"
+        scopedImpact:
+          - scopeType: stream
+            impactedScopes: ["orders", "order_refunds"]
   suggestedStreams:
     streams:
       - customers
@@ -92,7 +121,6 @@ data:
       - inventory_levels
       - custom_collections
       - fulfillments
-      - products_graph_ql
       - product_images
       - collects
       - tender_transactions
@@ -105,6 +133,7 @@ data:
       - fulfillment_orders
       - metafield_shops
       - countries
+      - market_countries
       - metafield_product_variants
       - metafield_smart_collections
       - metafield_product_images
@@ -148,4 +177,29 @@ data:
           secretStore:
             type: GSM
             alias: airbyte-connector-testing-secret-store
+  externalDocumentationUrls:
+    - title: Shopify Admin API
+      url: https://shopify.dev/docs/api/admin-rest
+      type: api_reference
+    - title: Developer changelog
+      url: https://shopify.dev/changelog
+      type: api_release_history
+    - title: Shopify API changelog
+      url: https://shopify.dev/changelog/release-notes
+      type: api_release_history
+    - title: Shopify authentication
+      url: https://shopify.dev/docs/apps/auth
+      type: authentication_guide
+    - title: Shopify GraphQL Admin API
+      url: https://shopify.dev/docs/api/admin-graphql
+      type: api_reference
+    - title: Shopify rate limits
+      url: https://shopify.dev/docs/api/usage/limits
+      type: rate_limits
+    - title: Shopify API versioning and deprecation policy
+      url: https://shopify.dev/docs/api/usage/versioning
+      type: api_deprecations
+    - title: Shopify Status
+      url: https://www.shopifystatus.com/
+      type: status_page
 metadataSpecVersion: "1.0"

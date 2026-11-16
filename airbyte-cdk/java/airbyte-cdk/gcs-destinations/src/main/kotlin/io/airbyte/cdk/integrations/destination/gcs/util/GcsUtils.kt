@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs.util
 
@@ -25,7 +25,7 @@ object GcsUtils {
         name: String,
         namespace: String,
         appendAirbyteFields: Boolean,
-        useDestinationsV2Columns: Boolean
+        useDestinationsV2Columns: Boolean,
     ): Schema? {
         LOGGER.info { "Default schema." }
         val stdName = AvroConstants.NAME_TRANSFORMER.getIdentifier(name)

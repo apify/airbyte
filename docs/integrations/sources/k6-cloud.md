@@ -1,5 +1,19 @@
 # K6 Cloud API
 
+:::warning
+
+## Deprecation Notice
+
+The K6 Cloud source connector has been archived and is no longer available in Airbyte Cloud or the OSS connector registry.
+
+This connector targets the legacy k6 Cloud product (`app.k6.io`, REST endpoints `/v3/organizations`, `/v3/organizations/{id}/projects` and `/loadtests/v2/tests` on `api.k6.io`). Grafana Labs [sunset app.k6.io in September 2024](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/k6/reference/migrate-from-app-k6-io-to-gck6/) and migrated all accounts to Grafana Cloud k6. Legacy API tokens no longer authenticate: the API now answers `app.k6.io has been migrated to Grafana Cloud. To continue using k6 Cloud, please start a new account at https://grafana.com/products/cloud/k6/`, and the `organizations` stream used by the connection check returns HTTP 500. No sync of this connector has succeeded since the sunset.
+
+### Recommended Actions
+
+The replacement [Grafana Cloud k6 REST API](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/k6/reference/cloud-rest-api/) (`https://api.k6.io/cloud/v6/...`) uses a different resource model and requires a Grafana Cloud API token plus an `X-Stack-Id` header, so it is not a drop-in replacement for this connector. Users who want to sync Grafana Cloud k6 data are advised to build a connector for that API with the [Connector Builder](https://docs.airbyte.com/platform/connector-development/connector-builder-ui/overview).
+
+:::
+
 ## Sync overview
 
 This source can sync data from the [K6 Cloud API](https://developers.k6.io). At present this connector only supports full refresh syncs meaning that each time you use the connector it will sync all available records from scratch. Please use cautiously if you expect your API to have a lot of records.
@@ -25,6 +39,10 @@ This source can sync data from the [K6 Cloud API](https://developers.k6.io). At 
 
 - API Token
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -32,7 +50,33 @@ This source can sync data from the [K6 Cloud API](https://developers.k6.io). At 
 
 | Version | Date       | Pull Request                                              | Subject                                                                         |
 | :------ | :--------- | :-------------------------------------------------------- | :------------------------------------------------------------------------------ |
-| 0.2.1   | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version   |
+| 0.2.27 | 2026-10-07 | [88222](https://github.com/airbytehq/airbyte/pull/88222) | Archive connector: the legacy k6 Cloud (app.k6.io) API it targets was sunset by Grafana Labs in September 2024 |
+| 0.2.26 | 2025-05-24 | [60713](https://github.com/airbytehq/airbyte/pull/60713) | Update dependencies |
+| 0.2.25 | 2025-05-10 | [59830](https://github.com/airbytehq/airbyte/pull/59830) | Update dependencies |
+| 0.2.24 | 2025-05-03 | [59232](https://github.com/airbytehq/airbyte/pull/59232) | Update dependencies |
+| 0.2.23 | 2025-04-26 | [58780](https://github.com/airbytehq/airbyte/pull/58780) | Update dependencies |
+| 0.2.22 | 2025-04-19 | [58224](https://github.com/airbytehq/airbyte/pull/58224) | Update dependencies |
+| 0.2.21 | 2025-04-12 | [57693](https://github.com/airbytehq/airbyte/pull/57693) | Update dependencies |
+| 0.2.20 | 2025-04-05 | [57092](https://github.com/airbytehq/airbyte/pull/57092) | Update dependencies |
+| 0.2.19 | 2025-03-29 | [56698](https://github.com/airbytehq/airbyte/pull/56698) | Update dependencies |
+| 0.2.18 | 2025-03-22 | [56019](https://github.com/airbytehq/airbyte/pull/56019) | Update dependencies |
+| 0.2.17 | 2025-03-08 | [55486](https://github.com/airbytehq/airbyte/pull/55486) | Update dependencies |
+| 0.2.16 | 2025-03-01 | [54748](https://github.com/airbytehq/airbyte/pull/54748) | Update dependencies |
+| 0.2.15 | 2025-02-22 | [54290](https://github.com/airbytehq/airbyte/pull/54290) | Update dependencies |
+| 0.2.14 | 2025-02-15 | [53830](https://github.com/airbytehq/airbyte/pull/53830) | Update dependencies |
+| 0.2.13 | 2025-02-08 | [53251](https://github.com/airbytehq/airbyte/pull/53251) | Update dependencies |
+| 0.2.12 | 2025-02-01 | [52732](https://github.com/airbytehq/airbyte/pull/52732) | Update dependencies |
+| 0.2.11 | 2025-01-25 | [52229](https://github.com/airbytehq/airbyte/pull/52229) | Update dependencies |
+| 0.2.10 | 2025-01-18 | [51837](https://github.com/airbytehq/airbyte/pull/51837) | Update dependencies |
+| 0.2.9 | 2025-01-11 | [51190](https://github.com/airbytehq/airbyte/pull/51190) | Update dependencies |
+| 0.2.8 | 2024-12-28 | [50656](https://github.com/airbytehq/airbyte/pull/50656) | Update dependencies |
+| 0.2.7 | 2024-12-21 | [50077](https://github.com/airbytehq/airbyte/pull/50077) | Update dependencies |
+| 0.2.6 | 2024-12-14 | [49612](https://github.com/airbytehq/airbyte/pull/49612) | Update dependencies |
+| 0.2.5 | 2024-12-12 | [49242](https://github.com/airbytehq/airbyte/pull/49242) | Update dependencies |
+| 0.2.4 | 2024-12-11 | [48204](https://github.com/airbytehq/airbyte/pull/48204) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.2.3 | 2024-10-29 | [47895](https://github.com/airbytehq/airbyte/pull/47895) | Update dependencies |
+| 0.2.2 | 2024-10-28 | [47454](https://github.com/airbytehq/airbyte/pull/47454) | Update dependencies |
+| 0.2.1 | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version |
 | 0.2.0 | 2024-08-15 | [44137](https://github.com/airbytehq/airbyte/pull/44137) | Refactor connector to manifest-only format |
 | 0.1.15 | 2024-08-10 | [43493](https://github.com/airbytehq/airbyte/pull/43493) | Update dependencies |
 | 0.1.14 | 2024-08-03 | [43077](https://github.com/airbytehq/airbyte/pull/43077) | Update dependencies |

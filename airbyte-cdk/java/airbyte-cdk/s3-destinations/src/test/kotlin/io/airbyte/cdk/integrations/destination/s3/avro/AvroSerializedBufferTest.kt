@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.avro
@@ -165,7 +165,7 @@ class AvroSerializedBufferTest() {
             minExpectedByte: Long,
             maxExpectedByte: Long,
             config: UploadAvroFormatConfig,
-            expectedData: String
+            expectedData: String,
         ) {
             val outputFile: File = buffer.file
             (AvroSerializedBuffer.createFunction(config, { buffer })

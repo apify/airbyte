@@ -4,21 +4,28 @@
 
 
 import logging
+import re
 from typing import Any, List, Mapping, Tuple
+from urllib.parse import urlparse
+
+from requests.exceptions import ConnectionError, RequestException, SSLError
 
 from airbyte_cdk.models import FailureType, SyncMode
 from airbyte_cdk.sources import AbstractSource
 from airbyte_cdk.sources.streams import Stream
+from airbyte_cdk.sources.streams.http.error_handlers.default_error_mapping import DEFAULT_ERROR_MAPPING
+from airbyte_cdk.sources.streams.http.exceptions import BaseBackoffException
 from airbyte_cdk.utils import AirbyteTracedException
-from requests.exceptions import ConnectionError, RequestException, SSLError
 
 from .auth import MissingAccessTokenError, ShopifyAuthenticator
+from .http_request import ShopifyConnectionCheckErrorHandler
 from .scopes import ShopifyScopes
 from .streams.streams import (
     AbandonedCheckouts,
     Articles,
     BalanceTransactions,
     Blogs,
+    CollectionProducts,
     Collections,
     Collects,
     Countries,
@@ -26,8 +33,9 @@ from .streams.streams import (
     CustomerAddress,
     CustomerJourneySummary,
     Customers,
-    CustomerSavedSearch,
+    DeletedProducts,
     DiscountCodes,
+    DiscountCodesSync,
     Disputes,
     DraftOrders,
     FulfillmentOrders,
@@ -35,6 +43,7 @@ from .streams.streams import (
     InventoryItems,
     InventoryLevels,
     Locations,
+    MarketCountries,
     MetafieldArticles,
     MetafieldBlogs,
     MetafieldCollections,
@@ -56,14 +65,15 @@ from .streams.streams import (
     PriceRules,
     ProductImages,
     Products,
-    ProductsGraphQl,
     ProductVariants,
+    ProfileLocationGroups,
     Shop,
     SmartCollections,
     TenderTransactions,
     Transactions,
     TransactionsGraphql,
 )
+from .utils import ShopifyNonRetryableErrors, ShopifyWrongShopNameError
 
 
 class ConnectionCheckTest:
@@ -71,6 +81,9 @@ class ConnectionCheckTest:
         self.config = config
         # use `Shop` as a test stream for connection check
         self.test_stream = Shop(self.config)
+        self.test_stream._http_client._error_handler = ShopifyConnectionCheckErrorHandler(
+            self.test_stream.logger, error_mapping=DEFAULT_ERROR_MAPPING | ShopifyNonRetryableErrors(self.test_stream.name)
+        )
         # setting `max_retries` to 0 for the stage of `check connection`,
         # because it keeps retrying for wrong shop names,
         # but it should stop immediately
@@ -107,6 +120,12 @@ class ConnectionCheckTest:
             return False, self.describe_error("index_error", shop_name, response)
         except MissingAccessTokenError:
             return False, self.describe_error("missing_token_error")
+        except AirbyteTracedException as error:
+            if error.failure_type == FailureType.config_error:
+                raise
+            return False, self.describe_error("connection_error", shop_name)
+        except BaseBackoffException as error:
+            return False, self.describe_error("connection_error", shop_name) or str(error)
 
     def get_shop_id(self) -> str:
         """
@@ -131,15 +150,50 @@ class SourceShopify(AbstractSource):
     def continue_sync_on_stream_failure(self) -> bool:
         return True
 
-    @property
-    def raise_exception_on_missing_stream(self) -> bool:
-        return False
-
     @staticmethod
     def get_shop_name(config) -> str:
-        split_pattern = ".myshopify.com"
-        shop_name = config.get("shop")
-        return shop_name.split(split_pattern)[0] if split_pattern in shop_name else shop_name
+        """
+        Normalize the `shop` config value to the bare myshopify subdomain.
+
+        Accepts a bare handle (`my-store`) or a full URL
+        (`https://my-store.myshopify.com/`, scheme and trailing slash optional)
+        and returns `my-store`. Raises `ShopifyWrongShopNameError` (config_error)
+        for malformed input (embedded path, whitespace, invalid characters).
+
+        Idempotent: a value already normalized to a bare handle is returned unchanged.
+        """
+        raw = config.get("shop")
+        if not raw or not isinstance(raw, str) or not raw.strip():
+            raise ShopifyWrongShopNameError(raw)
+
+        value = raw.strip()
+        # If a scheme is present, parse out the host; urlparse only fills netloc
+        # when "://" is present.
+        if "://" in value:
+            try:
+                parsed = urlparse(value)
+            except ValueError:
+                raise ShopifyWrongShopNameError(raw)
+            host = parsed.netloc
+            if parsed.scheme not in ("http", "https") or parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+                raise ShopifyWrongShopNameError(raw)
+        else:
+            host, _, path = value.partition("/")
+            if path != "":
+                raise ShopifyWrongShopNameError(raw)
+
+        host = host.strip().lower()
+        suffix = ".myshopify.com"
+        if host.endswith(suffix):
+            host = host[: -len(suffix)]
+
+        # Final handle is a single label that must start and end with an alphanumeric,
+        # with hyphens allowed only in between. No dots, underscores, whitespace,
+        # leading/trailing hyphen, or empty string (none of which are valid myshopify handles).
+        if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", host):
+            raise ShopifyWrongShopNameError(raw)
+
+        return host
 
     @staticmethod
     def format_stream_name(name) -> str:
@@ -149,7 +203,12 @@ class SourceShopify(AbstractSource):
         """
         Testing connection availability for the connector.
         """
-        config["shop"] = self.get_shop_name(config)
+        try:
+            config["shop"] = self.get_shop_name(config)
+        except ShopifyWrongShopNameError as error:
+            # Surface the specific, actionable reason at check time instead of letting the
+            # exception escape to the generic top-level handler ("Something went wrong...").
+            return False, error.message
         config["authenticator"] = ShopifyAuthenticator(config)
         return ConnectionCheckTest(config).test_connection()
 
@@ -181,12 +240,14 @@ class SourceShopify(AbstractSource):
             Articles(config),
             BalanceTransactions(config),
             Blogs(config),
+            CollectionProducts(config),
             Collections(config),
             Collects(config),
             CustomCollections(config),
             CustomerJourneySummary(config),
             Customers(config),
             DiscountCodes(config),
+            DiscountCodesSync(config),
             Disputes(config),
             DraftOrders(config),
             FulfillmentOrders(config),
@@ -215,15 +276,15 @@ class SourceShopify(AbstractSource):
             PriceRules(config),
             ProductImages(config),
             Products(config),
-            ProductsGraphQl(config),
+            DeletedProducts(config),
             ProductVariants(config),
             Shop(config),
             SmartCollections(config),
             TenderTransactions(config),
             self.select_transactions_stream(config),
-            CustomerSavedSearch(config),
             CustomerAddress(config),
-            Countries(config),
+            Countries(config=config, parent=ProfileLocationGroups(config)),
+            MarketCountries(config),
         ]
 
         return [

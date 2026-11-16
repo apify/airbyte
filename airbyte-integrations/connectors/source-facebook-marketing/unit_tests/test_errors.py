@@ -6,14 +6,17 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import freezegun
 import pytest
-from airbyte_cdk.models import FailureType, SyncMode
-from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 from facebook_business import FacebookAdsApi, FacebookSession
 from facebook_business.exceptions import FacebookRequestError
 from source_facebook_marketing.api import API
 from source_facebook_marketing.streams import AdAccount, AdCreatives, AdsInsights
 from source_facebook_marketing.streams.common import traced_exception
+
+from airbyte_cdk.models import FailureType, SyncMode
+from airbyte_cdk.utils.traced_exception import AirbyteTracedException
+
 
 FB_API_VERSION = FacebookAdsApi.API_VERSION
 
@@ -113,7 +116,7 @@ CONFIG_ERRORS = [
                     "code": 100,
                 }
             },
-        }
+        },
         # Error randomly happens for different connections.
         # Can be reproduced on https://developers.facebook.com/tools/explorer/?method=GET&path=act_<ad_account_id>&version=v17.0
         # 1st reason: incorrect ad account id is used
@@ -183,7 +186,7 @@ CONFIG_ERRORS = [
                     "error_user_msg": "profile should always be linked to delegate page",
                 }
             },
-        }
+        },
         # Error happens on Video stream: https://graph.facebook.com/v17.0/act_XXXXXXXXXXXXXXXX/advideos
         # Recommendations says that the problem can be fixed by switching to Business Ad Account Id
     ),
@@ -215,8 +218,44 @@ CONFIG_ERRORS = [
                     "message": "(#3018) The start date of the time range cannot be beyond 37 months from the current date",
                     "type": "OAuthException",
                     "code": 3018,
-                    "fbtrace_id": "Ag-P22y80OSEXM4qsGk2T9P"
-                  }
+                    "fbtrace_id": "Ag-P22y80OSEXM4qsGk2T9P",
+                }
+            },
+        },
+    ),
+    (
+        "error_100_subcode_2446289_no_access_to_resource",
+        "No access to resource.",
+        {
+            "status_code": 400,
+            "json": {
+                "error": {
+                    "message": "(#100) No access to resource.",
+                    "type": "OAuthException",
+                    "code": 100,
+                    "error_subcode": 2446289,
+                    "fbtrace_id": "Ag-P22y80OSEXM4qsGk2T9P",
+                }
+            },
+        },
+    ),
+    (
+        "error_400_invalid_oauth_access_token_cannot_parse",
+        "The access token for this connection is invalid or corrupted. "
+        "This may be caused by browser autofill overwriting the OAuth token with saved credentials. "
+        "Please re-authenticate your Facebook connection by clicking 'Authenticate your account' and saving the configuration. "
+        "See https://docs.airbyte.com/integrations/sources/facebook-marketing#connection-check-fails-with-invalid-access-token-after-re-authenticating for details. "
+        "If re-authentication does not resolve the issue, go to facebook.com > Settings > Business Integrations, "
+        "remove the Airbyte app, and then re-authenticate again.",
+        {
+            "status_code": 400,
+            "json": {
+                "error": {
+                    "message": "Invalid OAuth access token - Cannot parse access token",
+                    "type": "OAuthException",
+                    "code": 190,
+                    "fbtrace_id": "ANDUkKsQWt5hhp9CkhgTjdt",
+                }
             },
         },
     ),
@@ -252,27 +291,28 @@ CONFIG_ERRORS = [
 
 SERVICE_TEMPORARILY_UNAVAILABLE_TEST_NAME = "error_400_service_temporarily_unavailable"
 SERVICE_TEMPORARILY_UNAVAILABLE_RESPONSE = {
-                    "status_code": 503,
-                    "json": {
-                        "error": {
-                            "message": "(#2) Service temporarily unavailable",
-                            "type": "OAuthException",
-                            "is_transient": True,
-                            "code": 2,
-                            "fbtrace_id": "AnUyGZoFqN2m50GHVpOQEqr",
-                        }
-                    },
-                }
+    "status_code": 503,
+    "json": {
+        "error": {
+            "message": "(#2) Service temporarily unavailable",
+            "type": "OAuthException",
+            "is_transient": True,
+            "code": 2,
+            "fbtrace_id": "AnUyGZoFqN2m50GHVpOQEqr",
+        }
+    },
+}
 REDUCE_FIELDS_ERROR_TEST_NAME = "error_500_reduce_the_amount_of_data"
 REDUCE_FIELDS_ERROR_RESPONSE = {
-                    "status_code": 500,
-                    "json": {
-                        "error": {
-                            "message": "Please reduce the amount of data you're asking for, then retry your request",
-                            "code": 1,
-                        }
-                    },
-                }
+    "status_code": 500,
+    "json": {
+        "error": {
+            "message": "Please reduce the amount of data you're asking for, then retry your request",
+            "code": 1,
+        }
+    },
+}
+
 
 class TestRealErrors:
     @pytest.mark.parametrize(
@@ -406,23 +446,24 @@ class TestRealErrors:
             assert error.failure_type == FailureType.config_error
             assert friendly_msg in error.message
 
-    @pytest.mark.parametrize("name, friendly_msg, config_error_response, failure_type",
-                             [
-                                (
-                                     REDUCE_FIELDS_ERROR_TEST_NAME,
-                                     "Please reduce the number of fields requested. Go to the schema tab, "
-                                     "select your source, and unselect the fields you do not need.",
-                                     REDUCE_FIELDS_ERROR_RESPONSE,
-                                     FailureType.config_error
-                                ),
-                                (
-                                    SERVICE_TEMPORARILY_UNAVAILABLE_TEST_NAME,
-                                    "The Facebook API service is temporarily unavailable. This issue should resolve itself, and does not require further action.",
-                                    SERVICE_TEMPORARILY_UNAVAILABLE_RESPONSE,
-                                    FailureType.transient_error
-                                )
-                             ]
-                            )
+    @pytest.mark.parametrize(
+        "name, friendly_msg, config_error_response, failure_type",
+        [
+            (
+                REDUCE_FIELDS_ERROR_TEST_NAME,
+                "Please reduce the number of fields requested. Go to the schema tab, "
+                "select your source, and unselect the fields you do not need.",
+                REDUCE_FIELDS_ERROR_RESPONSE,
+                FailureType.config_error,
+            ),
+            (
+                SERVICE_TEMPORARILY_UNAVAILABLE_TEST_NAME,
+                "The Facebook API service is temporarily unavailable. This issue should resolve itself, and does not require further action.",
+                SERVICE_TEMPORARILY_UNAVAILABLE_RESPONSE,
+                FailureType.transient_error,
+            ),
+        ],
+    )
     def test_config_error_that_was_retried_when_reading_nodes(self, requests_mock, name, friendly_msg, config_error_response, failure_type):
         """This test covers errors that have been resolved in the past with a retry strategy, but it could also can fail after retries,
         then, we need to provide the user with a humanized error explaining what just happened"""
@@ -449,6 +490,7 @@ class TestRealErrors:
             assert error.failure_type == failure_type
             assert (friendly_msg) in error.message
 
+    @freezegun.freeze_time("2011-12-31")
     @pytest.mark.parametrize("name, friendly_msg, config_error_response", CONFIG_ERRORS)
     def test_config_error_insights_account_info_read(self, requests_mock, name, friendly_msg, config_error_response):
         """Error raised during actual nodes read"""
@@ -472,6 +514,7 @@ class TestRealErrors:
             assert error.failure_type == FailureType.config_error
             assert friendly_msg in error.message
 
+    @freezegun.freeze_time("2011-12-31")
     @pytest.mark.parametrize("name, friendly_msg, config_error_response", [CONFIG_ERRORS[0]])
     def test_config_error_insights_during_actual_nodes_read(self, requests_mock, name, friendly_msg, config_error_response):
         """Error raised during actual nodes read"""
@@ -497,8 +540,9 @@ class TestRealErrors:
             assert error.failure_type == FailureType.config_error
             assert friendly_msg in error.message
 
+    @freezegun.freeze_time("2011-12-31")
     def test_retry_for_cannot_include_error(self, requests_mock):
-        """Error raised randomly for insights stream. Oncall: https://github.com/airbytehq/oncall/issues/4868 """
+        """Error raised randomly for insights stream. Oncall: https://github.com/airbytehq/oncall/issues/4868"""
 
         api = API(access_token=some_config["access_token"], page_size=100)
         stream = AdsInsights(
@@ -516,7 +560,7 @@ class TestRealErrors:
                 "error": {
                     "message": "(#100) Cannot include video_avg_time_watched_actions, video_continuous_2_sec_watched_actions in summary param because they weren't there while creating the report run.",
                     "type": "OAuthException",
-                    "code": 100
+                    "code": 100,
                 }
             },
         }
@@ -588,30 +632,87 @@ class TestRealErrors:
         assert list(record_gen) == [{"account_id": "unknown_account", "id": "act_unknown_account"}]
 
 
+class TestNoneApiErrorMessage:
+    """Regression tests for oncall/issues/11621: TypeError when api_error_message() returns None."""
+
+    @freezegun.freeze_time("2011-12-31")
+    def test_retry_logic_does_not_crash_when_api_error_message_is_none(self, some_config, requests_mock):
+        """A 400 response with no 'message' in the error body must not raise TypeError in should_retry_api_error."""
+        api = API(access_token=some_config["access_token"], page_size=100)
+        stream = AdsInsights(
+            api=api,
+            account_ids=some_config["account_ids"],
+            start_date=datetime(2010, 1, 1),
+            end_date=datetime(2011, 1, 1),
+            fields=["account_id", "account_currency"],
+            insights_lookback_window=28,
+        )
+        requests_mock.register_uri("GET", f"{act_url}", [ad_account_response])
+        response_no_message = {
+            "status_code": 400,
+            "json": {
+                "error": {
+                    "type": "OAuthException",
+                    "code": 100,
+                }
+            },
+        }
+        requests_mock.register_uri("GET", f"{act_url}insights", [response_no_message])
+
+        with pytest.raises(AirbyteTracedException):
+            slice_ = list(stream.stream_slices(sync_mode=SyncMode.full_refresh, stream_state={}))[0]
+            list(stream.read_records(sync_mode=SyncMode.full_refresh, stream_slice=slice_, stream_state={}))
+
+    def test_retry_logic_does_not_crash_for_ad_creatives_when_api_error_message_is_none(self, some_config, requests_mock):
+        """Non-insights streams also go through the same retry path; verify no TypeError."""
+        requests_mock.reset_mock()
+        api = API(access_token=some_config["access_token"], page_size=100)
+        stream = AdCreatives(api=api, account_ids=some_config["account_ids"])
+
+        requests_mock.register_uri("GET", f"{act_url}", [ad_account_response])
+        response_no_message = {
+            "status_code": 400,
+            "json": {
+                "error": {
+                    "type": "OAuthException",
+                    "code": 100,
+                }
+            },
+        }
+        requests_mock.register_uri("GET", f"{act_url}adcreatives", [response_no_message])
+
+        with pytest.raises(AirbyteTracedException):
+            list(
+                stream.read_records(
+                    sync_mode=SyncMode.full_refresh,
+                    stream_state={},
+                    stream_slice={"account_id": account_id},
+                )
+            )
+
+
 def test_traced_exception_with_api_error():
     error = FacebookRequestError(
         message="Some error occurred",
         request_context={},
         http_status=400,
         http_headers={},
-        body='{"error": {"message": "Error validating access token", "code": 190}}'
+        body='{"error": {"message": "Error validating access token", "code": 190}}',
     )
     error.api_error_message = MagicMock(return_value="Error validating access token")
-    
+
     result = traced_exception(error)
-    
+
     assert isinstance(result, AirbyteTracedException)
-    assert result.message == "Invalid access token. Re-authenticate if FB oauth is used or refresh access token with all required permissions"
+    assert (
+        result.message == "Invalid access token. Re-authenticate if FB oauth is used or refresh access token with all required permissions"
+    )
     assert result.failure_type == FailureType.config_error
 
 
 def test_traced_exception_without_api_error():
     error = FacebookRequestError(
-        message="Call was unsuccessful. The Facebook API has imploded",
-        request_context={},
-        http_status=408,
-        http_headers={},
-        body='{}'
+        message="Call was unsuccessful. The Facebook API has imploded", request_context={}, http_status=408, http_headers={}, body="{}"
     )
     error.api_error_message = MagicMock(return_value=None)
 
@@ -620,3 +721,81 @@ def test_traced_exception_without_api_error():
     assert isinstance(result, AirbyteTracedException)
     assert result.message == "Error code 408: Call was unsuccessful. The Facebook API has imploded."
     assert result.failure_type == FailureType.system_error
+
+
+ERROR_USER_TITLE = "First Dof Value Should Match Object Story Spec Field"
+ERROR_USER_MSG = (
+    "For a Degrees of freedom enabled ad, the first value of Asset Feed Spec field "
+    "should match the corresponding field in Object Story Spec."
+)
+
+
+@pytest.mark.parametrize(
+    "error_body, expected_message",
+    (
+        (
+            {
+                "message": "Invalid parameter",
+                "code": 100,
+                "error_subcode": 2446211,
+                "error_user_title": ERROR_USER_TITLE,
+                "error_user_msg": ERROR_USER_MSG,
+            },
+            f"Error code 100 (subcode 2446211): Invalid parameter. Facebook details: {ERROR_USER_TITLE}. {ERROR_USER_MSG}",
+        ),
+        (
+            {
+                "message": "Invalid parameter",
+                "code": 100,
+                "error_user_title": ERROR_USER_TITLE,
+                "error_user_msg": ERROR_USER_MSG,
+            },
+            f"Error code 100: Invalid parameter. Facebook details: {ERROR_USER_TITLE}. {ERROR_USER_MSG}",
+        ),
+        (
+            {
+                "message": "Invalid parameter",
+                "code": 100,
+                "error_subcode": 2446211,
+                "error_user_msg": ERROR_USER_MSG,
+            },
+            f"Error code 100 (subcode 2446211): Invalid parameter. Facebook details: {ERROR_USER_MSG}",
+        ),
+        (
+            {"message": "Invalid parameter", "code": 100, "error_subcode": 2446211},
+            "Error code 100: Invalid parameter.",
+        ),
+        (
+            {
+                "message": "Invalid parameter",
+                "code": 100,
+                "error_subcode": 2446211,
+                "error_user_title": ERROR_USER_TITLE,
+                "error_user_msg": ERROR_USER_TITLE,
+            },
+            f"Error code 100 (subcode 2446211): Invalid parameter. Facebook details: {ERROR_USER_TITLE}.",
+        ),
+    ),
+    ids=(
+        "title_and_msg_with_subcode",
+        "title_and_msg_without_subcode",
+        "msg_only_with_subcode",
+        "no_user_fields_with_subcode",
+        "duplicate_title_and_msg",
+    ),
+)
+def test_traced_exception_fallback_includes_user_facing_details(error_body, expected_message):
+    error = FacebookRequestError(
+        message="Call was not successful",
+        request_context={},
+        http_status=400,
+        http_headers={},
+        body=json.dumps({"error": error_body}),
+    )
+
+    result = traced_exception(error)
+
+    assert isinstance(result, AirbyteTracedException)
+    assert result.message == expected_message
+    assert result.failure_type == FailureType.system_error
+    assert result.internal_message == "Invalid parameter"

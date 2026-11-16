@@ -1,76 +1,24 @@
 [
   {
     "id": 281,
-    "author": "system",
-    "date_created": "2017-03-21T16:46:41",
-    "date_created_gmt": "2017-03-21T19:46:41",
-    "note": "Order ok!!!",
+    "author": "WooCommerce",
+    "date_created": "2024-03-15T10:31:00",
+    "date_created_gmt": "2024-03-15T10:31:00",
+    "note": "Payment received via Stripe.",
     "customer_note": false,
     "_links": {
       "self": [
         {
-          "href": "https://example.com/wp-json/wc/v3/orders/723/notes/281"
+          "href": "https://test-shop.example.com/wp-json/wc/v3/orders/727/notes/281"
         }
       ],
       "collection": [
         {
-          "href": "https://example.com/wp-json/wc/v3/orders/723/notes"
+          "href": "https://test-shop.example.com/wp-json/wc/v3/orders/727/notes"
         }
       ],
       "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723"
-        }
-      ]
-    }
-  },
-  {
-    "id": 280,
-    "author": "system",
-    "date_created": "2017-03-21T16:16:58",
-    "date_created_gmt": "2017-03-21T19:16:58",
-    "note": "Order status changed from On hold to Completed.",
-    "customer_note": false,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723/notes/280"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723/notes"
-        }
-      ],
-      "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723"
-        }
-      ]
-    }
-  },
-  {
-    "id": 279,
-    "author": "system",
-    "date_created": "2017-03-21T16:16:46",
-    "date_created_gmt": "2017-03-21T19:16:46",
-    "note": "Awaiting BACS payment Order status changed from Pending payment to On hold.",
-    "customer_note": false,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723/notes/279"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723/notes"
-        }
-      ],
-      "up": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/orders/723"
-        }
+        { "href": "https://test-shop.example.com/wp-json/wc/v3/orders/727" }
       ]
     }
   }

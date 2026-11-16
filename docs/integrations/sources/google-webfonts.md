@@ -61,6 +61,10 @@ The Google-webfonts source connector supports the following [sync modes](https:/
 
 Google Webfont's [API reference](https://developers.google.com/fonts/docs/developer_api) has v1 at present and v2 is at development. The connector as default uses v1.
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -68,6 +72,32 @@ Google Webfont's [API reference](https://developers.google.com/fonts/docs/develo
 
 | Version | Date       | Pull Request                                             | Subject                                                                         |
 | :------ | :--------- | :------------------------------------------------------- |:--------------------------------------------------------------------------------|
+| 0.2.26 | 2026-11-09 | [91380](https://github.com/airbytehq/airbyte/pull/91380) | Upgrade to `source-declarative-manifest` base image 7.47.0 |
+| 0.2.25 | 2026-10-13 | [78752](https://github.com/airbytehq/airbyte/pull/78752) | Update dependencies |
+| 0.2.24 | 2026-10-07 | [88266](https://github.com/airbytehq/airbyte/pull/88266) | Fix `fonts` stream schema to describe the actual font records instead of the API response envelope |
+| 0.2.23 | 2025-05-24 | [60589](https://github.com/airbytehq/airbyte/pull/60589) | Update dependencies |
+| 0.2.22 | 2025-05-10 | [59881](https://github.com/airbytehq/airbyte/pull/59881) | Update dependencies |
+| 0.2.21 | 2025-05-03 | [58811](https://github.com/airbytehq/airbyte/pull/58811) | Update dependencies |
+| 0.2.20 | 2025-04-19 | [58205](https://github.com/airbytehq/airbyte/pull/58205) | Update dependencies |
+| 0.2.19 | 2025-04-12 | [57668](https://github.com/airbytehq/airbyte/pull/57668) | Update dependencies |
+| 0.2.18 | 2025-04-05 | [57077](https://github.com/airbytehq/airbyte/pull/57077) | Update dependencies |
+| 0.2.17 | 2025-03-29 | [56658](https://github.com/airbytehq/airbyte/pull/56658) | Update dependencies |
+| 0.2.16 | 2025-03-22 | [56054](https://github.com/airbytehq/airbyte/pull/56054) | Update dependencies |
+| 0.2.15 | 2025-03-08 | [55512](https://github.com/airbytehq/airbyte/pull/55512) | Update dependencies |
+| 0.2.14 | 2025-03-01 | [54784](https://github.com/airbytehq/airbyte/pull/54784) | Update dependencies |
+| 0.2.13 | 2025-02-22 | [54315](https://github.com/airbytehq/airbyte/pull/54315) | Update dependencies |
+| 0.2.12 | 2025-02-15 | [53816](https://github.com/airbytehq/airbyte/pull/53816) | Update dependencies |
+| 0.2.11 | 2025-02-08 | [53293](https://github.com/airbytehq/airbyte/pull/53293) | Update dependencies |
+| 0.2.10 | 2025-02-01 | [52833](https://github.com/airbytehq/airbyte/pull/52833) | Update dependencies |
+| 0.2.9 | 2025-01-25 | [52248](https://github.com/airbytehq/airbyte/pull/52248) | Update dependencies |
+| 0.2.8 | 2025-01-18 | [51788](https://github.com/airbytehq/airbyte/pull/51788) | Update dependencies |
+| 0.2.7 | 2025-01-11 | [51150](https://github.com/airbytehq/airbyte/pull/51150) | Update dependencies |
+| 0.2.6 | 2024-12-28 | [50099](https://github.com/airbytehq/airbyte/pull/50099) | Update dependencies |
+| 0.2.5 | 2024-12-14 | [49616](https://github.com/airbytehq/airbyte/pull/49616) | Update dependencies |
+| 0.2.4 | 2024-12-12 | [49232](https://github.com/airbytehq/airbyte/pull/49232) | Update dependencies |
+| 0.2.3 | 2024-12-11 | [48141](https://github.com/airbytehq/airbyte/pull/48141) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.2.2 | 2024-10-29 | [47891](https://github.com/airbytehq/airbyte/pull/47891) | Update dependencies |
+| 0.2.1 | 2024-10-28 | [47623](https://github.com/airbytehq/airbyte/pull/47623) | Update dependencies |
 | 0.2.0 | 2024-08-23 | [44615](https://github.com/airbytehq/airbyte/pull/44615) | Refactor connector to manifest-only format |
 | 0.1.16 | 2024-08-17 | [44279](https://github.com/airbytehq/airbyte/pull/44279) | Update dependencies |
 | 0.1.15 | 2024-08-10 | [43552](https://github.com/airbytehq/airbyte/pull/43552) | Update dependencies |

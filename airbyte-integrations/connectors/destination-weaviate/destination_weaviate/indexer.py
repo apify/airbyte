@@ -12,11 +12,11 @@ from collections import defaultdict
 from typing import Optional
 
 import weaviate
+
 from airbyte_cdk.destinations.vector_db_based.document_processor import METADATA_RECORD_ID_FIELD
 from airbyte_cdk.destinations.vector_db_based.indexer import Indexer
 from airbyte_cdk.destinations.vector_db_based.utils import create_chunks, format_exception
-from airbyte_cdk.models import ConfiguredAirbyteCatalog
-from airbyte_cdk.models.airbyte_protocol import DestinationSyncMode
+from airbyte_cdk.models import ConfiguredAirbyteCatalog, DestinationSyncMode
 from destination_weaviate.config import WeaviateIndexingConfigModel
 
 

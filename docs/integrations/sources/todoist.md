@@ -1,12 +1,12 @@
 # Todoist
 
+:::info
+Version 0.4.0 moves the connector from the retired Todoist REST API v2 to the Todoist API v1. See the [migration guide](todoist-migrations.md) if you are upgrading from an earlier version.
+:::
+
 ## Overview
 
-The Todoist source supports only `Full Refresh` syncs.
-
-### Output schema
-
-Two output streams are available from this source. A list of these streams can be found below in the [Streams](todoist.md#streams) section.
+The Todoist source connector syncs tasks and projects from your Todoist account using the [Todoist API v1](https://developer.todoist.com/api/v1/).
 
 ### Features
 
@@ -15,29 +15,38 @@ Two output streams are available from this source. A list of these streams can b
 | Full Refresh Sync | Yes        |
 | Incremental Sync  | No         |
 
-## Getting started
+## Prerequisites
 
-### Requirements
+- A Todoist personal API token. The connector syncs the tasks and projects that the token's owner can access.
 
-- Todoist API token
+To find your API token:
 
-You can find your personal token in the [integrations settings view](https://todoist.com/prefs/integrations) of the Todoist web app and replace the token value in the samples.
+1. Log in to the [Todoist web app](https://app.todoist.com/).
+2. Click your avatar, then click **Settings**.
+3. Click the **Integrations** tab, then click the **Developer** tab.
+4. Click **Copy API token**.
 
-### Set up the Todoist connector in Airbyte
+For more details, see Todoist's [Find your API token](https://www.todoist.com/help/articles/find-your-api-token-Jpzx9IIlB) help article.
 
-1. [Log into your Airbyte Cloud](https://cloud.airbyte.io/workspaces) account or navigate to the Airbyte Open Source dashboard.
+## Set up the Todoist connector in Airbyte
+
+1. [Log into your Airbyte Cloud](https://cloud.airbyte.com/workspaces) account or navigate to the Airbyte Open Source dashboard.
 2. Click **Sources** and then click **+ New source**.
 3. On the Set up the source page, select **Todoist** from the Source type dropdown.
 4. Enter the name for the Todoist connector.
-5. For **Token**, enter the [Todoist personal token](https://todoist.com/app/settings/integrations/).
+5. For **Token**, enter your Todoist API token.
 6. Click **Set up source**.
 
-## Streams
+## Supported streams
 
-List of available streams:
+| Stream     | API endpoint                                                                                                  | Description                                        |
+| :--------- | :------------------------------------------------------------------------------------------------------------ | :------------------------------------------------- |
+| `tasks`    | [Get Tasks](https://developer.todoist.com/api/v1/#tag/Tasks/operation/get_tasks_api_v1_tasks_get)             | Active tasks. Completed tasks are not synced.      |
+| `projects` | [Get Projects](https://developer.todoist.com/api/v1/#tag/Projects/operation/get_projects_api_v1_projects_get) | Active projects. Archived projects are not synced. |
 
-- [Tasks](https://developer.todoist.com/rest/v2/#tasks)
-- [Projects](https://developer.todoist.com/rest/v2/#projects)
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -46,6 +55,55 @@ List of available streams:
 
 | Version | Date       | Pull Request                                             | Subject                                                    |
 | :------ | :--------- | :------------------------------------------------------- | :--------------------------------------------------------- |
+| 0.4.5 | 2026-11-10 | [91761](https://github.com/airbytehq/airbyte/pull/91761) | Update dependencies |
+| 0.4.4 | 2026-11-03 | [90780](https://github.com/airbytehq/airbyte/pull/90780) | Update dependencies |
+| 0.4.3 | 2026-10-27 | [90063](https://github.com/airbytehq/airbyte/pull/90063) | Update dependencies |
+| 0.4.2 | 2026-10-20 | [89420](https://github.com/airbytehq/airbyte/pull/89420) | Update dependencies |
+| 0.4.1 | 2026-10-13 | [73512](https://github.com/airbytehq/airbyte/pull/73512) | Update dependencies |
+| 0.4.0 | 2026-10-09 | [88183](https://github.com/airbytehq/airbyte/pull/88183) | 🚨 Migrate from the retired Todoist REST API v2 (HTTP 410) to Todoist API v1: new base URL, cursor pagination, new `tasks` and `projects` schemas |
+| 0.3.43 | 2026-02-03 | [72753](https://github.com/airbytehq/airbyte/pull/72753) | Update dependencies |
+| 0.3.42 | 2026-01-20 | [72017](https://github.com/airbytehq/airbyte/pull/72017) | Update dependencies |
+| 0.3.41 | 2026-01-14 | [71417](https://github.com/airbytehq/airbyte/pull/71417) | Update dependencies |
+| 0.3.40 | 2025-12-18 | [70737](https://github.com/airbytehq/airbyte/pull/70737) | Update dependencies |
+| 0.3.39 | 2025-11-25 | [69880](https://github.com/airbytehq/airbyte/pull/69880) | Update dependencies |
+| 0.3.38 | 2025-11-18 | [69669](https://github.com/airbytehq/airbyte/pull/69669) | Update dependencies |
+| 0.3.37 | 2025-10-29 | [68857](https://github.com/airbytehq/airbyte/pull/68857) | Update dependencies |
+| 0.3.36 | 2025-10-21 | [68533](https://github.com/airbytehq/airbyte/pull/68533) | Update dependencies |
+| 0.3.35 | 2025-10-14 | [67849](https://github.com/airbytehq/airbyte/pull/67849) | Update dependencies |
+| 0.3.34 | 2025-10-07 | [67512](https://github.com/airbytehq/airbyte/pull/67512) | Update dependencies |
+| 0.3.33 | 2025-09-30 | [66830](https://github.com/airbytehq/airbyte/pull/66830) | Update dependencies |
+| 0.3.32 | 2025-09-24 | [66599](https://github.com/airbytehq/airbyte/pull/66599) | Update dependencies |
+| 0.3.31 | 2025-09-09 | [65713](https://github.com/airbytehq/airbyte/pull/65713) | Update dependencies |
+| 0.3.30 | 2025-08-24 | [65464](https://github.com/airbytehq/airbyte/pull/65464) | Update dependencies |
+| 0.3.29 | 2025-08-10 | [64827](https://github.com/airbytehq/airbyte/pull/64827) | Update dependencies |
+| 0.3.28 | 2025-08-02 | [64377](https://github.com/airbytehq/airbyte/pull/64377) | Update dependencies |
+| 0.3.27 | 2025-07-26 | [63964](https://github.com/airbytehq/airbyte/pull/63964) | Update dependencies |
+| 0.3.26 | 2025-07-12 | [63086](https://github.com/airbytehq/airbyte/pull/63086) | Update dependencies |
+| 0.3.25 | 2025-07-05 | [62734](https://github.com/airbytehq/airbyte/pull/62734) | Update dependencies |
+| 0.3.24 | 2025-06-28 | [62207](https://github.com/airbytehq/airbyte/pull/62207) | Update dependencies |
+| 0.3.23 | 2025-06-21 | [61806](https://github.com/airbytehq/airbyte/pull/61806) | Update dependencies |
+| 0.3.22 | 2025-05-24 | [60521](https://github.com/airbytehq/airbyte/pull/60521) | Update dependencies |
+| 0.3.21 | 2025-05-10 | [60075](https://github.com/airbytehq/airbyte/pull/60075) | Update dependencies |
+| 0.3.20 | 2025-05-04 | [59611](https://github.com/airbytehq/airbyte/pull/59611) | Update dependencies |
+| 0.3.19 | 2025-04-27 | [58425](https://github.com/airbytehq/airbyte/pull/58425) | Update dependencies |
+| 0.3.18 | 2025-04-12 | [58004](https://github.com/airbytehq/airbyte/pull/58004) | Update dependencies |
+| 0.3.17 | 2025-04-05 | [57445](https://github.com/airbytehq/airbyte/pull/57445) | Update dependencies |
+| 0.3.16 | 2025-03-29 | [56873](https://github.com/airbytehq/airbyte/pull/56873) | Update dependencies |
+| 0.3.15 | 2025-03-22 | [56250](https://github.com/airbytehq/airbyte/pull/56250) | Update dependencies |
+| 0.3.14 | 2025-03-08 | [55635](https://github.com/airbytehq/airbyte/pull/55635) | Update dependencies |
+| 0.3.13 | 2025-03-01 | [55143](https://github.com/airbytehq/airbyte/pull/55143) | Update dependencies |
+| 0.3.12 | 2025-02-22 | [54544](https://github.com/airbytehq/airbyte/pull/54544) | Update dependencies |
+| 0.3.11 | 2025-02-15 | [54046](https://github.com/airbytehq/airbyte/pull/54046) | Update dependencies |
+| 0.3.10 | 2025-02-08 | [53546](https://github.com/airbytehq/airbyte/pull/53546) | Update dependencies |
+| 0.3.9 | 2025-02-01 | [53066](https://github.com/airbytehq/airbyte/pull/53066) | Update dependencies |
+| 0.3.8 | 2025-01-25 | [52436](https://github.com/airbytehq/airbyte/pull/52436) | Update dependencies |
+| 0.3.7 | 2025-01-18 | [51964](https://github.com/airbytehq/airbyte/pull/51964) | Update dependencies |
+| 0.3.6 | 2025-01-11 | [51458](https://github.com/airbytehq/airbyte/pull/51458) | Update dependencies |
+| 0.3.5 | 2024-12-28 | [50823](https://github.com/airbytehq/airbyte/pull/50823) | Update dependencies |
+| 0.3.4 | 2024-12-21 | [49737](https://github.com/airbytehq/airbyte/pull/49737) | Update dependencies |
+| 0.3.3 | 2024-12-12 | [49430](https://github.com/airbytehq/airbyte/pull/49430) | Update dependencies |
+| 0.3.2 | 2024-10-29 | [47823](https://github.com/airbytehq/airbyte/pull/47823) | Update dependencies |
+| 0.3.1 | 2024-10-22 | [47237](https://github.com/airbytehq/airbyte/pull/47237) | Update dependencies |
 | 0.3.0 | 2024-08-26 | [44775](https://github.com/airbytehq/airbyte/pull/44775) | Refactor connector to manifest-only format |
 | 0.2.18 | 2024-08-24 | [44675](https://github.com/airbytehq/airbyte/pull/44675) | Update dependencies |
 | 0.2.17 | 2024-08-17 | [44255](https://github.com/airbytehq/airbyte/pull/44255) | Update dependencies |

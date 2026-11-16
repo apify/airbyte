@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.factory
 
@@ -42,11 +42,11 @@ object DSLContextFactory {
         password: String?,
         driverClassName: String,
         jdbcConnectionString: String?,
-        dialect: SQLDialect?
+        dialect: SQLDialect?,
     ): DSLContext {
         return DSL.using(
             DataSourceFactory.create(username, password, driverClassName, jdbcConnectionString),
-            dialect
+            dialect,
         )
     }
 
@@ -68,7 +68,7 @@ object DSLContextFactory {
         jdbcConnectionString: String?,
         dialect: SQLDialect?,
         connectionProperties: Map<String, String>?,
-        connectionTimeout: Duration?
+        connectionTimeout: Duration?,
     ): DSLContext {
         return DSL.using(
             DataSourceFactory.create(
@@ -77,9 +77,9 @@ object DSLContextFactory {
                 driverClassName,
                 jdbcConnectionString,
                 connectionProperties,
-                connectionTimeout
+                connectionTimeout,
             ),
-            dialect
+            dialect,
         )
     }
 }

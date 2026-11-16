@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.cli
 
@@ -11,8 +11,10 @@ object Clis {
      *
      * @param args
      * - command line args
+     *
      * @param options
      * - expected options
+     *
      * @return object with parsed values.
      */
     @JvmOverloads
@@ -20,7 +22,7 @@ object Clis {
         args: Array<String>,
         options: Options,
         parser: CommandLineParser = DefaultParser(),
-        commandLineSyntax: String? = null
+        commandLineSyntax: String? = null,
     ): CommandLine {
         val helpFormatter = HelpFormatter()
 

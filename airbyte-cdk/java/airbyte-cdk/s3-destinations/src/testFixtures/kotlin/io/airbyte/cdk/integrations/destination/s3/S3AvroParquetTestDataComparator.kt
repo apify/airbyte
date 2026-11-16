@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3
 
@@ -13,7 +13,7 @@ class S3AvroParquetTestDataComparator : AdvancedTestDataComparator() {
         val expectedDate =
             LocalDate.parse(
                 airbyteMessageValue,
-                DateTimeFormatter.ofPattern(AdvancedTestDataComparator.AIRBYTE_DATE_FORMAT)
+                DateTimeFormatter.ofPattern(AdvancedTestDataComparator.AIRBYTE_DATE_FORMAT),
             )
         return expectedDate == destinationDate
     }
@@ -28,7 +28,7 @@ class S3AvroParquetTestDataComparator : AdvancedTestDataComparator() {
 
     override fun compareDateTimeValues(
         airbyteMessageValue: String,
-        destinationValue: String
+        destinationValue: String,
     ): Boolean {
         val format = DateTimeFormatter.ofPattern(AdvancedTestDataComparator.AIRBYTE_DATETIME_FORMAT)
         val dateTime =

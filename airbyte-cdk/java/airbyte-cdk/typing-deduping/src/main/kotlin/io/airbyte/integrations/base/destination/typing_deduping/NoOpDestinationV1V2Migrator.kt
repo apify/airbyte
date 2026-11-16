@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.base.destination.typing_deduping
 
@@ -8,7 +8,7 @@ class NoOpDestinationV1V2Migrator : DestinationV1V2Migrator {
     override fun migrateIfNecessary(
         sqlGenerator: SqlGenerator,
         destinationHandler: DestinationHandler<*>,
-        streamConfig: StreamConfig
+        streamConfig: StreamConfig,
     ) {
         // Do nothing
     }

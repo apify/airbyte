@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.jsonschema
@@ -17,7 +17,7 @@ class JsonSchemaUnionMerger : JsonSchemaIdentityMapper() {
     private fun mergeRightObjectIntoLeft(left: ObjectNode, right: ObjectNode) {
         val leftProperties = left["properties"] as ObjectNode
         val rightProperties = right["properties"] as ObjectNode
-        rightProperties.fields().forEach { (rightPropertyName, rightPropertySchema) ->
+        rightProperties.properties().forEach { (rightPropertyName, rightPropertySchema) ->
             if (!leftProperties.has(rightPropertyName)) {
                 // Just add the property if it doesn't exist
                 leftProperties.set<ObjectNode>(rightPropertyName, rightPropertySchema as ObjectNode)

@@ -46,6 +46,7 @@ For more information on Stripe API Keys, see the [Stripe documentation](https://
 3. On the Set up the source page, select Stripe from the Source type dropdown.
 4. Enter a name for the Stripe connector.
 <!-- /env:oss -->
+<!-- markdownlint-disable MD029 -->
 5. For **Account ID**, enter your Stripe Account ID. This ID begins with `acct_`, and can be found in the top-right corner of your Stripe [account settings page](https://dashboard.stripe.com/settings/account).
 6. For **Secret Key**, enter the restricted key you created for the connection.
 7. For **Replication Start Date**, use the provided datepicker or enter a UTC date and time programmatically in the format `YYYY-MM-DDTHH:mm:ssZ`. The data added on and after this date will be replicated.
@@ -64,8 +65,17 @@ For more information on Stripe API Keys, see the [Stripe documentation](https://
 
    If you are unsure of which value to use, we recommend leaving this setting at its default value of 365 days.
 
-10. Click **Set up source** and wait for the tests to complete.
+10. (Optional) For **Streams with API Data Retention Validation**, select the streams whose cursor age the connector checks against Stripe's 30-day [Events API retention limit](https://stripe.com/docs/api/events). If a selected stream's cursor is older than 30 days, the connector runs a full refresh for that stream instead of an incremental sync that would miss older changes. By default, no streams are selected, so the connector never overrides a stream's configured sync mode based on cursor age. For advice on which streams benefit from this check, see [Cursor age validation and automatic full refresh](#cursor-age-validation-and-automatic-full-refresh).
 
+11. (Optional) For **Accounts start date**, enter the UTC date and time from which the `Accounts` stream reads connected accounts, in the format `YYYY-MM-DDTHH:mm:ssZ`. The default, `2010-01-01T00:00:00Z`, reads every connected account; a later date leaves out the accounts created before it, on full refreshes too. `Persons` reads its accounts from the `Accounts` stream, so the persons of those accounts are left out as well.
+
+12. (Optional) For **Number of Concurrent Threads**, enter the number of worker threads to use for the sync. The default is 10. You can set this to any value between 2 and 100. Higher values increase throughput but also increase API usage. The effective upper bound depends on your Stripe account's rate limits.
+
+13. (Optional) For **Max Number of API Calls per Second**, enter the maximum number of API requests per second the connector is allowed to make. If not specified, the connector defaults to 25 calls per second for test and sandbox API keys and 100 calls per second for live API keys. This value cannot exceed Stripe's actual [rate limits](https://stripe.com/docs/rate-limits).
+
+14. Click **Set up source** and wait for the tests to complete.
+
+<!-- markdownlint-enable MD029 -->
 <HideInUI>
 
 ## Supported sync modes
@@ -79,7 +89,7 @@ The Stripe source connector supports the following [sync modes](https://docs.air
 
 The Stripe source connector supports the following streams:
 
-- [Accounts](https://stripe.com/docs/api/accounts/list)
+- [Accounts](https://stripe.com/docs/api/accounts/list) \(Incremental\)
 - [Application Fees](https://stripe.com/docs/api/application_fees) \(Incremental\)
 - [Application Fee Refunds](https://stripe.com/docs/api/fee_refunds/list) \(Incremental\)
 - [Authorizations](https://stripe.com/docs/api/issuing/authorizations/list) \(Incremental\)
@@ -105,12 +115,19 @@ The Stripe source connector supports the following streams:
 - [File Links](https://stripe.com/docs/api/file_links/list) \(Incremental\)
 - [Files](https://stripe.com/docs/api/files/list) \(Incremental\)
 - [Invoice Items](https://stripe.com/docs/api/invoiceitems/list) \(Incremental\)
-- [Invoice Line Items](https://stripe.com/docs/api/invoices/invoice_lines)
+- [Invoice Line Items](https://stripe.com/docs/api/invoices/invoice_lines) \(Incremental\)
+  :::note
+  During incremental syncs, this stream reads line items from the invoice object embedded in `invoice.created`, `invoice.updated`, and `invoice.deleted` events. Stripe embeds at most 10 line items in that payload. When an invoice has more, the connector requests the rest from `/v1/invoices/{invoice_id}/lines`, so each invoice's line items are complete. Before version 6.0.19, incremental syncs kept only the first 10 line items of each invoice. If you synced invoices with more than 10 line items on an earlier version, run a full refresh of this stream to repair the existing data.
+  :::
 - [Invoices](https://stripe.com/docs/api/invoices/list) \(Incremental\)
 - [Payment Intents](https://stripe.com/docs/api/payment_intents/list) \(Incremental\)
 - [Payment Methods](https://docs.stripe.com/api/payment_methods/customer_list?lang=curl) \(Incremental\)
 - [Payouts](https://stripe.com/docs/api/payouts/list) \(Incremental\)
-- [Promotion Code](https://stripe.com/docs/api/promotion_codes/list) \(Incremental\)
+- [Payout Balance Transactions](https://docs.stripe.com/api/balance_transactions/list) \(Incremental\)
+  :::note
+  This stream is built with a call using payout_id from the payout stream (parent) as a parameter to the balance transaction API to get balance transactions that comprised the actual amount of the payout. Check [the Stripe docs](https://docs.stripe.com/api/balance_transactions/list) for more details.
+  :::
+- [Promotion Codes](https://stripe.com/docs/api/promotion_codes/list) \(Incremental\)
 - [Persons](https://stripe.com/docs/api/persons/list) \(Incremental\)
 - [Plans](https://stripe.com/docs/api/plans/list) \(Incremental\)
 - [Prices](https://stripe.com/docs/api/prices/list) \(Incremental\)
@@ -120,14 +137,14 @@ The Stripe source connector supports the following streams:
 - [Setup Attempts](https://stripe.com/docs/api/setup_attempts/list) \(Incremental\)
 - [Setup Intents](https://stripe.com/docs/api/setup_intents/list) \(Incremental\)
 - [Shipping Rates](https://stripe.com/docs/api/shipping_rates/list) \(Incremental\)
-- [Subscription Items](https://stripe.com/docs/api/subscription_items/list)
+- [Subscription Items](https://stripe.com/docs/api/subscription_items/list) \(Incremental\)
 - [Subscription Schedule](https://stripe.com/docs/api/subscription_schedules) \(Incremental\)
 - [Subscriptions](https://stripe.com/docs/api/subscriptions/list) \(Incremental\)
 - [Top Ups](https://stripe.com/docs/api/topups/list) \(Incremental\)
-- [Transactions](https://stripe.com/docs/api/transfers/list) \(Incremental\)
+- [Transactions](https://stripe.com/docs/api/issuing/transactions/list) \(Incremental\)
 - [Transfers](https://stripe.com/docs/api/transfers/list) \(Incremental\)
-- [Transfer Reversals](https://stripe.com/docs/api/transfer_reversals/list)
-- [Usage Records](https://stripe.com/docs/api/usage_records/subscription_item_summary_list)
+- [Transfer Reversals](https://stripe.com/docs/api/transfer_reversals/list) \(Incremental\)
+- [Usage Records](https://stripe.com/docs/api/usage_records)
 
 ### Entity-Relationship Diagram (ERD)
 <EntityRelationshipDiagram></EntityRelationshipDiagram>
@@ -135,6 +152,12 @@ The Stripe source connector supports the following streams:
 ### Data type map
 
 The [Stripe API](https://stripe.com/docs/api) uses the same [JSON Schema](https://json-schema.org/understanding-json-schema) types that Airbyte uses internally \(`string`, `date-time`, `object`, `array`, `boolean`, `integer`, and `number`\), so no type conversions are performed for the Stripe connector.
+
+### Stripe API version
+
+This connector sends Stripe API version `2022-11-15` with every request. Objects read directly from Stripe endpoints, which is what full refresh syncs and the first sync of each stream do, are shaped according to this version regardless of the version configured in your Stripe dashboard.
+
+Incremental syncs of streams that read from the Events API work differently. Stripe renders each event's `data.object` at your account's default API version as of the time the event was created, and the version the connector requests doesn't change it. Records synced incrementally from events can therefore differ from full refresh records. For example, fields added or removed in later API versions can be missing or `null`. For details, see [Stripe API upgrades](https://docs.stripe.com/upgrades) and [Versioning](https://docs.stripe.com/api/versioning).
 
 ## Limitations & Troubleshooting
 
@@ -147,11 +170,64 @@ Expand to see details about Stripe connector limitations and troubleshooting.
 
 #### Rate limiting
 
-The Stripe connector should not run into Stripe API limitations under normal usage. See Stripe [Rate limits](https://stripe.com/docs/rate-limits) documentation. [Create an issue](https://github.com/airbytehq/airbyte/issues) if you see any rate limit issues that are not automatically retried successfully.
+The Stripe connector automatically manages API rate limits, including retries and backoff for HTTP 429 responses. Stripe enforces a limit of [25 requests per second for sandbox keys and 100 requests per second for live keys](https://stripe.com/docs/rate-limits). The connector respects these limits and adjusts its request rate accordingly.
+
+If you experience rate limiting, you can reduce the **Number of concurrent threads** setting in the connector configuration. The default is 10 for live keys and 4 for sandbox keys. You can also configure a **Max number of API calls per second** to set a stricter limit. [Create an issue](https://github.com/airbytehq/airbyte/issues) if you see rate limit issues that are not automatically retried successfully.
 
 :::warning
 **Stripe API Restriction on Events Data**: Access to the events endpoint is [guaranteed only for the last 30 days](https://stripe.com/docs/api/events) by Stripe. If you use the Full Refresh Overwrite sync, be aware that any events data older than 30 days will be **deleted** from your target destination and replaced with the data from the last 30 days only. Use an Append sync mode to ensure historical data is retained.
-Please be aware: this also means that any change older than 30 days will not be replicated using the incremental sync mode. If you want all your synced data to remain up to date, please set up your sync frequency to no more than 30 days.
+For the streams that rely on the Events API — the ones listed below as using the `updated` cursor — this also means incremental sync can't replicate a change that is more than 30 days old. To keep those streams current, sync at least once every 30 days.
+:::
+
+#### Cursor age validation and automatic full refresh
+
+To prevent data loss caused by the 30-day Events API retention limit, the connector can validate the age of each stream's cursor before choosing between incremental and full refresh sync. If a stream's cursor is older than 30 days, the connector automatically falls back to a full refresh for that stream instead of using the Events API, which would only return the last 30 days of data.
+
+**This behavior is configurable via the "Streams with API Data Retention Validation" setting** (see [setup guide](#step-2-set-up-the-stripe-connector-in-airbyte) step 10). Only streams listed in this setting will have their cursor age validated. By default, no streams are selected — all streams will use incremental sync without cursor age validation.
+
+For high-usage streams like `Charges`, `Invoice Items`, `Invoice Line Items`, `Invoices`, `Payment Intents`, and `Payouts`, enabling cursor age validation is recommended since a stale cursor likely indicates missed data rather than normal inactivity. Streams like `Customers`, `Subscriptions`, `Products`, and `Plans` may not need validation because some accounts legitimately have no new records in 30+ days, making a full refresh unnecessary.
+
+You can customize which streams have cursor age validation by modifying the **Streams with API Data Retention Validation** list in your connection settings. The full list of streams eligible for cursor age validation is:
+
+- `Application Fees`
+- `Application Fee Refunds`
+- `Authorizations`
+- `Bank Accounts`
+- `Cardholders`
+- `Charges`
+- `Checkout Sessions`
+- `Coupons`
+- `Credit Notes`
+- `Customers`
+- `Disputes`
+- `Early Fraud Warnings`
+- `External Account Bank Accounts`
+- `External Account Cards`
+- `Invoice Items`
+- `Invoice Line Items`
+- `Invoices`
+- `Payment Intents`
+- `Payment Methods`
+- `Payouts`
+- `Persons`
+- `Plans`
+- `Prices`
+- `Products`
+- `Promotion Codes`
+- `Refunds`
+- `Reviews`
+- `Setup Intents`
+- `Subscription Items`
+- `Subscription Schedule`
+- `Subscriptions`
+- `Top Ups`
+- `Transactions`
+- `Transfers`
+
+`Accounts` still appears in the **Streams with API Data Retention Validation** setting so that saved configurations stay valid, but selecting it has no effect. Since version 7.1.0 the `Accounts` stream doesn't read the Events API, so there is no 30-day retention limit to check for it.
+
+:::warning
+**Important**: If a stream is removed from the validation list and its cursor becomes stale (older than 30 days), the connector will continue using the Events API for incremental sync, which only returns the last 30 days of data. This may result in missed updates for records older than 30 days. Only remove streams from the validation list if you are confident that a stale cursor is acceptable for your use case.
 :::
 
 ### Troubleshooting
@@ -159,19 +235,23 @@ Please be aware: this also means that any change older than 30 days will not be 
 Since the Stripe API does not allow querying objects which were updated since the last sync, the Stripe connector uses the Events API under the hood to implement incremental syncs and export data based on its update date.
 However, not all the entities are supported by the Events API, so the Stripe connector uses the `created` field or its analogue to query for new data in your Stripe account. These are the entities synced based on the date of creation:
 
+- `Accounts` (cursor field is `updated`, set from `created`)
 - `Balance Transactions`
+- `Customer Balance Transactions`
 - `Events`
 - `File Links`
 - `Files`
-- `Refunds`
 - `Setup Attempts`
 - `Shipping Rates`
+- `Transfer Reversals`
 
 On the other hand, the following streams use the `updated` field value as a cursor:
 
 :::note
 
-`updated` is an artificial cursor field introduced by Airbyte for the Incremental sync option.
+`updated` is an artificial cursor field Airbyte adds for incremental sync. Stripe doesn't return it.
+
+For records the connector rebuilds from the Events API, `updated` comes from the event timestamp, which Stripe records with one-second resolution. Records derived from a `*.created` event get a cursor one second earlier than the event itself. That offset breaks ties: when a create and an update for the same object happen in the same second, the update sorts higher, so deduplicating destinations keep the update's payload rather than the older creation payload.
 
 :::
 
@@ -186,30 +266,59 @@ On the other hand, the following streams use the `updated` field value as a curs
 - `Checkout Session Line Items` (cursor field is `checkout_session_updated`)
 - `Coupons`
 - `Credit Notes`
-- `Customer Balance Transactions`
 - `Customers`
 - `Disputes`
 - `Early Fraud Warnings`
 - `External Account Bank Accounts`
 - `External Account Cards`
 - `Invoice Items`
+- `Invoice Line Items` (cursor field is `invoice_updated`)
 - `Invoices`
 - `Payment Intents`
+- `Payment Methods`
 - `Payouts`
+- `Payout Balance Transactions`
 - `Promotion Codes`
 - `Persons`
 - `Plans`
 - `Prices`
 - `Products`
+- `Refunds`
 - `Reviews`
 - `Setup Intents`
 - `Subscription Schedule`
+- `Subscription Items` (cursor field is `subscription_updated`)
 - `Subscriptions`
 - `Top Ups`
 - `Transactions`
 - `Transfers`
 
-## Incremental deletes
+#### Connected accounts only sync when they are created
+
+The `Accounts` stream lists the connected accounts of a Stripe Connect platform. Incremental syncs read `/v1/accounts` filtered by `created`, so a new connected account arrives on the next sync, but a change to an existing connected account (for example its `charges_enabled` or `requirements` fields) isn't picked up. Stripe files `account.updated` events in the connected account's own event feed rather than the platform's, so the connector can't use the Events API to detect those changes. Refresh the `Accounts` stream when you need current details for existing connected accounts. The `Persons` stream has the same limitation: its incremental syncs read only `person.*` events, and [Stripe's Connect webhooks page](https://docs.stripe.com/connect/webhooks) lists `person.created`, `person.updated` and `person.deleted` among the events delivered for connected accounts, so new and changed persons might not arrive until you refresh the stream, and it reads its parent accounts through the same `created` windows from the **Accounts start date** as the `Accounts` stream.
+
+Since version 7.1.0:
+
+- A full refresh reads `/v1/accounts` in 30-day `created` windows from the **Accounts start date** (January 2010 by default) to now, and reads up to **Number of Concurrent Threads** windows at the same time. Stripe allows 50 in-progress requests per live-mode account, shared by all streams (see [Stripe's rate limits](https://docs.stripe.com/rate-limits)), so values above about 25 gain little and can trigger rate-limit retries.
+- A full refresh saves its bookmark only when the whole read completes, so a failed attempt starts again from the first window on retry rather than resuming.
+- After a full read the stream's bookmark is stored in the same form `Bank Accounts` uses since 7.0.3; earlier connector versions read it without error.
+- Stripe doesn't return `created` for Standard connected accounts; their `updated` value is the sync time, as in earlier versions.
+- The `Persons` stream reads its parent accounts one window after another, so it gains no speed from this change.
+- The first incremental sync after upgrading continues from the stream's saved bookmark minus the **Lookback Window**. The bookmark is normally the time of your last full read, so new connected accounts arrive from there, but changes to existing connected accounts are not picked up. Run a refresh of the `Accounts` stream once after upgrading if you need every connected account, or if those changes matter.
+
+#### Invoice line item IDs that don't start with `il_`
+
+Stripe accounts whose default API version is older than `2019-12-03` receive invoice line items in events with legacy IDs such as `ii_...`, `item_...`, `sub_...`, `su_...`, or `sli_...`. Before version 7.0.0, incremental syncs of `invoice_line_items` could write these legacy IDs, while full refresh syncs wrote the current `il_...` IDs for the same line items. A `sub_...` or `su_...` ID is the subscription's ID, so it repeats across renewal invoices, and a deduplicated destination kept only the most recent of those lines.
+
+From version 7.0.0, incremental syncs write `il_...` IDs. Rows written by earlier versions aren't removed automatically, so until you clean them up, affected line items can appear twice: once under the legacy ID and once under the `il_...` ID. To check whether you're affected, run a query like this against your destination:
+
+```sql
+SELECT COUNT(*) FROM <your_schema>.invoice_line_items WHERE SUBSTR(id, 1, 3) <> 'il_';
+```
+
+If the count is greater than zero, upgrade to 7.0.0 or later, then [refresh the `invoice_line_items` stream and remove records](/platform/operator-guides/refreshes). Refreshing and removing records deletes this stream's existing data in your destination, including rows that Stripe can't send again. The refreshed stream is rebuilt from the Invoices endpoints rather than from the 30-day Events API window, but only for invoices created on or after your configured start date. It doesn't recreate line items of invoices created before your start date, rows that recorded deleted draft invoices (`is_deleted` is `true`), or, in an Incremental | Append destination, earlier versions of each line item. Back up the `invoice_line_items` table before you refresh if you need any of these rows or the legacy IDs. Refreshing and retaining records doesn't remove the legacy rows, because they have a different primary key. For details, see the [7.0.0 migration guide](/integrations/sources/stripe-migrations#upgrading-to-700).
+
+### Incremental deletes
 
 The Stripe API also provides a way to implement incremental deletes for a limited number of streams:
 
@@ -232,137 +341,241 @@ Each record is marked with `is_deleted` flag when the appropriate event happens 
 
 </details>
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
   <summary>Expand to review</summary>
 
-| Version | Date       | Pull Request                                              | Subject                                                                                                                                                                                                                       |
-|:--------|:-----------|:----------------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 5.6.0   | 2024-09-10 | [44891](https://github.com/airbytehq/airbyte/pull/44891)  | Update `Payment Methods` stream                                                                                                                                                                                               |
-| 5.5.4   | 2024-09-09 | [45348](https://github.com/airbytehq/airbyte/pull/45348)  | Remove `stripe` python package                                                                                                                                                                                                |
-| 5.5.3   | 2024-09-03 | [45101](https://github.com/airbytehq/airbyte/pull/45101)  | Fix regression following pagination issue fix                                                                                                                                                                                 |
-| 5.5.2   | 2024-08-28 | [44862](https://github.com/airbytehq/airbyte/pull/44862)  | Fix RFR pagination issue                                                                                                                                                                                                      |
-| 5.5.1   | 2024-08-10 | [43105](https://github.com/airbytehq/airbyte/pull/43105)  | Update dependencies                                                                                                                                                                                                           |
-| 5.5.0   | 2024-08-08 | [43302](https://github.com/airbytehq/airbyte/pull/43302)  | Fix problem with state not updating and upgrade cdk 4                                                                                                                                                                         |
-| 5.4.12  | 2024-07-31 | [41985](https://github.com/airbytehq/airbyte/pull/41985)  | Expand Invoice discounts and tax rates                                                                                                                                                                                        |
-| 5.4.11  | 2024-07-27 | [42623](https://github.com/airbytehq/airbyte/pull/42623)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.10  | 2024-07-20 | [42305](https://github.com/airbytehq/airbyte/pull/42305)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.9   | 2024-07-13 | [41760](https://github.com/airbytehq/airbyte/pull/41760)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.8   | 2024-07-10 | [41477](https://github.com/airbytehq/airbyte/pull/41477)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.7   | 2024-07-09 | [40869](https://github.com/airbytehq/airbyte/pull/40869)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.6   | 2024-07-08 | [41044](https://github.com/airbytehq/airbyte/pull/41044)  | Use latest `CDK` version possible                                                                                                                                                                                             |
-| 5.4.5   | 2024-06-25 | [40404](https://github.com/airbytehq/airbyte/pull/40404)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.4   | 2024-06-22 | [40040](https://github.com/airbytehq/airbyte/pull/40040)  | Update dependencies                                                                                                                                                                                                           |
-| 5.4.3   | 2024-06-06 | [39284](https://github.com/airbytehq/airbyte/pull/39284)  | [autopull] Upgrade base image to v1.2.2                                                                                                                                                                                       |
-| 5.4.2   | 2024-06-11 | [39412](https://github.com/airbytehq/airbyte/pull/39412)  | Removed `invoice.upcomming` event type from (incremental sync) for `Invoices` stream                                                                                                                                          |
-| 5.4.1   | 2024-06-11 | [39393](https://github.com/airbytehq/airbyte/pull/39393)  | Added missing `event types` (incremental sync) for `Invoices` stream                                                                                                                                                          |
-| 5.4.0   | 2024-06-05 | [39138](https://github.com/airbytehq/airbyte/pull/39138)  | Fixed the `Refunds` stream missing data for the `incremental` sync                                                                                                                                                            |
-| 5.3.9   | 2024-05-22 | [38550](https://github.com/airbytehq/airbyte/pull/38550)  | Update authenticator package                                                                                                                                                                                                  |
-| 5.3.8   | 2024-05-15 | [38248](https://github.com/airbytehq/airbyte/pull/38248)  | Replace AirbyteLogger with logging.Logger                                                                                                                                                                                     |
-| 5.3.7   | 2024-04-24 | [36663](https://github.com/airbytehq/airbyte/pull/36663)  | Schema descriptions                                                                                                                                                                                                           |
-| 5.3.6   | 2024-04-18 | [37448](https://github.com/airbytehq/airbyte/pull/37448)  | Ensure AirbyteTracedException in concurrent CDK are emitted with the right type                                                                                                                                               |
-| 5.3.5   | 2024-04-18 | [37418](https://github.com/airbytehq/airbyte/pull/37418)  | Ensure python return code != 0 in case of error                                                                                                                                                                               |
-| 5.3.4   | 2024-04-11 | [37406](https://github.com/airbytehq/airbyte/pull/37406)  | Update CDK version to have partitioned state fix                                                                                                                                                                              |
-| 5.3.3   | 2024-04-11 | [37001](https://github.com/airbytehq/airbyte/pull/37001)  | Update airbyte-cdk to flush print buffer for every message                                                                                                                                                                    |
-| 5.3.2   | 2024-04-11 | [36964](https://github.com/airbytehq/airbyte/pull/36964)  | Update CDK version to fix breaking change before another devs work on it                                                                                                                                                      |
-| 5.3.1   | 2024-04-10 | [36960](https://github.com/airbytehq/airbyte/pull/36960)  | Remove unused imports                                                                                                                                                                                                         |
-| 5.3.0   | 2024-03-12 | [35978](https://github.com/airbytehq/airbyte/pull/35978)  | Upgrade CDK to start emitting record counts with state and full refresh state                                                                                                                                                 |
-| 5.2.4   | 2024-02-12 | [35137](https://github.com/airbytehq/airbyte/pull/35137)  | Fix license in `pyproject.toml`                                                                                                                                                                                               |
-| 5.2.3   | 2024-02-09 | [35068](https://github.com/airbytehq/airbyte/pull/35068)  | Manage dependencies with Poetry.                                                                                                                                                                                              |
-| 5.2.2   | 2024-01-31 | [34619](https://github.com/airbytehq/airbyte/pull/34619)  | Events stream concurrent on incremental syncs                                                                                                                                                                                 |
-| 5.2.1   | 2024-01-18 | [34495](https://github.com/airbytehq/airbyte/pull/34495)  | Fix deadlock issue                                                                                                                                                                                                            |
-| 5.2.0   | 2024-01-18 | [34347](https://github.com/airbytehq/airbyte/pull//34347) | Add new fields invoices and subscription streams. Upgrade the CDK for better memory usage.                                                                                                                                    |
-| 5.1.3   | 2023-12-18 | [33306](https://github.com/airbytehq/airbyte/pull/33306/) | Adding integration tests                                                                                                                                                                                                      |
-| 5.1.2   | 2024-01-04 | [33414](https://github.com/airbytehq/airbyte/pull/33414)  | Prepare for airbyte-lib                                                                                                                                                                                                       |
-| 5.1.1   | 2024-01-04 | [33926](https://github.com/airbytehq/airbyte/pull/33926/) | Update endpoint for `bank_accounts` stream                                                                                                                                                                                    |
-| 5.1.0   | 2023-12-11 | [32908](https://github.com/airbytehq/airbyte/pull/32908/) | Read full refresh streams concurrently                                                                                                                                                                                        |
-| 5.0.2   | 2023-12-01 | [33038](https://github.com/airbytehq/airbyte/pull/33038)  | Add stream slice logging for SubStream                                                                                                                                                                                        |
-| 5.0.1   | 2023-11-17 | [32638](https://github.com/airbytehq/airbyte/pull/32638/) | Availability stretegy: check availability of both endpoints (if applicable) - common API + events API                                                                                                                         |
-| 5.0.0   | 2023-11-16 | [32286](https://github.com/airbytehq/airbyte/pull/32286/) | Fix multiple issues regarding usage of the incremental sync mode for the `Refunds`, `CheckoutSessions`, `CheckoutSessionsLineItems` streams. Fix schemas for the streams: `Invoices`, `Subscriptions`, `SubscriptionSchedule` |
-| 4.5.4   | 2023-11-16 | [32284](https://github.com/airbytehq/airbyte/pull/32284/) | Enable client-side rate limiting                                                                                                                                                                                              |
-| 4.5.3   | 2023-11-14 | [32473](https://github.com/airbytehq/airbyte/pull/32473/) | Have all full_refresh stream syncs be concurrent                                                                                                                                                                              |
-| 4.5.2   | 2023-11-03 | [32146](https://github.com/airbytehq/airbyte/pull/32146/) | Fix multiple BankAccount issues                                                                                                                                                                                               |
-| 4.5.1   | 2023-11-01 | [32056](https://github.com/airbytehq/airbyte/pull/32056/) | Use CDK version 0.52.8                                                                                                                                                                                                        |
-| 4.5.0   | 2023-10-25 | [31327](https://github.com/airbytehq/airbyte/pull/31327/) | Use concurrent CDK when running in full-refresh                                                                                                                                                                               |
-| 4.4.2   | 2023-10-24 | [31764](https://github.com/airbytehq/airbyte/pull/31764)  | Base image migration: remove Dockerfile and use the python-connector-base image                                                                                                                                               |
-| 4.4.1   | 2023-10-18 | [31553](https://github.com/airbytehq/airbyte/pull/31553)  | Adjusted `Setup Attempts` and extended `Checkout Sessions` stream schemas                                                                                                                                                     |
-| 4.4.0   | 2023-10-04 | [31046](https://github.com/airbytehq/airbyte/pull/31046)  | Added margins field to invoice_line_items stream.                                                                                                                                                                             |
-| 4.3.1   | 2023-09-27 | [30800](https://github.com/airbytehq/airbyte/pull/30800)  | Handle permission issues a non breaking                                                                                                                                                                                       |
-| 4.3.0   | 2023-09-26 | [30752](https://github.com/airbytehq/airbyte/pull/30752)  | Do not sync upcoming invoices, extend stream schemas                                                                                                                                                                          |
-| 4.2.0   | 2023-09-21 | [30660](https://github.com/airbytehq/airbyte/pull/30660)  | Fix updated state for the incremental syncs                                                                                                                                                                                   |
-| 4.1.1   | 2023-09-15 | [30494](https://github.com/airbytehq/airbyte/pull/30494)  | Fix datatype of invoices.lines property                                                                                                                                                                                       |
-| 4.1.0   | 2023-08-29 | [29950](https://github.com/airbytehq/airbyte/pull/29950)  | Implement incremental deletes, add suggested streams                                                                                                                                                                          |
-| 4.0.1   | 2023-09-07 | [30254](https://github.com/airbytehq/airbyte/pull/30254)  | Fix cursorless incremental streams                                                                                                                                                                                            |
-| 4.0.0   | 2023-08-15 | [29330](https://github.com/airbytehq/airbyte/pull/29330)  | Implement incremental syncs based on date of update                                                                                                                                                                           |
-| 3.17.4  | 2023-08-15 | [29425](https://github.com/airbytehq/airbyte/pull/29425)  | Revert 3.17.3                                                                                                                                                                                                                 |
-| 3.17.3  | 2023-08-01 | [28911](https://github.com/airbytehq/airbyte/pull/28911)  | Revert 3.17.2 and fix atm_fee property                                                                                                                                                                                        |
-| 3.17.2  | 2023-08-01 | [28911](https://github.com/airbytehq/airbyte/pull/28911)  | Fix stream schemas, remove custom 403 error handling                                                                                                                                                                          |
-| 3.17.1  | 2023-08-01 | [28887](https://github.com/airbytehq/airbyte/pull/28887)  | Fix `Invoices` schema                                                                                                                                                                                                         |
-| 3.17.0  | 2023-07-28 | [26127](https://github.com/airbytehq/airbyte/pull/26127)  | Add `Prices` stream                                                                                                                                                                                                           |
-| 3.16.0  | 2023-07-27 | [28776](https://github.com/airbytehq/airbyte/pull/28776)  | Add new fields to stream schemas                                                                                                                                                                                              |
-| 3.15.0  | 2023-07-09 | [28709](https://github.com/airbytehq/airbyte/pull/28709)  | Remove duplicate streams                                                                                                                                                                                                      |
-| 3.14.0  | 2023-07-09 | [27217](https://github.com/airbytehq/airbyte/pull/27217)  | Add `ShippingRates` stream                                                                                                                                                                                                    |
-| 3.13.0  | 2023-07-18 | [28466](https://github.com/airbytehq/airbyte/pull/28466)  | Pin source API version                                                                                                                                                                                                        |
-| 3.12.0  | 2023-05-20 | [26208](https://github.com/airbytehq/airbyte/pull/26208)  | Add new stream `Persons`                                                                                                                                                                                                      |
-| 3.11.0  | 2023-06-26 | [27734](https://github.com/airbytehq/airbyte/pull/27734)  | License Update: Elv2 stream                                                                                                                                                                                                   |
-| 3.10.0  | 2023-06-22 | [27132](https://github.com/airbytehq/airbyte/pull/27132)  | Add `CreditNotes` stream                                                                                                                                                                                                      |
-| 3.9.1   | 2023-06-20 | [27522](https://github.com/airbytehq/airbyte/pull/27522)  | Fix formatting                                                                                                                                                                                                                |
-| 3.9.0   | 2023-06-19 | [27362](https://github.com/airbytehq/airbyte/pull/27362)  | Add new Streams: Transfer Reversals, Setup Attempts, Usage Records, Transactions                                                                                                                                              |
-| 3.8.0   | 2023-06-12 | [27238](https://github.com/airbytehq/airbyte/pull/27238)  | Add `Topups` stream; Add `Files` stream; Add `FileLinks` stream                                                                                                                                                               |
-| 3.7.0   | 2023-06-06 | [27083](https://github.com/airbytehq/airbyte/pull/27083)  | Add new Streams: Authorizations, Cardholders, Cards, Payment Methods, Reviews                                                                                                                                                 |
-| 3.6.0   | 2023-05-24 | [25893](https://github.com/airbytehq/airbyte/pull/25893)  | Add `ApplicationFeesRefunds` stream with parent `ApplicationFees`                                                                                                                                                             |
-| 3.5.0   | 2023-05-20 | [22859](https://github.com/airbytehq/airbyte/pull/22859)  | Add stream `Early Fraud Warnings`                                                                                                                                                                                             |
-| 3.4.3   | 2023-05-10 | [25965](https://github.com/airbytehq/airbyte/pull/25965)  | Fix Airbyte date-time data-types                                                                                                                                                                                              |
-| 3.4.2   | 2023-05-04 | [25795](https://github.com/airbytehq/airbyte/pull/25795)  | Added `CDK TypeTransformer` to guarantee declared JSON Schema data-types                                                                                                                                                      |
-| 3.4.1   | 2023-04-24 | [23389](https://github.com/airbytehq/airbyte/pull/23389)  | Add `customer_tax_ids` to `Invoices`                                                                                                                                                                                          |
-| 3.4.0   | 2023-03-20 | [23963](https://github.com/airbytehq/airbyte/pull/23963)  | Add `SetupIntents` stream                                                                                                                                                                                                     |
-| 3.3.0   | 2023-04-12 | [25136](https://github.com/airbytehq/airbyte/pull/25136)  | Add stream `Accounts`                                                                                                                                                                                                         |
-| 3.2.0   | 2023-04-10 | [23624](https://github.com/airbytehq/airbyte/pull/23624)  | Add new stream `Subscription Schedule`                                                                                                                                                                                        |
-| 3.1.0   | 2023-03-10 | [19906](https://github.com/airbytehq/airbyte/pull/19906)  | Expand `tiers` when syncing `Plans` streams                                                                                                                                                                                   |
-| 3.0.5   | 2023-03-25 | [22866](https://github.com/airbytehq/airbyte/pull/22866)  | Specified date formatting in specification                                                                                                                                                                                    |
-| 3.0.4   | 2023-03-24 | [24471](https://github.com/airbytehq/airbyte/pull/24471)  | Fix stream slices for single sliced streams                                                                                                                                                                                   |
-| 3.0.3   | 2023-03-17 | [24179](https://github.com/airbytehq/airbyte/pull/24179)  | Get customer's attributes safely                                                                                                                                                                                              |
-| 3.0.2   | 2023-03-13 | [24051](https://github.com/airbytehq/airbyte/pull/24051)  | Cache `customers` stream; Do not request transactions of customers with zero balance.                                                                                                                                         |
-| 3.0.1   | 2023-02-22 | [22898](https://github.com/airbytehq/airbyte/pull/22898)  | Add missing column to Subscriptions stream                                                                                                                                                                                    |
-| 3.0.0   | 2023-02-21 | [23295](https://github.com/airbytehq/airbyte/pull/23295)  | Fix invoice schema                                                                                                                                                                                                            |
-| 2.0.0   | 2023-02-14 | [22312](https://github.com/airbytehq/airbyte/pull/22312)  | Another fix of `Invoices` stream schema + Remove http urls from openapi_spec.json                                                                                                                                             |
-| 1.0.2   | 2023-02-09 | [22659](https://github.com/airbytehq/airbyte/pull/22659)  | Set `AvailabilityStrategy` for all streams                                                                                                                                                                                    |
-| 1.0.1   | 2023-01-27 | [22042](https://github.com/airbytehq/airbyte/pull/22042)  | Set `AvailabilityStrategy` for streams explicitly to `None`                                                                                                                                                                   |
-| 1.0.0   | 2023-01-25 | [21858](https://github.com/airbytehq/airbyte/pull/21858)  | Update the `Subscriptions` and `Invoices` stream schemas                                                                                                                                                                      |
-| 0.1.40  | 2022-10-20 | [18228](https://github.com/airbytehq/airbyte/pull/18228)  | Update the `PaymentIntents` stream schema                                                                                                                                                                                     |
-| 0.1.39  | 2022-09-28 | [17304](https://github.com/airbytehq/airbyte/pull/17304)  | Migrate to per-stream states.                                                                                                                                                                                                 |
-| 0.1.38  | 2022-09-09 | [16537](https://github.com/airbytehq/airbyte/pull/16537)  | Fix `redeem_by` field type for `customers` stream                                                                                                                                                                             |
-| 0.1.37  | 2022-08-16 | [15686](https://github.com/airbytehq/airbyte/pull/15686)  | Fix the bug when the stream couldn't be fetched due to limited permission set, if so - it should be skipped                                                                                                                   |
-| 0.1.36  | 2022-08-04 | [15292](https://github.com/airbytehq/airbyte/pull/15292)  | Implement slicing                                                                                                                                                                                                             |
-| 0.1.35  | 2022-07-21 | [14924](https://github.com/airbytehq/airbyte/pull/14924)  | Remove `additionalProperties` field from spec and schema                                                                                                                                                                      |
-| 0.1.34  | 2022-07-01 | [14357](https://github.com/airbytehq/airbyte/pull/14357)  | Add external account streams -                                                                                                                                                                                                |
-| 0.1.33  | 2022-06-06 | [13449](https://github.com/airbytehq/airbyte/pull/13449)  | Add semi-incremental support for CheckoutSessions and CheckoutSessionsLineItems streams, fixed big in StripeSubStream, added unittests, updated docs                                                                          |
-| 0.1.32  | 2022-04-30 | [12500](https://github.com/airbytehq/airbyte/pull/12500)  | Improve input configuration copy                                                                                                                                                                                              |
-| 0.1.31  | 2022-04-20 | [12230](https://github.com/airbytehq/airbyte/pull/12230)  | Update connector to use a `spec.yaml`                                                                                                                                                                                         |
-| 0.1.30  | 2022-03-21 | [11286](https://github.com/airbytehq/airbyte/pull/11286)  | Minor corrections to documentation and connector specification                                                                                                                                                                |
-| 0.1.29  | 2022-03-08 | [10359](https://github.com/airbytehq/airbyte/pull/10359)  | Improved performance for streams with substreams: invoice_line_items, subscription_items, bank_accounts                                                                                                                       |
-| 0.1.28  | 2022-02-08 | [10165](https://github.com/airbytehq/airbyte/pull/10165)  | Improve 404 handling for `CheckoutSessionsLineItems` stream                                                                                                                                                                   |
-| 0.1.27  | 2021-12-28 | [9148](https://github.com/airbytehq/airbyte/pull/9148)    | Fix `date`, `arrival\_date` fields                                                                                                                                                                                            |
-| 0.1.26  | 2021-12-21 | [8992](https://github.com/airbytehq/airbyte/pull/8992)    | Fix type `events.request` in schema                                                                                                                                                                                           |
-| 0.1.25  | 2021-11-25 | [8250](https://github.com/airbytehq/airbyte/pull/8250)    | Rearrange setup fields                                                                                                                                                                                                        |
-| 0.1.24  | 2021-11-08 | [7729](https://github.com/airbytehq/airbyte/pull/7729)    | Include tax data in `checkout_sessions_line_items` stream                                                                                                                                                                     |
-| 0.1.23  | 2021-11-08 | [7729](https://github.com/airbytehq/airbyte/pull/7729)    | Correct `payment_intents` schema                                                                                                                                                                                              |
-| 0.1.22  | 2021-11-05 | [7345](https://github.com/airbytehq/airbyte/pull/7345)    | Add 3 new streams                                                                                                                                                                                                             |
-| 0.1.21  | 2021-10-07 | [6841](https://github.com/airbytehq/airbyte/pull/6841)    | Fix missing `start_date` argument + update json files for SAT                                                                                                                                                                 |
-| 0.1.20  | 2021-09-30 | [6017](https://github.com/airbytehq/airbyte/pull/6017)    | Add lookback_window_days parameter                                                                                                                                                                                            |
-| 0.1.19  | 2021-09-27 | [6466](https://github.com/airbytehq/airbyte/pull/6466)    | Use `start_date` parameter in incremental streams                                                                                                                                                                             |
-| 0.1.18  | 2021-09-14 | [6004](https://github.com/airbytehq/airbyte/pull/6004)    | Fix coupons and subscriptions stream schemas by removing incorrect timestamp formatting                                                                                                                                       |
-| 0.1.17  | 2021-09-14 | [6004](https://github.com/airbytehq/airbyte/pull/6004)    | Add `PaymentIntents` stream                                                                                                                                                                                                   |
-| 0.1.16  | 2021-07-28 | [4980](https://github.com/airbytehq/airbyte/pull/4980)    | Remove Updated field from schemas                                                                                                                                                                                             |
-| 0.1.15  | 2021-07-21 | [4878](https://github.com/airbytehq/airbyte/pull/4878)    | Fix incorrect percent_off and discounts data filed types                                                                                                                                                                      |
-| 0.1.14  | 2021-07-09 | [4669](https://github.com/airbytehq/airbyte/pull/4669)    | Subscriptions Stream now returns all kinds of subscriptions \(including expired and canceled\)                                                                                                                                |
-| 0.1.13  | 2021-07-03 | [4528](https://github.com/airbytehq/airbyte/pull/4528)    | Remove regex for acc validation                                                                                                                                                                                               |
-| 0.1.12  | 2021-06-08 | [3973](https://github.com/airbytehq/airbyte/pull/3973)    | Add `AIRBYTE_ENTRYPOINT` for Kubernetes support                                                                                                                                                                               |
-| 0.1.11  | 2021-05-30 | [3744](https://github.com/airbytehq/airbyte/pull/3744)    | Fix types in schema                                                                                                                                                                                                           |
-| 0.1.10  | 2021-05-28 | [3728](https://github.com/airbytehq/airbyte/pull/3728)    | Update data types to be number instead of int                                                                                                                                                                                 |
-| 0.1.9   | 2021-05-13 | [3367](https://github.com/airbytehq/airbyte/pull/3367)    | Add acceptance tests for connected accounts                                                                                                                                                                                   |
-| 0.1.8   | 2021-05-11 | [3566](https://github.com/airbytehq/airbyte/pull/3368)    | Bump CDK connectors                                                                                                                                                                                                           |
+| Version     | Date       | Pull Request                                                 | Subject                                                                                                                                                                                                                       |
+|:------------|:-----------|:-------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 7.1.0       | 2026-11-03 | [90436](https://github.com/airbytehq/airbyte/pull/90436)     | Read `accounts` from `/v1/accounts` by `created`: incremental syncs pick up new connected accounts, full refreshes read parallel 30-day windows                                                                               |
+| 7.0.7 | 2026-11-10 | [91749](https://github.com/airbytehq/airbyte/pull/91749) | Update dependencies |
+| 7.0.6 | 2026-11-03 | [90261](https://github.com/airbytehq/airbyte/pull/90261) | Make interrupted `customer_balance_transactions` backfills resumable; fail on 400/403 for that stream instead of silently skipping customers |
+| 7.0.5 | 2026-11-01 | [90396](https://github.com/airbytehq/airbyte/pull/90396) | Simplify HTTP error handling configuration with no change to which errors are skipped or fail the sync |
+| 7.0.4 | 2026-11-03 | [90764](https://github.com/airbytehq/airbyte/pull/90764) | Update dependencies |
+| 7.0.3 | 2026-10-20 | [89581](https://github.com/airbytehq/airbyte/pull/89581) | Read `bank_accounts` full refreshes from 30-day `customers` slices instead of one partition per customer, and fail on HTTP 400 instead of silently skipping a slice |
+| 7.0.2 | 2026-10-20 | [89447](https://github.com/airbytehq/airbyte/pull/89447) | Update dependencies |
+| 7.0.1 | 2026-10-13 | [88397](https://github.com/airbytehq/airbyte/pull/88397) | Opt in to TCP keepalive and request timeouts (30 s connect, 80 s read) so dropped connections fail and retry instead of hanging |
+| 7.0.0 | 2026-10-13 | [87765](https://github.com/airbytehq/airbyte/pull/87765) | Use Stripe's current `il_` line item IDs for `invoice_line_items` on incremental syncs. See the [migration guide](https://docs.airbyte.com/integrations/sources/stripe-migrations#upgrading-to-700). |
+| 6.0.23 | 2026-10-13 | [88809](https://github.com/airbytehq/airbyte/pull/88809) | Update dependencies |
+| 6.0.22 | 2026-10-06 | [88070](https://github.com/airbytehq/airbyte/pull/88070) | Update dependencies |
+| 6.0.21 | 2026-09-29 | [87375](https://github.com/airbytehq/airbyte/pull/87375) | Update dependencies |
+| 6.0.20 | 2026-09-22 | [86838](https://github.com/airbytehq/airbyte/pull/86838) | Update dependencies |
+| 6.0.19 | 2026-09-21 | [85087](https://github.com/airbytehq/airbyte/pull/85087) | Fix truncated `invoice_line_items` on incremental syncs: fetch the complete line item list from `invoices/{id}/lines` when the event payload embeds only the first page. Existing destination data for invoices with more than 10 line items requires a Full Refresh to repair. |
+| 6.0.18 | 2026-09-15 | [86254](https://github.com/airbytehq/airbyte/pull/86254) | Update dependencies |
+| 6.0.17 | 2026-09-11 | [85799](https://github.com/airbytehq/airbyte/pull/85799) | Prevent the events-based `invoice_line_items` and `subscription_items` transformations from running when `original_record` is missing or empty. |
+| 6.0.16 | 2026-09-08 | [85672](https://github.com/airbytehq/airbyte/pull/85672) | Update dependencies |
+| 6.0.15 | 2026-08-18 | [84768](https://github.com/airbytehq/airbyte/pull/84768) | Update dependencies |
+| 6.0.14 | 2026-08-17 | [84355](https://github.com/airbytehq/airbyte/pull/84355) | Update events now win same-second cursor ties with creation events so the newer payload is kept at the destination. |
+| 6.0.13 | 2026-08-11 | [84134](https://github.com/airbytehq/airbyte/pull/84134) | Update dependencies |
+| 6.0.12 | 2026-08-04 | [83634](https://github.com/airbytehq/airbyte/pull/83634) | Update dependencies |
+| 6.0.11 | 2026-07-28 | [83119](https://github.com/airbytehq/airbyte/pull/83119) | Update dependencies |
+| 6.0.10 | 2026-07-21 | [82611](https://github.com/airbytehq/airbyte/pull/82611) | Update dependencies |
+| 6.0.9 | 2026-07-14 | [82034](https://github.com/airbytehq/airbyte/pull/82034) | Update dependencies |
+| 6.0.8 | 2026-06-30 | [81285](https://github.com/airbytehq/airbyte/pull/81285) | Update dependencies |
+| 6.0.7 | 2026-06-23 | [80686](https://github.com/airbytehq/airbyte/pull/80686) | Update dependencies |
+| 6.0.6 | 2026-06-16 | [80070](https://github.com/airbytehq/airbyte/pull/80070) | Update dependencies |
+| 6.0.5 | 2026-06-09 | [79523](https://github.com/airbytehq/airbyte/pull/79523) | Update dependencies |
+| 6.0.4 | 2026-06-03 | [79042](https://github.com/airbytehq/airbyte/pull/79042) | Update dependencies |
+| 6.0.3 | 2026-04-28 | [77424](https://github.com/airbytehq/airbyte/pull/77424) | Update dependencies |
+| 6.0.2 | 2026-04-21 | [76777](https://github.com/airbytehq/airbyte/pull/76777) | Update dependencies |
+| 6.0.1 | 2026-04-13 | [76276](https://github.com/airbytehq/airbyte/pull/76276) | Rename "concurrent workers" to "concurrent threads" in connector spec |
+| 6.0.0 | 2026-04-13 | [76095](https://github.com/airbytehq/airbyte/pull/76095) | Fix missing records in `invoice_line_items` and `subscription_items` incremental streams by replacing `DpathFlattenFields` with `RecordExpander` to correctly expand nested line items from Stripe events. This is a breaking change — previously synced data for these streams may be incomplete. See the [migration guide](https://docs.airbyte.com/integrations/sources/stripe-migrations#upgrading-to-600) for details. |
+| 5.15.23 | 2026-03-31 | [75864](https://github.com/airbytehq/airbyte/pull/75864) | Update dependencies |
+| 5.15.22 | 2026-03-12 | [74770](https://github.com/airbytehq/airbyte/pull/74770) | Upgrade CDK to 7.13.0 |
+| 5.15.21 | 2026-03-06 | [74342](https://github.com/airbytehq/airbyte/pull/74342) | Promoting release candidate 5.15.21-rc.5 to a main version. |
+| 5.15.21-rc.5 | 2026-03-06 | [74337](https://github.com/airbytehq/airbyte/pull/74337) | Make API data retention validation optional per stream via new `api_retention_streams` config field, upgrade CDK to 7.8.1.post54 |
+| 5.15.21-rc.4 | 2026-03-04 | [74290](https://github.com/airbytehq/airbyte/pull/74290) | Lower default concurrency from 25 to 10 and increase default data request time increment from 30 to 365 days to reduce rate limiting |
+| 5.15.21-rc.3 | 2026-03-03 | [74259](https://github.com/airbytehq/airbyte/pull/74259) | Fix cursor age validation to clear state before constructing full refresh stream, ensuring true full refresh from start_date |
+| 5.15.21-rc.2 | 2026-02-25 | [74051](https://github.com/airbytehq/airbyte/pull/74051) | Fix sync failure when unselected parent streams have stale cursor state during cursor age validation |
+| 5.15.21-rc.1 | 2026-02-25 | [73646](https://github.com/airbytehq/airbyte/pull/73646) | Add cursor age validation for StateDelegatingStream streams to prevent data loss when initial sync fails mid-way |
+| 5.15.20 | 2026-02-24 | [73944](https://github.com/airbytehq/airbyte/pull/73944) | Update dependencies |
+| 5.15.19 | 2026-02-17 | [73466](https://github.com/airbytehq/airbyte/pull/73466) | Update dependencies |
+| 5.15.18 | 2026-02-12 | [73318](https://github.com/airbytehq/airbyte/pull/73318) | Promoting release candidate 5.15.18-rc.1 to a main version. |
+| 5.15.18-rc.1 | 2026-02-04 | [72432](https://github.com/airbytehq/airbyte/pull/72432) | fix(source-stripe):  Fix Missing ConcurrencyLevel & Reduce Default Step Size |
+| 5.15.17 | 2026-01-27 | [72363](https://github.com/airbytehq/airbyte/pull/72363) | fix(source-stripe): Add date filtering for checkout_sessions full refresh |
+| 5.15.16 | 2026-01-20 | [72106](https://github.com/airbytehq/airbyte/pull/72106) | Update dependencies |
+| 5.15.15 | 2026-01-14 | [71614](https://github.com/airbytehq/airbyte/pull/71614) | Update dependencies |
+| 5.15.14 | 2025-12-18 | [70638](https://github.com/airbytehq/airbyte/pull/70638) | Update dependencies |
+| 5.15.13 | 2025-11-25 | [70048](https://github.com/airbytehq/airbyte/pull/70048) | Update dependencies |
+| 5.15.12 | 2025-11-18 | [69580](https://github.com/airbytehq/airbyte/pull/69580) | Update dependencies |
+| 5.15.11 | 2025-10-29 | [68994](https://github.com/airbytehq/airbyte/pull/68994) | Update dependencies |
+| 5.15.10 | 2025-10-21 | [68527](https://github.com/airbytehq/airbyte/pull/68527) | Update dependencies |
+| 5.15.9 | 2025-10-14 | [67472](https://github.com/airbytehq/airbyte/pull/67472) | Update dependencies |
+| 5.15.8 | 2025-09-30 | [66891](https://github.com/airbytehq/airbyte/pull/66891) | Update dependencies |
+| 5.15.7 | 2025-09-24 | [66367](https://github.com/airbytehq/airbyte/pull/66367) | Update dependencies |
+| 5.15.6 | 2025-09-09 | [66115](https://github.com/airbytehq/airbyte/pull/66115) | Update dependencies |
+| 5.15.5 | 2025-08-24 | [65489](https://github.com/airbytehq/airbyte/pull/65489) | Update dependencies |
+| 5.15.4 | 2025-08-10 | [64840](https://github.com/airbytehq/airbyte/pull/64840) | Update dependencies |
+| 5.15.3 | 2025-08-04 | [64484](https://github.com/airbytehq/airbyte/pull/64484) | Fix memory issue by moving schema loaders out of $parameters |
+| 5.15.2 | 2025-08-03 | [64439](https://github.com/airbytehq/airbyte/pull/64439) | Update dependencies |
+| 5.15.1 | 2025-07-26 | [60561](https://github.com/airbytehq/airbyte/pull/60561) | Update dependencies |
+| 5.15.0 | 2025-07-23 | [63743](https://github.com/airbytehq/airbyte/pull/63743) | Promoting release candidate 5.15.0-rc.1 to a main version. |
+| 5.15.0-rc.1 | 2025-07-21 | [63370](https://github.com/airbytehq/airbyte/pull/63370) | Migrate to manifest-only format. |
+| 5.14.1 | 2025-07-15 | [62893](https://github.com/airbytehq/airbyte/pull/62893) | Increase the timeout for syncs that fail without any records to one day. |
+| 5.14.0 | 2025-07-15 | [63303](https://github.com/airbytehq/airbyte/pull/63303) | Promoting release candidate 5.14.0-rc.1 to a main version. |
+| 5.14.0-rc.1 | 2025-06-12 | [60846](https://github.com/airbytehq/airbyte/pull/60846) | Rollback Low Code per partition streams; update slicer for invoice_line_items and normalization for events based streams |
+| 5.13.0 | 2025-05-22 | [60846](https://github.com/airbytehq/airbyte/pull/60846) | Update subscription_items and usage_records stream to python implementation |
+| 5.12.0 | 2025-05-12 | [59743](https://github.com/airbytehq/airbyte/pull/59743) | Update invoice_line_items stream to python implementation |
+| 5.11.3 | 2025-05-10 | [60053](https://github.com/airbytehq/airbyte/pull/60053) | Update dependencies |
+| 5.11.2 | 2025-05-04 | [59645](https://github.com/airbytehq/airbyte/pull/59645) | Update dependencies |
+| 5.11.1 | 2025-04-27 | [58979](https://github.com/airbytehq/airbyte/pull/58979) | Update dependencies |
+| 5.11.0 | 2025-04-24 | [58637](https://github.com/airbytehq/airbyte/pull/58637) | Promoting release candidate 5.11.0-rc.2 to a main version. |
+| 5.11.0-rc.2 | 2025-04-18 | [58136](https://github.com/airbytehq/airbyte/pull/58136) | Enable progressive rollout |
+| 5.11.0-rc.1 | 2025-04-18 | [54162](https://github.com/airbytehq/airbyte/pull/54162) | Migrate to low-code |
+| 5.10.1 | 2025-04-17 | [58124](https://github.com/airbytehq/airbyte/pull/58124) | Extend safe state to support nested states |
+| 5.10.0 | 2025-04-17 | [58117](https://github.com/airbytehq/airbyte/pull/58117) | Promoting release candidate 5.10.0-rc.1 to a main version. |
+| 5.10.0-rc.1 | 2025-04-13 | [58060](https://github.com/airbytehq/airbyte/pull/58060) | Migrate application_fees, authorizations, cardholders, cards, early_fraud_warnings, external_account_bank_accounts and external_account_cards to low-code |
+| 5.9.2 | 2025-04-15 | [58072](https://github.com/airbytehq/airbyte/pull/58072) | Add safe state data type handling |
+| 5.9.1 | 2025-04-15 | [58068](https://github.com/airbytehq/airbyte/pull/58068) | Add documentation url back in spec |
+| 5.9.0 | 2025-04-14 | [58065](https://github.com/airbytehq/airbyte/pull/58065) | Promoting release candidate 5.9.0-rc.1 to a main version. |
+| 5.9.0-rc.1 | 2025-03-04 | [54162](https://github.com/airbytehq/airbyte/pull/54162) | Migrate events, shipping_rates, balance_transactions, files and file_links to low-code |
+| 5.8.14 | 2025-03-29 | [56871](https://github.com/airbytehq/airbyte/pull/56871) | Update dependencies |
+| 5.8.13 | 2025-03-22 | [56276](https://github.com/airbytehq/airbyte/pull/56276) | Update dependencies |
+| 5.8.12 | 2025-03-10 | [55682](https://github.com/airbytehq/airbyte/pull/55682) | Promoting release candidate 5.8.10-rc.1 to a main version. |
+| 5.8.11 | 2025-03-08 | [55598](https://github.com/airbytehq/airbyte/pull/55598) | Update dependencies |
+| 5.8.10-rc1  | 2025-02-22 | [53670](https://github.com/airbytehq/airbyte/pull/53670)     | Update pritbuffer logic                                                                                                                                                                                                       |
+| 5.8.9       | 2025-03-01 | [55117](https://github.com/airbytehq/airbyte/pull/55117)     | Update dependencies                                                                                                                                                                                                           |
+| 5.8.8       | 2025-02-28 | [54711](https://github.com/airbytehq/airbyte/pull/54711)     | Add retry error handler for `requests.exceptions.InvalidURL'                                                                                                                                                                  |
+| 5.8.7       | 2025-02-22 | [54468](https://github.com/airbytehq/airbyte/pull/54468)     | Update dependencies                                                                                                                                                                                                           |
+| 5.8.6       | 2025-02-15 | [54067](https://github.com/airbytehq/airbyte/pull/54067)     | Update dependencies                                                                                                                                                                                                           |
+| 5.8.5       | 2025-02-08 | [52018](https://github.com/airbytehq/airbyte/pull/52018)     | Update dependencies                                                                                                                                                                                                           |
+| 5.8.4       | 2025-02-03 | [49940](https://github.com/airbytehq/airbyte/pull/49940)     | Update CDK version                                                                                                                                                                                                            |
+| 5.8.3       | 2025-01-11 | [46832](https://github.com/airbytehq/airbyte/pull/46832)     | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64                                                        |
+| 5.8.2       | 2024-12-10 | [46499](https://github.com/airbytehq/airbyte/pull/46499)     | Source-Stripe: Refactor Customer Balance Transactions                                                                                                                                                                         |
+| 5.8.1       | 2024-12-08 | [46499](https://github.com/airbytehq/airbyte/pull/46499)     | Source-Stripe: Add new payout_balance_transactions incremental stream                                                                                                                                                         |
+| 5.8.0       | 2024-10-12 | [46864](https://github.com/airbytehq/airbyte/pull/46864)     | Add incremental stream support to `accounts` stream                                                                                                                                                                           |
+| 5.7.0       | 2024-10-01 | [45860](https://github.com/airbytehq/airbyte/pull/45860)     | Add incremental stream support to `invoice_line_items` and `subscription_items` streams                                                                                                                                       |
+| 5.6.2       | 2024-10-05 | [43881](https://github.com/airbytehq/airbyte/pull/43881)     | Update dependencies                                                                                                                                                                                                           |
+| 5.6.1       | 2024-10-03 | [46327](https://github.com/airbytehq/airbyte/pull/46327)     | Bump the cdk to 5.10.2 to stop using PrintBuffer optimization due to record count mismatches                                                                                                                                  |
+| 5.6.0       | 2024-09-10 | [44891](https://github.com/airbytehq/airbyte/pull/44891)     | Update `Payment Methods` stream                                                                                                                                                                                               |
+| 5.5.4       | 2024-09-09 | [45348](https://github.com/airbytehq/airbyte/pull/45348)     | Remove `stripe` python package                                                                                                                                                                                                |
+| 5.5.3       | 2024-09-03 | [45101](https://github.com/airbytehq/airbyte/pull/45101)     | Fix regression following pagination issue fix                                                                                                                                                                                 |
+| 5.5.2       | 2024-08-28 | [44862](https://github.com/airbytehq/airbyte/pull/44862)     | Fix RFR pagination issue                                                                                                                                                                                                      |
+| 5.5.1       | 2024-08-10 | [43105](https://github.com/airbytehq/airbyte/pull/43105)     | Update dependencies                                                                                                                                                                                                           |
+| 5.5.0       | 2024-08-08 | [43302](https://github.com/airbytehq/airbyte/pull/43302)     | Fix problem with state not updating and upgrade cdk 4                                                                                                                                                                         |
+| 5.4.12      | 2024-07-31 | [41985](https://github.com/airbytehq/airbyte/pull/41985)     | Expand Invoice discounts and tax rates                                                                                                                                                                                        |
+| 5.4.11      | 2024-07-27 | [42623](https://github.com/airbytehq/airbyte/pull/42623)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.10      | 2024-07-20 | [42305](https://github.com/airbytehq/airbyte/pull/42305)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.9       | 2024-07-13 | [41760](https://github.com/airbytehq/airbyte/pull/41760)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.8       | 2024-07-10 | [41477](https://github.com/airbytehq/airbyte/pull/41477)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.7       | 2024-07-09 | [40869](https://github.com/airbytehq/airbyte/pull/40869)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.6       | 2024-07-08 | [41044](https://github.com/airbytehq/airbyte/pull/41044)     | Use latest `CDK` version possible                                                                                                                                                                                             |
+| 5.4.5       | 2024-06-25 | [40404](https://github.com/airbytehq/airbyte/pull/40404)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.4       | 2024-06-22 | [40040](https://github.com/airbytehq/airbyte/pull/40040)     | Update dependencies                                                                                                                                                                                                           |
+| 5.4.3       | 2024-06-06 | [39284](https://github.com/airbytehq/airbyte/pull/39284)     | [autopull] Upgrade base image to v1.2.2                                                                                                                                                                                       |
+| 5.4.2       | 2024-06-11 | [39412](https://github.com/airbytehq/airbyte/pull/39412)     | Removed `invoice.upcomming` event type from (incremental sync) for `Invoices` stream                                                                                                                                          |
+| 5.4.1       | 2024-06-11 | [39393](https://github.com/airbytehq/airbyte/pull/39393)     | Added missing `event types` (incremental sync) for `Invoices` stream                                                                                                                                                          |
+| 5.4.0       | 2024-06-05 | [39138](https://github.com/airbytehq/airbyte/pull/39138)     | Fixed the `Refunds` stream missing data for the `incremental` sync                                                                                                                                                            |
+| 5.3.9       | 2024-05-22 | [38550](https://github.com/airbytehq/airbyte/pull/38550)     | Update authenticator package                                                                                                                                                                                                  |
+| 5.3.8       | 2024-05-15 | [38248](https://github.com/airbytehq/airbyte/pull/38248)     | Replace AirbyteLogger with logging.Logger                                                                                                                                                                                     |
+| 5.3.7       | 2024-04-24 | [36663](https://github.com/airbytehq/airbyte/pull/36663)     | Schema descriptions                                                                                                                                                                                                           |
+| 5.3.6       | 2024-04-18 | [37448](https://github.com/airbytehq/airbyte/pull/37448)     | Ensure AirbyteTracedException in concurrent CDK are emitted with the right type                                                                                                                                               |
+| 5.3.5       | 2024-04-18 | [37418](https://github.com/airbytehq/airbyte/pull/37418)     | Ensure python return code != 0 in case of error                                                                                                                                                                               |
+| 5.3.4       | 2024-04-11 | [37406](https://github.com/airbytehq/airbyte/pull/37406)     | Update CDK version to have partitioned state fix                                                                                                                                                                              |
+| 5.3.3       | 2024-04-11 | [37001](https://github.com/airbytehq/airbyte/pull/37001)     | Update airbyte-cdk to flush print buffer for every message                                                                                                                                                                    |
+| 5.3.2       | 2024-04-11 | [36964](https://github.com/airbytehq/airbyte/pull/36964)     | Update CDK version to fix breaking change before another devs work on it                                                                                                                                                      |
+| 5.3.1       | 2024-04-10 | [36960](https://github.com/airbytehq/airbyte/pull/36960)     | Remove unused imports                                                                                                                                                                                                         |
+| 5.3.0       | 2024-03-12 | [35978](https://github.com/airbytehq/airbyte/pull/35978)     | Upgrade CDK to start emitting record counts with state and full refresh state                                                                                                                                                 |
+| 5.2.4       | 2024-02-12 | [35137](https://github.com/airbytehq/airbyte/pull/35137)     | Fix license in `pyproject.toml`                                                                                                                                                                                               |
+| 5.2.3       | 2024-02-09 | [35068](https://github.com/airbytehq/airbyte/pull/35068)     | Manage dependencies with Poetry.                                                                                                                                                                                              |
+| 5.2.2       | 2024-01-31 | [34619](https://github.com/airbytehq/airbyte/pull/34619)     | Events stream concurrent on incremental syncs                                                                                                                                                                                 |
+| 5.2.1       | 2024-01-18 | [34495](https://github.com/airbytehq/airbyte/pull/34495)     | Fix deadlock issue                                                                                                                                                                                                            |
+| 5.2.0       | 2024-01-18 | [34347](https://github.com/airbytehq/airbyte/pull//34347)    | Add new fields invoices and subscription streams. Upgrade the CDK for better memory usage.                                                                                                                                    |
+| 5.1.3       | 2023-12-18 | [33306](https://github.com/airbytehq/airbyte/pull/33306/)    | Adding integration tests                                                                                                                                                                                                      |
+| 5.1.2       | 2024-01-04 | [33414](https://github.com/airbytehq/airbyte/pull/33414)     | Prepare for airbyte-lib                                                                                                                                                                                                       |
+| 5.1.1       | 2024-01-04 | [33926](https://github.com/airbytehq/airbyte/pull/33926/)    | Update endpoint for `bank_accounts` stream                                                                                                                                                                                    |
+| 5.1.0       | 2023-12-11 | [32908](https://github.com/airbytehq/airbyte/pull/32908/)    | Read full refresh streams concurrently                                                                                                                                                                                        |
+| 5.0.2       | 2023-12-01 | [33038](https://github.com/airbytehq/airbyte/pull/33038)     | Add stream slice logging for SubStream                                                                                                                                                                                        |
+| 5.0.1       | 2023-11-17 | [32638](https://github.com/airbytehq/airbyte/pull/32638/)    | Availability stretegy: check availability of both endpoints (if applicable) - common API + events API                                                                                                                         |
+| 5.0.0       | 2023-11-16 | [32286](https://github.com/airbytehq/airbyte/pull/32286/)    | Fix multiple issues regarding usage of the incremental sync mode for the `Refunds`, `CheckoutSessions`, `CheckoutSessionsLineItems` streams. Fix schemas for the streams: `Invoices`, `Subscriptions`, `SubscriptionSchedule` |
+| 4.5.4       | 2023-11-16 | [32284](https://github.com/airbytehq/airbyte/pull/32284/)    | Enable client-side rate limiting                                                                                                                                                                                              |
+| 4.5.3       | 2023-11-14 | [32473](https://github.com/airbytehq/airbyte/pull/32473/)    | Have all full_refresh stream syncs be concurrent                                                                                                                                                                              |
+| 4.5.2       | 2023-11-03 | [32146](https://github.com/airbytehq/airbyte/pull/32146/)    | Fix multiple BankAccount issues                                                                                                                                                                                               |
+| 4.5.1       | 2023-11-01 | [32056](https://github.com/airbytehq/airbyte/pull/32056/)    | Use CDK version 0.52.8                                                                                                                                                                                                        |
+| 4.5.0       | 2023-10-25 | [31327](https://github.com/airbytehq/airbyte/pull/31327/)    | Use concurrent CDK when running in full-refresh                                                                                                                                                                               |
+| 4.4.2       | 2023-10-24 | [31764](https://github.com/airbytehq/airbyte/pull/31764)     | Base image migration: remove Dockerfile and use the python-connector-base image                                                                                                                                               |
+| 4.4.1       | 2023-10-18 | [31553](https://github.com/airbytehq/airbyte/pull/31553)     | Adjusted `Setup Attempts` and extended `Checkout Sessions` stream schemas                                                                                                                                                     |
+| 4.4.0       | 2023-10-04 | [31046](https://github.com/airbytehq/airbyte/pull/31046)     | Added margins field to invoice_line_items stream.                                                                                                                                                                             |
+| 4.3.1       | 2023-09-27 | [30800](https://github.com/airbytehq/airbyte/pull/30800)     | Handle permission issues a non breaking                                                                                                                                                                                       |
+| 4.3.0       | 2023-09-26 | [30752](https://github.com/airbytehq/airbyte/pull/30752)     | Do not sync upcoming invoices, extend stream schemas                                                                                                                                                                          |
+| 4.2.0       | 2023-09-21 | [30660](https://github.com/airbytehq/airbyte/pull/30660)     | Fix updated state for the incremental syncs                                                                                                                                                                                   |
+| 4.1.1       | 2023-09-15 | [30494](https://github.com/airbytehq/airbyte/pull/30494)     | Fix datatype of invoices.lines property                                                                                                                                                                                       |
+| 4.1.0       | 2023-08-29 | [29950](https://github.com/airbytehq/airbyte/pull/29950)     | Implement incremental deletes, add suggested streams                                                                                                                                                                          |
+| 4.0.1       | 2023-09-07 | [30254](https://github.com/airbytehq/airbyte/pull/30254)     | Fix cursorless incremental streams                                                                                                                                                                                            |
+| 4.0.0       | 2023-08-15 | [29330](https://github.com/airbytehq/airbyte/pull/29330)     | Implement incremental syncs based on date of update                                                                                                                                                                           |
+| 3.17.4      | 2023-08-15 | [29425](https://github.com/airbytehq/airbyte/pull/29425)     | Revert 3.17.3                                                                                                                                                                                                                 |
+| 3.17.3      | 2023-08-01 | [28911](https://github.com/airbytehq/airbyte/pull/28911)     | Revert 3.17.2 and fix atm_fee property                                                                                                                                                                                        |
+| 3.17.2      | 2023-08-01 | [28911](https://github.com/airbytehq/airbyte/pull/28911)     | Fix stream schemas, remove custom 403 error handling                                                                                                                                                                          |
+| 3.17.1      | 2023-08-01 | [28887](https://github.com/airbytehq/airbyte/pull/28887)     | Fix `Invoices` schema                                                                                                                                                                                                         |
+| 3.17.0      | 2023-07-28 | [26127](https://github.com/airbytehq/airbyte/pull/26127)     | Add `Prices` stream                                                                                                                                                                                                           |
+| 3.16.0      | 2023-07-27 | [28776](https://github.com/airbytehq/airbyte/pull/28776)     | Add new fields to stream schemas                                                                                                                                                                                              |
+| 3.15.0      | 2023-07-09 | [28709](https://github.com/airbytehq/airbyte/pull/28709)     | Remove duplicate streams                                                                                                                                                                                                      |
+| 3.14.0      | 2023-07-09 | [27217](https://github.com/airbytehq/airbyte/pull/27217)     | Add `ShippingRates` stream                                                                                                                                                                                                    |
+| 3.13.0      | 2023-07-18 | [28466](https://github.com/airbytehq/airbyte/pull/28466)     | Pin source API version                                                                                                                                                                                                        |
+| 3.12.0      | 2023-05-20 | [26208](https://github.com/airbytehq/airbyte/pull/26208)     | Add new stream `Persons`                                                                                                                                                                                                      |
+| 3.11.0      | 2023-06-26 | [27734](https://github.com/airbytehq/airbyte/pull/27734)     | License Update: Elv2 stream                                                                                                                                                                                                   |
+| 3.10.0      | 2023-06-22 | [27132](https://github.com/airbytehq/airbyte/pull/27132)     | Add `CreditNotes` stream                                                                                                                                                                                                      |
+| 3.9.1       | 2023-06-20 | [27522](https://github.com/airbytehq/airbyte/pull/27522)     | Fix formatting                                                                                                                                                                                                                |
+| 3.9.0       | 2023-06-19 | [27362](https://github.com/airbytehq/airbyte/pull/27362)     | Add new Streams: Transfer Reversals, Setup Attempts, Usage Records, Transactions                                                                                                                                              |
+| 3.8.0       | 2023-06-12 | [27238](https://github.com/airbytehq/airbyte/pull/27238)     | Add `Topups` stream; Add `Files` stream; Add `FileLinks` stream                                                                                                                                                               |
+| 3.7.0       | 2023-06-06 | [27083](https://github.com/airbytehq/airbyte/pull/27083)     | Add new Streams: Authorizations, Cardholders, Cards, Payment Methods, Reviews                                                                                                                                                 |
+| 3.6.0       | 2023-05-24 | [25893](https://github.com/airbytehq/airbyte/pull/25893)     | Add `ApplicationFeesRefunds` stream with parent `ApplicationFees`                                                                                                                                                             |
+| 3.5.0       | 2023-05-20 | [22859](https://github.com/airbytehq/airbyte/pull/22859)     | Add stream `Early Fraud Warnings`                                                                                                                                                                                             |
+| 3.4.3       | 2023-05-10 | [25965](https://github.com/airbytehq/airbyte/pull/25965)     | Fix Airbyte date-time data-types                                                                                                                                                                                              |
+| 3.4.2       | 2023-05-04 | [25795](https://github.com/airbytehq/airbyte/pull/25795)     | Added `CDK TypeTransformer` to guarantee declared JSON Schema data-types                                                                                                                                                      |
+| 3.4.1       | 2023-04-24 | [23389](https://github.com/airbytehq/airbyte/pull/23389)     | Add `customer_tax_ids` to `Invoices`                                                                                                                                                                                          |
+| 3.4.0       | 2023-03-20 | [23963](https://github.com/airbytehq/airbyte/pull/23963)     | Add `SetupIntents` stream                                                                                                                                                                                                     |
+| 3.3.0       | 2023-04-12 | [25136](https://github.com/airbytehq/airbyte/pull/25136)     | Add stream `Accounts`                                                                                                                                                                                                         |
+| 3.2.0       | 2023-04-10 | [23624](https://github.com/airbytehq/airbyte/pull/23624)     | Add new stream `Subscription Schedule`                                                                                                                                                                                        |
+| 3.1.0       | 2023-03-10 | [19906](https://github.com/airbytehq/airbyte/pull/19906)     | Expand `tiers` when syncing `Plans` streams                                                                                                                                                                                   |
+| 3.0.5       | 2023-03-25 | [22866](https://github.com/airbytehq/airbyte/pull/22866)     | Specified date formatting in specification                                                                                                                                                                                    |
+| 3.0.4       | 2023-03-24 | [24471](https://github.com/airbytehq/airbyte/pull/24471)     | Fix stream slices for single sliced streams                                                                                                                                                                                   |
+| 3.0.3       | 2023-03-17 | [24179](https://github.com/airbytehq/airbyte/pull/24179)     | Get customer's attributes safely                                                                                                                                                                                              |
+| 3.0.2       | 2023-03-13 | [24051](https://github.com/airbytehq/airbyte/pull/24051)     | Cache `customers` stream; Do not request transactions of customers with zero balance.                                                                                                                                         |
+| 3.0.1       | 2023-02-22 | [22898](https://github.com/airbytehq/airbyte/pull/22898)     | Add missing column to Subscriptions stream                                                                                                                                                                                    |
+| 3.0.0       | 2023-02-21 | [23295](https://github.com/airbytehq/airbyte/pull/23295)     | Fix invoice schema                                                                                                                                                                                                            |
+| 2.0.0       | 2023-02-14 | [22312](https://github.com/airbytehq/airbyte/pull/22312)     | Another fix of `Invoices` stream schema + Remove http urls from openapi_spec.json                                                                                                                                             |
+| 1.0.2       | 2023-02-09 | [22659](https://github.com/airbytehq/airbyte/pull/22659)     | Set `AvailabilityStrategy` for all streams                                                                                                                                                                                    |
+| 1.0.1       | 2023-01-27 | [22042](https://github.com/airbytehq/airbyte/pull/22042)     | Set `AvailabilityStrategy` for streams explicitly to `None`                                                                                                                                                                   |
+| 1.0.0       | 2023-01-25 | [21858](https://github.com/airbytehq/airbyte/pull/21858)     | Update the `Subscriptions` and `Invoices` stream schemas                                                                                                                                                                      |
+| 0.1.40      | 2022-10-20 | [18228](https://github.com/airbytehq/airbyte/pull/18228)     | Update the `PaymentIntents` stream schema                                                                                                                                                                                     |
+| 0.1.39      | 2022-09-28 | [17304](https://github.com/airbytehq/airbyte/pull/17304)     | Migrate to per-stream states.                                                                                                                                                                                                 |
+| 0.1.38      | 2022-09-09 | [16537](https://github.com/airbytehq/airbyte/pull/16537)     | Fix `redeem_by` field type for `customers` stream                                                                                                                                                                             |
+| 0.1.37      | 2022-08-16 | [15686](https://github.com/airbytehq/airbyte/pull/15686)     | Fix the bug when the stream couldn't be fetched due to limited permission set, if so - it should be skipped                                                                                                                   |
+| 0.1.36      | 2022-08-04 | [15292](https://github.com/airbytehq/airbyte/pull/15292)     | Implement slicing                                                                                                                                                                                                             |
+| 0.1.35      | 2022-07-21 | [14924](https://github.com/airbytehq/airbyte/pull/14924)     | Remove `additionalProperties` field from spec and schema                                                                                                                                                                      |
+| 0.1.34      | 2022-07-01 | [14357](https://github.com/airbytehq/airbyte/pull/14357)     | Add external account streams -                                                                                                                                                                                                |
+| 0.1.33      | 2022-06-06 | [13449](https://github.com/airbytehq/airbyte/pull/13449)     | Add semi-incremental support for CheckoutSessions and CheckoutSessionsLineItems streams, fixed big in StripeSubStream, added unittests, updated docs                                                                          |
+| 0.1.32      | 2022-04-30 | [12500](https://github.com/airbytehq/airbyte/pull/12500)     | Improve input configuration copy                                                                                                                                                                                              |
+| 0.1.31      | 2022-04-20 | [12230](https://github.com/airbytehq/airbyte/pull/12230)     | Update connector to use a `spec.yaml`                                                                                                                                                                                         |
+| 0.1.30      | 2022-03-21 | [11286](https://github.com/airbytehq/airbyte/pull/11286)     | Minor corrections to documentation and connector specification                                                                                                                                                                |
+| 0.1.29      | 2022-03-08 | [10359](https://github.com/airbytehq/airbyte/pull/10359)     | Improved performance for streams with substreams: invoice_line_items, subscription_items, bank_accounts                                                                                                                       |
+| 0.1.28      | 2022-02-08 | [10165](https://github.com/airbytehq/airbyte/pull/10165)     | Improve 404 handling for `CheckoutSessionsLineItems` stream                                                                                                                                                                   |
+| 0.1.27      | 2021-12-28 | [9148](https://github.com/airbytehq/airbyte/pull/9148)       | Fix `date`, `arrival\_date` fields                                                                                                                                                                                            |
+| 0.1.26      | 2021-12-21 | [8992](https://github.com/airbytehq/airbyte/pull/8992)       | Fix type `events.request` in schema                                                                                                                                                                                           |
+| 0.1.25      | 2021-11-25 | [8250](https://github.com/airbytehq/airbyte/pull/8250)       | Rearrange setup fields                                                                                                                                                                                                        |
+| 0.1.24      | 2021-11-08 | [7729](https://github.com/airbytehq/airbyte/pull/7729)       | Include tax data in `checkout_sessions_line_items` stream                                                                                                                                                                     |
+| 0.1.23      | 2021-11-08 | [7729](https://github.com/airbytehq/airbyte/pull/7729)       | Correct `payment_intents` schema                                                                                                                                                                                              |
+| 0.1.22      | 2021-11-05 | [7345](https://github.com/airbytehq/airbyte/pull/7345)       | Add 3 new streams                                                                                                                                                                                                             |
+| 0.1.21      | 2021-10-07 | [6841](https://github.com/airbytehq/airbyte/pull/6841)       | Fix missing `start_date` argument + update json files for SAT                                                                                                                                                                 |
+| 0.1.20      | 2021-09-30 | [6017](https://github.com/airbytehq/airbyte/pull/6017)       | Add lookback_window_days parameter                                                                                                                                                                                            |
+| 0.1.19      | 2021-09-27 | [6466](https://github.com/airbytehq/airbyte/pull/6466)       | Use `start_date` parameter in incremental streams                                                                                                                                                                             |
+| 0.1.18      | 2021-09-14 | [6004](https://github.com/airbytehq/airbyte/pull/6004)       | Fix coupons and subscriptions stream schemas by removing incorrect timestamp formatting                                                                                                                                       |
+| 0.1.17      | 2021-09-14 | [6004](https://github.com/airbytehq/airbyte/pull/6004)       | Add `PaymentIntents` stream                                                                                                                                                                                                   |
+| 0.1.16      | 2021-07-28 | [4980](https://github.com/airbytehq/airbyte/pull/4980)       | Remove Updated field from schemas                                                                                                                                                                                             |
+| 0.1.15      | 2021-07-21 | [4878](https://github.com/airbytehq/airbyte/pull/4878)       | Fix incorrect percent_off and discounts data filed types                                                                                                                                                                      |
+| 0.1.14      | 2021-07-09 | [4669](https://github.com/airbytehq/airbyte/pull/4669)       | Subscriptions Stream now returns all kinds of subscriptions \(including expired and canceled\)                                                                                                                                |
+| 0.1.13      | 2021-07-03 | [4528](https://github.com/airbytehq/airbyte/pull/4528)       | Remove regex for acc validation                                                                                                                                                                                               |
+| 0.1.12      | 2021-06-08 | [3973](https://github.com/airbytehq/airbyte/pull/3973)       | Add `AIRBYTE_ENTRYPOINT` for Kubernetes support                                                                                                                                                                               |
+| 0.1.11      | 2021-05-30 | [3744](https://github.com/airbytehq/airbyte/pull/3744)       | Fix types in schema                                                                                                                                                                                                           |
+| 0.1.10      | 2021-05-28 | [3728](https://github.com/airbytehq/airbyte/pull/3728)       | Update data types to be number instead of int                                                                                                                                                                                 |
+| 0.1.9       | 2021-05-13 | [3367](https://github.com/airbytehq/airbyte/pull/3367)       | Add acceptance tests for connected accounts                                                                                                                                                                                   |
+| 0.1.8       | 2021-05-11 | [3368](https://github.com/airbytehq/airbyte/pull/3368)       | Bump CDK connectors                                                                                                                                                                                                           |
 
 </details>
 

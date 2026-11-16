@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.configoss
 
@@ -23,7 +23,7 @@ internal class ConfigSchemaTest {
         for (value in ConfigSchema.entries) {
             Assertions.assertTrue(
                 Files.exists(value.configSchemaFile.toPath()),
-                value.configSchemaFile.toPath().toString() + " does not exist"
+                value.configSchemaFile.toPath().toString() + " does not exist",
             )
         }
     }

@@ -76,6 +76,10 @@ The connector is restricted by normal Trello [requests limitation](https://devel
 
 The Trello connector should not run into Trello API limitations under normal usage. Please [create an issue](https://github.com/airbytehq/airbyte/issues) if you see any rate limit issues that are not automatically retried successfully.
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -83,6 +87,20 @@ The Trello connector should not run into Trello API limitations under normal usa
 
 | Version | Date       | Pull Request                                             | Subject                                                                            |
 | :------ | :--------- | :------------------------------------------------------- | :--------------------------------------------------------------------------------- |
+| 1.3.11 | 2026-11-09 | [91444](https://github.com/airbytehq/airbyte/pull/91444) | Upgrade to CDK 7 and update the board partition router to read parent streams through the CDK 7 partition API |
+| 1.3.10 | 2025-08-24 | [65474](https://github.com/airbytehq/airbyte/pull/65474) | Update dependencies |
+| 1.3.9 | 2025-08-10 | [64813](https://github.com/airbytehq/airbyte/pull/64813) | Update dependencies |
+| 1.3.8 | 2025-08-02 | [64394](https://github.com/airbytehq/airbyte/pull/64394) | Update dependencies |
+| 1.3.7 | 2025-07-27 | [64086](https://github.com/airbytehq/airbyte/pull/64086) | Update dependencies |
+| 1.3.6 | 2025-07-20 | [63680](https://github.com/airbytehq/airbyte/pull/63680) | Update dependencies |
+| 1.3.5 | 2025-07-12 | [63204](https://github.com/airbytehq/airbyte/pull/63204) | Update dependencies |
+| 1.3.4 | 2025-07-05 | [62668](https://github.com/airbytehq/airbyte/pull/62668) | Update dependencies |
+| 1.3.3 | 2025-06-28 | [62283](https://github.com/airbytehq/airbyte/pull/62283) | Update dependencies |
+| 1.3.2 | 2025-06-21 | [61828](https://github.com/airbytehq/airbyte/pull/61828) | Update dependencies |
+| 1.3.1 | 2025-06-14 | [48153](https://github.com/airbytehq/airbyte/pull/48153) | Update dependencies |
+| 1.3.0 | 2024-01-02 | [50853](https://github.com/airbytehq/airbyte/pull/50853) | Restrore unit tests |
+| 1.2.1 | 2024-10-29 | [43914](https://github.com/airbytehq/airbyte/pull/43914) | Update dependencies |
+| 1.2.0 | 2024-10-22 | [47257](https://github.com/airbytehq/airbyte/pull/47257) | Migrate to Manifest-only |
 | 1.1.0 | 2024-07-17 | [42019](https://github.com/airbytehq/airbyte/pull/42019) | Migrate to CDK v3.5.3 |
 | 1.0.10 | 2024-07-13 | [41774](https://github.com/airbytehq/airbyte/pull/41774) | Update dependencies |
 | 1.0.9 | 2024-07-10 | [41601](https://github.com/airbytehq/airbyte/pull/41601) | Update dependencies |

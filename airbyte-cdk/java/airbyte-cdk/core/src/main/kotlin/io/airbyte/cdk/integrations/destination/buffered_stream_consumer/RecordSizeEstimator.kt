@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.buffered_stream_consumer
 
@@ -17,7 +17,8 @@ import io.airbyte.protocol.models.v0.AirbyteRecordMessage
 class RecordSizeEstimator
 @JvmOverloads
 constructor( // number of record messages
-private val sampleBatchSize: Int = DEFAULT_SAMPLE_BATCH_SIZE) {
+    private val sampleBatchSize: Int = DEFAULT_SAMPLE_BATCH_SIZE,
+) {
     // latest estimated record message size for each stream
     private val streamRecordSizeEstimation: MutableMap<String, Long> = HashMap()
 

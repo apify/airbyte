@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.logging
 
@@ -26,8 +26,8 @@ internal class MdcScopeTest {
                         "new",
                         "will be added",
                         "testOverride",
-                        "will override"
-                    )
+                        "will override",
+                    ),
                 )
         }
     }

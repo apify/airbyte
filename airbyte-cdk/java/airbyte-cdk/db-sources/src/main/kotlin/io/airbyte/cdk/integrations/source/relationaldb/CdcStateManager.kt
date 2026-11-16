@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.source.relationaldb
 
@@ -15,7 +15,7 @@ private val LOGGER = KotlinLogging.logger {}
 class CdcStateManager(
     private val initialState: CdcState?,
     initialStreamsSynced: Set<AirbyteStreamNameNamespacePair>?,
-    stateMessage: AirbyteStateMessage?
+    stateMessage: AirbyteStateMessage?,
 ) {
     val initialStreamsSynced: Set<AirbyteStreamNameNamespacePair>?
     val rawStateMessage: AirbyteStateMessage?

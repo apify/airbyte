@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.base.destination.typing_deduping
 
@@ -20,7 +20,7 @@ internal class StreamIdTest {
 
         Assertions.assertAll(
             Executable { Assertions.assertEquals("aaa_abab_bbb_raw__stream_ccc", stream1) },
-            Executable { Assertions.assertEquals("aaa_raw__stream_bbb_abab_ccc", stream2) }
+            Executable { Assertions.assertEquals("aaa_raw__stream_bbb_abab_ccc", stream2) },
         )
     }
 

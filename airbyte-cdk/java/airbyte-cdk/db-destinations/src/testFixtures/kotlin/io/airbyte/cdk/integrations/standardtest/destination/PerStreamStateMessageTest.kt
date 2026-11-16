@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination
 
@@ -53,8 +53,8 @@ abstract class PerStreamStateMessageTest {
                         .withStream(
                             AirbyteStreamState()
                                 .withStreamDescriptor(StreamDescriptor().withName(name))
-                                .withStreamState(Jsons.jsonNode(value))
-                        )
+                                .withStreamState(Jsons.jsonNode(value)),
+                        ),
                 )
         }
     }

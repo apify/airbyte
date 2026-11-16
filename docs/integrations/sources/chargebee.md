@@ -8,13 +8,14 @@ This page contains the setup guide and reference information for the Chargebee s
 
 ## Prerequisites
 
-To set up the Chargebee source connector, you will need:
+To set up the Chargebee source connector, you need:
 
-- [Chargebee API key](https://apidocs.chargebee.com/docs/api/auth)
-- [Product Catalog version](https://www.chargebee.com/docs/1.0/upgrade-product-catalog.html) of the Chargebee site you are syncing.
+- A [Chargebee API key](https://apidocs.chargebee.com/docs/api/auth) with read access. A full-access key or a read-only key both work.
+- Your Chargebee site name, which is the subdomain in your Chargebee URL. For example, if your dashboard URL is `https://acme.chargebee.com`, your site name is `acme`.
+- The [Product Catalog version](https://www.chargebee.com/docs/1.0/upgrade-product-catalog.html) of your Chargebee site.
 
 :::info
-All Chargebee sites created from May 5, 2021 onward will have [Product Catalog 2.0](https://www.chargebee.com/docs/2.0/product-catalog.html) enabled by default. Sites created prior to this date will use [Product Catalog 1.0](https://www.chargebee.com/docs/1.0/product-catalog.html).
+All Chargebee sites created after May 5, 2021 use [Product Catalog 2.0](https://www.chargebee.com/docs/2.0/product-catalog.html) by default. Sites created before this date use [Product Catalog 1.0](https://www.chargebee.com/docs/1.0/product-catalog.html). You can check your version in the Chargebee API docs under the **API Version** section.
 :::
 
 ## Set up the Chargebee connector in Airbyte
@@ -23,11 +24,12 @@ All Chargebee sites created from May 5, 2021 onward will have [Product Catalog 2
 2. Click **Sources** and then click **+ New source**.
 3. On the Set up the source page, select **Chargebee** from the Source type dropdown.
 4. Enter the name for the Chargebee connector.
-5. For **Site**, enter the site prefix for your Chargebee instance.
-6. For **Start Date**, enter the date in YYYY-MM-DDTHH:mm:ssZ format. The data added on and after this date will be replicated.
-7. For **API Key**, enter the [Chargebee API key](https://apidocs.chargebee.com/docs/api?prod_cat_ver=2#api_authentication).
-8. For **Product Catalog**, enter the Chargebee [Product Catalog version](https://apidocs.chargebee.com/docs/api?prod_cat_ver=2). Connector defaults to Product Catalog 2.0 unless otherwise specified.
-9. Click **Set up source**.
+5. For **Site**, enter the site prefix for your Chargebee instance. For example, if your Chargebee URL is `https://acme.chargebee.com`, enter `acme`.
+6. For **Start Date**, enter the date in `YYYY-MM-DDTHH:mm:ssZ` format. Only data created or updated on or after this date is replicated.
+7. For **API Key**, enter your [Chargebee API key](https://apidocs.chargebee.com/docs/api/auth).
+8. For **Product Catalog**, select your Chargebee [Product Catalog version](https://apidocs.chargebee.com/docs/api?prod_cat_ver=2). The connector defaults to Product Catalog 2.0.
+9. Optionally, adjust the **Number of concurrent threads** to control how many worker threads the connector uses during syncs. The default is 5. Higher values can increase throughput, but they also consume more of your [Chargebee API rate limit](https://www.chargebee.com/docs/billing/2.0/kb/platform/what-are-the-chargebee-api-limits).
+10. Click **Set up source**.
 
 <HideInUI>
 
@@ -44,66 +46,153 @@ The Chargebee source connector supports the following [sync modes](https://docs.
 
 Most streams are supported regardless of your Chargebee site's [Product Catalog version](https://www.chargebee.com/docs/1.0/upgrade-product-catalog.html), with a few version-specific exceptions.
 
-| Stream                                                                                                 | Product Catalog 1.0 | Product Catalog 2.0 |
-|:-------------------------------------------------------------------------------------------------------|:--------------------|:--------------------|
-| [Addons](https://apidocs.chargebee.com/docs/api/addons?prod_cat_ver=1)                                 | ✔                   |                     |
-| [Attached Items](https://apidocs.chargebee.com/docs/api/attached_items?prod_cat_ver=2)                 |                     | ✔                   |
-| [Comments](https://apidocs.chargebee.com/docs/api/comments?prod_cat_ver=2)                             | ✔                   | ✔                   |
-| [Contacts](https://apidocs.chargebee.com/docs/api/customers?lang=curl#list_of_contacts_for_a_customer) | ✔                   | ✔                   |
-| [Coupons](https://apidocs.chargebee.com/docs/api/coupons)                                              | ✔                   | ✔                   |
-| [Credit Notes](https://apidocs.chargebee.com/docs/api/credit_notes)                                    | ✔                   | ✔                   |
-| [Customers](https://apidocs.chargebee.com/docs/api/customers)                                          | ✔                   | ✔                   |
-| [Differential Prices](https://apidocs.chargebee.com/docs/api/differential_prices)                      | ✔                   | ✔                   |
-| [Events](https://apidocs.chargebee.com/docs/api/events)                                                | ✔                   | ✔                   |
-| [Gifts](https://apidocs.chargebee.com/docs/api/gifts)                                                  | ✔                   | ✔                   |
-| [Hosted Pages](https://apidocs.chargebee.com/docs/api/hosted_pages)                                    | ✔                   | ✔                   |
-| [Invoices](https://apidocs.chargebee.com/docs/api/invoices)                                            | ✔                   | ✔                   |
-| [Items](https://apidocs.chargebee.com/docs/api/items?prod_cat_ver=2)                                   |                     | ✔                   |
-| [Item Prices](https://apidocs.chargebee.com/docs/api/item_prices?prod_cat_ver=2)                       |                     | ✔                   |
-| [Item Families](https://apidocs.chargebee.com/docs/api/item_families?prod_cat_ver=2)                   |                     | ✔                   |
-| [Orders](https://apidocs.chargebee.com/docs/api/orders)                                                | ✔                   | ✔                   |
-| [Payment Sources](https://apidocs.chargebee.com/docs/api/payment_sources)                              | ✔                   | ✔                   |
-| [Plans](https://apidocs.chargebee.com/docs/api/plans?prod_cat_ver=1)                                   | ✔                   |                     |
-| [Promotional Credits](https://apidocs.chargebee.com/docs/api/promotional_credits)                      | ✔                   | ✔                   |
-| [Quotes](https://apidocs.chargebee.com/docs/api/quotes)                                                | ✔                   | ✔                   |
-| [Quote Line Groups](https://apidocs.chargebee.com/docs/api/quote_line_groups)                          | ✔                   | ✔                   |
-| [Site Migration Details](https://apidocs.chargebee.com/docs/api/site_migration_details)                | ✔                   | ✔                   |
-| [Subscriptions](https://apidocs.chargebee.com/docs/api/subscriptions)                                  | ✔                   | ✔                   |
-| [Subscriptions With Scheduled Changes](https://apidocs.chargebee.com/docs/api/subscriptions?lang=curl#retrieve_with_scheduled_changes)           | ✔                   | ✔                   |
-| [Transactions](https://apidocs.chargebee.com/docs/api/transactions)                                    | ✔                   | ✔                   |
-| [Unbilled Charges](https://apidocs.chargebee.com/docs/api/unbilled_charges)                            | ✔                   | ✔                   |
-| [Virtual Bank Accounts](https://apidocs.chargebee.com/docs/api/virtual_bank_accounts)                  | ✔                   | ✔                   |
+| Stream                                                                                                                                 | Product Catalog 1.0 | Product Catalog 2.0 |
+|:---------------------------------------------------------------------------------------------------------------------------------------|:--------------------|:--------------------|
+| [Addons](https://apidocs.chargebee.com/docs/api/addons?prod_cat_ver=1)                                                                 | ✔                   |                     |
+| [Attached Items](https://apidocs.chargebee.com/docs/api/attached_items?prod_cat_ver=2)                                                 |                     | ✔                   |
+| [Comments](https://apidocs.chargebee.com/docs/api/comments?prod_cat_ver=2)                                                             | ✔                   | ✔                   |
+| [Contacts](https://apidocs.chargebee.com/docs/api/customers?lang=curl#list_of_contacts_for_a_customer)                                 | ✔                   | ✔                   |
+| [Coupons](https://apidocs.chargebee.com/docs/api/coupons)                                                                              | ✔                   | ✔                   |
+| [Credit Notes](https://apidocs.chargebee.com/docs/api/credit_notes)                                                                    | ✔                   | ✔                   |
+| [Customers](https://apidocs.chargebee.com/docs/api/customers)                                                                          | ✔                   | ✔                   |
+| [Differential Prices](https://apidocs.chargebee.com/docs/api/differential_prices)                                                      | ✔                   | ✔                   |
+| [Events](https://apidocs.chargebee.com/docs/api/events)                                                                                | ✔                   | ✔                   |
+| [Gifts](https://apidocs.chargebee.com/docs/api/gifts)                                                                                  | ✔                   | ✔                   |
+| [Hosted Pages](https://apidocs.chargebee.com/docs/api/hosted_pages)                                                                    | ✔                   | ✔                   |
+| [Invoices](https://apidocs.chargebee.com/docs/api/invoices)                                                                            | ✔                   | ✔                   |
+| [Items](https://apidocs.chargebee.com/docs/api/items?prod_cat_ver=2)                                                                   |                     | ✔                   |
+| [Item Prices](https://apidocs.chargebee.com/docs/api/item_prices?prod_cat_ver=2)                                                       |                     | ✔                   |
+| [Item Families](https://apidocs.chargebee.com/docs/api/item_families?prod_cat_ver=2)                                                   |                     | ✔                   |
+| [Orders](https://apidocs.chargebee.com/docs/api/orders)                                                                                | ✔                   | ✔                   |
+| [Payment Sources](https://apidocs.chargebee.com/docs/api/payment_sources)                                                              | ✔                   | ✔                   |
+| [Plans](https://apidocs.chargebee.com/docs/api/plans?prod_cat_ver=1)                                                                   | ✔                   |                     |
+| [Promotional Credits](https://apidocs.chargebee.com/docs/api/promotional_credits)                                                      | ✔                   | ✔                   |
+| [Quotes](https://apidocs.chargebee.com/docs/api/quotes)                                                                                | ✔                   | ✔                   |
+| [Quote Line Groups](https://apidocs.chargebee.com/docs/api/quote_line_groups)                                                          | ✔                   | ✔                   |
+| [Site Migration Details](https://apidocs.chargebee.com/docs/api/site_migration_details)                                                | ✔                   | ✔                   |
+| [Subscriptions](https://apidocs.chargebee.com/docs/api/subscriptions)                                                                  | ✔                   | ✔                   |
+| [Subscriptions With Scheduled Changes](https://apidocs.chargebee.com/docs/api/subscriptions?lang=curl#retrieve_with_scheduled_changes) | ✔                   | ✔                   |
+| [Transactions](https://apidocs.chargebee.com/docs/api/transactions)                                                                    | ✔                   | ✔                   |
+| [Unbilled Charges](https://apidocs.chargebee.com/docs/api/unbilled_charges)                                                            | ✔                   | ✔                   |
+| [Virtual Bank Accounts](https://apidocs.chargebee.com/docs/api/virtual_bank_accounts)                                                  | ✔                   | ✔                   |
 
 :::note
-When using incremental sync mode, the `Attached Items` stream behaves differently than the other streams. Whereas other incremental streams read and output _only new_ records, the `Attached Items` stream reads _all_ records but only outputs _new_ records, making it more demanding on your Chargebee API quota. Each sync incurs API calls equal to the total number of attached items in your Chargebee instance divided by 100, regardless of the actual number of `Attached Items` changed or synced.
+When using incremental sync mode, the `Attached Items` stream still lists all parent `Items` each sync (one attached-items request per item), but it only fetches attached items whose `updated_at` changed since the last sync. The first sync reads all attached items of the items updated on or after the start date.
+
+Incremental sync has two limitations for this stream:
+
+- Deleting an attached item in Chargebee doesn't remove its record from the destination. A full refresh with overwrite replaces the stream's data and drops it.
+- An item last updated before the start date isn't read as a parent. If that item is updated later, the connector only fetches its attached items that changed since the last sync, so its older attached items are never synced. To avoid this, set an earlier start date or periodically run a full refresh of the stream.
+
 :::
 
 ## Limitations & Troubleshooting
 
-<details>
-<summary>
-Expand to see details about the Chargebee connector limitations and troubleshooting.
-</summary>
+### Rate limiting
 
-### Connector limitations
+The Chargebee connector should not run into [Chargebee API](https://apidocs.chargebee.com/docs/api?prod_cat_ver=2#api_rate_limits) limitations under normal usage. The connector automatically retries rate-limited requests using the `Retry-After` header provided by the Chargebee API. [Create an issue](https://github.com/airbytehq/airbyte/issues) if you encounter any rate limit issues that are not automatically retried successfully.
 
-#### Rate limiting
+Chargebee API rate limits vary by plan. Chargebee limits test sites to 150 requests per minute regardless of plan. See [Chargebee's API limits documentation](https://www.chargebee.com/docs/billing/2.0/kb/platform/what-are-the-chargebee-api-limits) for details.
 
-The Chargebee connector should not run into [Chargebee API](https://apidocs.chargebee.com/docs/api?prod_cat_ver=2#api_rate_limits) limitations under normal usage. [Create an issue](https://github.com/airbytehq/airbyte/issues) if you encounter any rate limit issues that are not automatically retried successfully.
+### Deleted resources
+
+The Chargebee API may return HTTP 404 errors when the connector encounters references to deleted resources, such as subscriptions linked to removed plans or items. The connector handles these errors gracefully by skipping the unavailable resource and continuing the sync. This applies to the Contacts, Subscriptions, Subscriptions With Scheduled Changes, and Quote Line Groups streams.
+
+### Product Catalog version mismatch
+
+Some streams are only available on a specific Product Catalog version. If you attempt to sync a stream that is not compatible with your site's Product Catalog version, the connector skips the stream and logs a message: "Stream is available only for Product Catalog 1.0" or the equivalent for Product Catalog 2.0.
 
 ### Troubleshooting
 
-- Check out common troubleshooting issues for the Instagram source connector on our [Airbyte Forum](https://github.com/airbytehq/airbyte/discussions).
+- Check out common troubleshooting issues for the Chargebee source connector on our [Airbyte Forum](https://github.com/airbytehq/airbyte/discussions).
 
-</details>
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
 <details>
   <summary>Expand to review</summary>
 
-| Version | Date       | Pull Request                                             | Subject                                                                                                                                        |
-|:--------|:-----------|:---------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------|
+| Version     | Date       | Pull Request                                             | Subject                                                                                                                                                                |
+|:------------|:-----------|:---------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0.11.3 | 2026-11-11 | [90376](https://github.com/airbytehq/airbyte/pull/90376) | Consolidate per-stream error handling into a single handler; retryable errors (including HTTP 429) now retry up to 10 times instead of 5 |
+| 0.11.2 | 2026-11-10 | [91456](https://github.com/airbytehq/airbyte/pull/91456) | Update dependencies |
+| 0.11.1 | 2026-11-03 | [90509](https://github.com/airbytehq/airbyte/pull/90509) | Update dependencies |
+| 0.11.0 | 2026-10-30 | [89003](https://github.com/airbytehq/airbyte/pull/89003) | Add incremental sync support to the `attached_item` stream |
+| 0.10.53 | 2026-10-27 | [89839](https://github.com/airbytehq/airbyte/pull/89839) | Update dependencies |
+| 0.10.52 | 2026-10-20 | [89159](https://github.com/airbytehq/airbyte/pull/89159) | Update dependencies |
+| 0.10.51 | 2026-10-13 | [88525](https://github.com/airbytehq/airbyte/pull/88525) | Update dependencies |
+| 0.10.50 | 2026-10-06 | [87801](https://github.com/airbytehq/airbyte/pull/87801) | Update dependencies |
+| 0.10.49 | 2026-09-29 | [87111](https://github.com/airbytehq/airbyte/pull/87111) | Update dependencies |
+| 0.10.48 | 2026-09-22 | [86576](https://github.com/airbytehq/airbyte/pull/86576) | Update dependencies |
+| 0.10.47 | 2026-09-15 | [85980](https://github.com/airbytehq/airbyte/pull/85980) | Update dependencies |
+| 0.10.46 | 2026-09-08 | [85441](https://github.com/airbytehq/airbyte/pull/85441) | Update dependencies |
+| 0.10.45 | 2026-08-18 | [84510](https://github.com/airbytehq/airbyte/pull/84510) | Update dependencies |
+| 0.10.44 | 2026-08-11 | [83885](https://github.com/airbytehq/airbyte/pull/83885) | Update dependencies |
+| 0.10.43 | 2026-07-28 | [83194](https://github.com/airbytehq/airbyte/pull/83194) | Update to CDK 7.23.8 (fixes AirbyteCustomCodeNotPermittedError for bundled custom components) and remove the temporary Cloud version override |
+| 0.10.42 | 2026-07-28 | [1082](https://github.com/airbytehq/airbyte-python-cdk/issues/1082) | Roll Cloud back to 0.10.40 — 0.10.41 is built on SDM 7.23.7, which breaks bundled custom components |
+| 0.10.41 | 2026-07-28 | [82863](https://github.com/airbytehq/airbyte/pull/82863) | Update dependencies |
+| 0.10.40 | 2026-07-21 | [81761](https://github.com/airbytehq/airbyte/pull/81761) | Update dependencies |
+| 0.10.39 | 2026-06-30 | [81013](https://github.com/airbytehq/airbyte/pull/81013) | Update dependencies |
+| 0.10.38 | 2026-06-23 | [80404](https://github.com/airbytehq/airbyte/pull/80404) | Update dependencies |
+| 0.10.37 | 2026-06-16 | [78619](https://github.com/airbytehq/airbyte/pull/78619) | Update dependencies |
+| 0.10.36 | 2026-06-09 | [79604](https://github.com/airbytehq/airbyte/pull/79604) | Clean up cancelled RC; revert source to previous stable |
+| 0.10.36-rc.5 | 2026-05-27 | [78469](https://github.com/airbytehq/airbyte/pull/78469) | Remove the local API budget limiter while keeping the default worker count at 5. |
+| 0.10.36-rc.4 | 2026-05-26 | [78435](https://github.com/airbytehq/airbyte/pull/78435) | Reduce default concurrent threads to 3 after rollout duration regressions at 5. |
+| 0.10.36-rc.3 | 2026-05-22 | [78366](https://github.com/airbytehq/airbyte/pull/78366) | Revert `default_concurrency` to 5, activate tier-aware `HTTPAPIBudget`, and document `subscription_tier` for GA rollout |
+| 0.10.36-rc.2 | 2026-05-20 | [78300](https://github.com/airbytehq/airbyte/pull/78300) | Raise `default_concurrency` to 6 after Phase 1 monitoring of 0.10.36-rc.1 showed no rate-limit signal and faster high-volume sync averages excluding a stable-precedent multi-attempt outlier |
+| 0.10.36-rc.1 | 2026-05-18 | [74345](https://github.com/airbytehq/airbyte/pull/74345) | Raise `default_concurrency` to 5 (Path B tuning calibrated to the Chargebee Starter tier, 150 req/min = 2.5 req/sec); bump `num_workers` minimum to 2 and default to 5; add `subscription_tier` spec field (enum `starter`/`performance`/`enterprise`, default `starter`); record original Starter and tier-aware `HTTPAPIBudget` shapes as YAML comments for activation in a follow-up GA RC; enable progressive rollout |
+| 0.10.35 | 2026-04-28 | [77207](https://github.com/airbytehq/airbyte/pull/77207) | Update dependencies |
+| 0.10.34 | 2026-04-21 | [75795](https://github.com/airbytehq/airbyte/pull/75795) | Update dependencies |
+| 0.10.33 | 2026-04-13 | [76276](https://github.com/airbytehq/airbyte/pull/76276) | Rename "concurrent workers" to "concurrent threads" in connector spec |
+| 0.10.32 | 2026-03-26 | [75476](https://github.com/airbytehq/airbyte/pull/75476) | Handle 404 errors in subscription stream to prevent sync failures when Chargebee returns not found for deleted resources |
+| 0.10.31 | 2026-03-24 | [74459](https://github.com/airbytehq/airbyte/pull/74459) | Update dependencies |
+| 0.10.30 | 2026-03-03 | [74228](https://github.com/airbytehq/airbyte/pull/74228) | Update dependencies |
+| 0.10.29 | 2026-02-17 | [73452](https://github.com/airbytehq/airbyte/pull/73452) | Update dependencies |
+| 0.10.28 | 2026-02-10 | [72990](https://github.com/airbytehq/airbyte/pull/72990) | Update dependencies |
+| 0.10.27 | 2026-01-20 | [72117](https://github.com/airbytehq/airbyte/pull/72117) | Update dependencies |
+| 0.10.26 | 2026-01-14 | [71716](https://github.com/airbytehq/airbyte/pull/71716) | Update dependencies |
+| 0.10.25 | 2025-12-18 | [70665](https://github.com/airbytehq/airbyte/pull/70665) | Update dependencies |
+| 0.10.24 | 2025-11-25 | [69940](https://github.com/airbytehq/airbyte/pull/69940) | Update dependencies |
+| 0.10.23 | 2025-11-18 | [69621](https://github.com/airbytehq/airbyte/pull/69621) | Update dependencies |
+| 0.10.22 | 2025-10-29 | [68902](https://github.com/airbytehq/airbyte/pull/68902) | Update dependencies |
+| 0.10.21 | 2025-10-21 | [68546](https://github.com/airbytehq/airbyte/pull/68546) | Update dependencies |
+| 0.10.20 | 2025-10-14 | [68083](https://github.com/airbytehq/airbyte/pull/68083) | Update dependencies |
+| 0.10.19 | 2025-10-07 | [67181](https://github.com/airbytehq/airbyte/pull/67181) | Update dependencies |
+| 0.10.18 | 2025-09-30 | [65793](https://github.com/airbytehq/airbyte/pull/65793) | Update dependencies |
+| 0.10.17 | 2025-09-10 | [65996](https://github.com/airbytehq/airbyte/pull/65996) | Update to CDK v7 |
+| 0.10.16 | 2025-08-23 | [65294](https://github.com/airbytehq/airbyte/pull/65294) | Update dependencies |
+| 0.10.15 | 2025-08-09 | [64707](https://github.com/airbytehq/airbyte/pull/64707) | Update dependencies |
+| 0.10.14 | 2025-08-04 | [63936](https://github.com/airbytehq/airbyte/pull/63936) | Fix missing data in subscriptions with scheduled changes stream |
+| 0.10.13 | 2025-08-02 | [64333](https://github.com/airbytehq/airbyte/pull/64333) | Update dependencies |
+| 0.10.12 | 2025-07-26 | [64039](https://github.com/airbytehq/airbyte/pull/64039) | Update dependencies |
+| 0.10.11 | 2025-07-19 | [63538](https://github.com/airbytehq/airbyte/pull/63538) | Update dependencies |
+| 0.10.10 | 2025-07-12 | [63022](https://github.com/airbytehq/airbyte/pull/63022) | Update dependencies |
+| 0.10.9 | 2025-06-28 | [62369](https://github.com/airbytehq/airbyte/pull/62369) | Update dependencies |
+| 0.10.8 | 2025-06-21 | [61985](https://github.com/airbytehq/airbyte/pull/61985) | Update dependencies |
+| 0.10.7 | 2025-06-14 | [59347](https://github.com/airbytehq/airbyte/pull/59347) | Update dependencies |
+| 0.10.6 | 2025-04-26 | [58729](https://github.com/airbytehq/airbyte/pull/58729) | Update dependencies |
+| 0.10.5 | 2025-04-19 | [57648](https://github.com/airbytehq/airbyte/pull/57648) | Update dependencies |
+| 0.10.4 | 2025-04-05 | [57130](https://github.com/airbytehq/airbyte/pull/57130) | Update dependencies |
+| 0.10.3 | 2025-03-29 | [56138](https://github.com/airbytehq/airbyte/pull/56138) | Update dependencies |
+| 0.10.2 | 2025-03-17 | [55799](https://github.com/airbytehq/airbyte/pull/55799) | Adding the new field `discount_quantity` to stream `coupon` |
+| 0.10.1 | 2025-03-08 | [51760](https://github.com/airbytehq/airbyte/pull/51760) | Update dependencies |
+| 0.10.0 | 2025-02-20 | [54182](https://github.com/airbytehq/airbyte/pull/54182) | Promoting release candidate 0.10.0-rc.1 to a main version. |
+| 0.10.0-rc.1 | 2025-07-02 | [53220](https://github.com/airbytehq/airbyte/pull/53220) | Replace custom `IncrementalSingleSliceCursor` component with low-code semi-incremental `DatetimeBasedCursor` |
+| 0.9.0 | 2025-02-06 | [47243](https://github.com/airbytehq/airbyte/pull/47243) | Migrate to Manifest-only |
+| 0.8.0 | 2025-01-31 | [52685](https://github.com/airbytehq/airbyte/pull/52685) | Update to latest CDK version |
+| 0.7.3 | 2025-01-11 | [49038](https://github.com/airbytehq/airbyte/pull/49038) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.7.2 | 2024-11-20 | [48510](https://github.com/airbytehq/airbyte/pull/48510) | Ensure no pagination issues on concurrent syncs |
+| 0.7.1 | 2024-11-04 | [48133](https://github.com/airbytehq/airbyte/pull/48133) | Fix `error message pattern` to handle `Product 1.0` related errors |
+| 0.7.0 | 2024-10-30 | [47978](https://github.com/airbytehq/airbyte/pull/47978) | Upgrade the CDK and startup files to sync incremental streams concurrently |
+| 0.6.18 | 2024-10-31 | [47099](https://github.com/airbytehq/airbyte/pull/47099) | Update dependencies |
+| 0.6.17 | 2024-10-28 | [47387](https://github.com/airbytehq/airbyte/pull/47387) | Update CDK dependencies to yield parent records more frequently |
+| 0.6.16 | 2024-10-12 | [46846](https://github.com/airbytehq/airbyte/pull/46846) | Update dependencies |
+| 0.6.15 | 2024-10-05 | [46478](https://github.com/airbytehq/airbyte/pull/46478) | Update dependencies |
+| 0.6.14 | 2024-10-03 | [46343](https://github.com/airbytehq/airbyte/pull/46343) | Added `incremental dependency` for substreams with `Incremental` parent streams |
+| 0.6.13 | 2024-10-01 | [46294](https://github.com/airbytehq/airbyte/pull/46294) | Update CDK version to `^5`, increased the `maxSecondsBetweenMessages` to 6 hours |
 | 0.6.12 | 2024-09-28 | [46169](https://github.com/airbytehq/airbyte/pull/46169) | Update dependencies |
 | 0.6.11 | 2024-09-21 | [45805](https://github.com/airbytehq/airbyte/pull/45805) | Update dependencies |
 | 0.6.10 | 2024-09-14 | [45254](https://github.com/airbytehq/airbyte/pull/45254) | Update dependencies |
@@ -142,16 +231,16 @@ The Chargebee connector should not run into [Chargebee API](https://apidocs.char
 | 0.1.12 | 2022-07-13 | [14672](https://github.com/airbytehq/airbyte/pull/14672) | Fix transaction sort by |
 | 0.1.11 | 2022-03-03 | [10827](https://github.com/airbytehq/airbyte/pull/10827) | Fix Credit Note stream |
 | 0.1.10 | 2022-03-02 | [10795](https://github.com/airbytehq/airbyte/pull/10795) | Add support for Credit Note stream |
-| 0.1.9   | 2022-0224  | [10312](https://github.com/airbytehq/airbyte/pull/10312) | Add support for Transaction Stream                                                                                                             |
-| 0.1.8   | 2022-02-22 | [10366](https://github.com/airbytehq/airbyte/pull/10366) | Fix broken `coupon` stream + add unit tests                                                                                                    |
-| 0.1.7   | 2022-02-14 | [10269](https://github.com/airbytehq/airbyte/pull/10269) | Add support for Coupon stream                                                                                                                  |
-| 0.1.6   | 2022-02-10 | [10143](https://github.com/airbytehq/airbyte/pull/10143) | Add support for Event stream                                                                                                                   |
-| 0.1.5   | 2021-12-23 | [8434](https://github.com/airbytehq/airbyte/pull/8434)   | Update fields in source-connectors specifications                                                                                              |
-| 0.1.4   | 2021-09-27 | [6454](https://github.com/airbytehq/airbyte/pull/6454)   | Fix examples in spec file                                                                                                                      |
-| 0.1.3   | 2021-08-17 | [5421](https://github.com/airbytehq/airbyte/pull/5421)   | Add support for "Product Catalog 2.0" specific streams: `Items`, `Item prices` and `Attached Items`                                            |
-| 0.1.2   | 2021-07-30 | [5067](https://github.com/airbytehq/airbyte/pull/5067)   | Prepare connector for publishing                                                                                                               |
-| 0.1.1   | 2021-07-07 | [4539](https://github.com/airbytehq/airbyte/pull/4539)   | Add entrypoint and bump version for connector                                                                                                  |
-| 0.1.0   | 2021-06-30 | [3410](https://github.com/airbytehq/airbyte/pull/3410)   | New Source: Chargebee                                                                                                                          |
+| 0.1.9       | 2022-0224  | [10312](https://github.com/airbytehq/airbyte/pull/10312) | Add support for Transaction Stream                                                                                                                                     |
+| 0.1.8       | 2022-02-22 | [10366](https://github.com/airbytehq/airbyte/pull/10366) | Fix broken `coupon` stream + add unit tests                                                                                                                            |
+| 0.1.7       | 2022-02-14 | [10269](https://github.com/airbytehq/airbyte/pull/10269) | Add support for Coupon stream                                                                                                                                          |
+| 0.1.6       | 2022-02-10 | [10143](https://github.com/airbytehq/airbyte/pull/10143) | Add support for Event stream                                                                                                                                           |
+| 0.1.5       | 2021-12-23 | [8434](https://github.com/airbytehq/airbyte/pull/8434)   | Update fields in source-connectors specifications                                                                                                                      |
+| 0.1.4       | 2021-09-27 | [6454](https://github.com/airbytehq/airbyte/pull/6454)   | Fix examples in spec file                                                                                                                                              |
+| 0.1.3       | 2021-08-17 | [5421](https://github.com/airbytehq/airbyte/pull/5421)   | Add support for "Product Catalog 2.0" specific streams: `Items`, `Item prices` and `Attached Items`                                                                    |
+| 0.1.2       | 2021-07-30 | [5067](https://github.com/airbytehq/airbyte/pull/5067)   | Prepare connector for publishing                                                                                                                                       |
+| 0.1.1       | 2021-07-07 | [4539](https://github.com/airbytehq/airbyte/pull/4539)   | Add entrypoint and bump version for connector                                                                                                                          |
+| 0.1.0       | 2021-06-30 | [3410](https://github.com/airbytehq/airbyte/pull/3410)   | New Source: Chargebee                                                                                                                                                  |
 
 </details>
 

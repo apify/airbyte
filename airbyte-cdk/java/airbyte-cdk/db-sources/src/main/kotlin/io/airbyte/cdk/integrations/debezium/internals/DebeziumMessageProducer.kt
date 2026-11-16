@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium.internals
 
@@ -20,7 +20,7 @@ class DebeziumMessageProducer<T>(
     targetPosition: CdcTargetPosition<T>,
     eventConverter: DebeziumEventConverter,
     offsetManager: AirbyteFileOffsetBackingStore?,
-    schemaHistoryManager: Optional<AirbyteSchemaHistoryStorage>
+    schemaHistoryManager: Optional<AirbyteSchemaHistoryStorage>,
 ) : SourceStateMessageProducer<ChangeEventWithMetadata> {
     /**
      * `checkpointOffsetToSend` is used as temporal storage for the offset that we want to send as
@@ -61,7 +61,7 @@ class DebeziumMessageProducer<T>(
     }
 
     override fun generateStateMessageAtCheckpoint(
-        stream: ConfiguredAirbyteStream?
+        stream: ConfiguredAirbyteStream?,
     ): AirbyteStateMessage {
         LOGGER.info { "Sending CDC checkpoint state message." }
         val stateMessage = createStateMessage(checkpointOffsetToSend)
@@ -79,7 +79,7 @@ class DebeziumMessageProducer<T>(
      */
     override fun processRecordMessage(
         stream: ConfiguredAirbyteStream?,
-        message: ChangeEventWithMetadata
+        message: ChangeEventWithMetadata,
     ): AirbyteMessage {
         if (checkpointOffsetToSend.isEmpty()) {
             try {
@@ -135,7 +135,7 @@ class DebeziumMessageProducer<T>(
                     offset,
                     schemaHistoryManager
                         .map { obj: AirbyteSchemaHistoryStorage -> obj.read() }
-                        .orElse(null)
+                        .orElse(null),
                 )!!
                 .state
         return message

@@ -1,13 +1,15 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.exceptions
 
 class ConnectionErrorException : RuntimeException {
     var stateCode: String? = null
         private set
+
     var errorCode: Int = 0
         private set
+
     var exceptionMessage: String? = null
         private set
 
@@ -21,7 +23,7 @@ class ConnectionErrorException : RuntimeException {
     constructor(
         stateCode: String?,
         exceptionMessage: String?,
-        exception: Throwable?
+        exception: Throwable?,
     ) : super(exception) {
         this.stateCode = stateCode
         this.exceptionMessage = exceptionMessage
@@ -31,7 +33,7 @@ class ConnectionErrorException : RuntimeException {
         stateCode: String?,
         errorCode: Int,
         exceptionMessage: String?,
-        exception: Throwable?
+        exception: Throwable?,
     ) : super(exception) {
         this.stateCode = stateCode
         this.errorCode = errorCode

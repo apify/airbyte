@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs
 
@@ -28,7 +28,7 @@ class GcsAvroTestDataComparator : AdvancedTestDataComparator() {
 
     override fun compareDateTimeValues(
         airbyteMessageValue: String,
-        destinationValue: String
+        destinationValue: String,
     ): Boolean {
         val format = DateTimeFormatter.ofPattern(AIRBYTE_DATETIME_FORMAT)
         val dateTime =
@@ -38,7 +38,7 @@ class GcsAvroTestDataComparator : AdvancedTestDataComparator() {
 
     override fun compareTimeWithoutTimeZone(
         airbyteMessageValue: String,
-        destinationValue: String
+        destinationValue: String,
     ): Boolean {
         val destinationDate =
             LocalTime.ofInstant(getInstantFromEpoch(destinationValue), ZoneOffset.UTC)

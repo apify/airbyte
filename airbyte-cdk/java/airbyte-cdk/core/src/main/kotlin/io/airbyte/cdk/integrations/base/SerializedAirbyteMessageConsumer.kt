@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.base
 
@@ -18,7 +18,7 @@ import io.airbyte.commons.functional.CheckedBiConsumer
  *
  * * 1. Instantiate consumer.
  * * 2. start() to initialize any resources that need to be created BEFORE the consumer consumes any
- * messages.
+ *   messages.
  * * 3. Consumes ALL records via [SerializedAirbyteMessageConsumer.accept]
  * * 4. Always (on success or failure) finalize by calling [SerializedAirbyteMessageConsumer.close]
  */
@@ -52,7 +52,7 @@ interface SerializedAirbyteMessageConsumer :
         /** Append a function to be called on [SerializedAirbyteMessageConsumer.close]. */
         fun appendOnClose(
             consumer: SerializedAirbyteMessageConsumer?,
-            voidCallable: VoidCallable
+            voidCallable: VoidCallable,
         ): SerializedAirbyteMessageConsumer {
             return object : SerializedAirbyteMessageConsumer {
                 @Throws(Exception::class)

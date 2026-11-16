@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3.avro
 
@@ -33,7 +33,7 @@ class S3AvroWriter(
     configuredStream: ConfiguredAirbyteStream,
     uploadTimestamp: Timestamp?,
     schema: Schema?,
-    converter: JsonAvroConverter?
+    converter: JsonAvroConverter?,
 ) : BaseS3Writer(config, s3Client, configuredStream), DestinationFileWriter {
     private val avroRecordFactory: AvroRecordFactory
     private val uploadManager: StreamTransferManager
@@ -50,7 +50,7 @@ class S3AvroWriter(
                     .s3Format(FileUploadFormat.AVRO)
                     .fileExtension(FileUploadFormat.AVRO.fileExtension)
                     .fileNamePattern(config.fileNamePattern)
-                    .build()
+                    .build(),
             )
 
         outputPath = java.lang.String.join("/", outputPrefix, outputFilename)

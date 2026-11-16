@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.base.errors.messages
 
@@ -14,7 +14,7 @@ object ErrorMessage {
         stateCode: String?,
         errorCode: Int,
         message: String?,
-        exception: Exception
+        exception: Exception,
     ): String {
         return if (Objects.isNull(message)) {
             configMessage(stateCode, 0, exception.message)

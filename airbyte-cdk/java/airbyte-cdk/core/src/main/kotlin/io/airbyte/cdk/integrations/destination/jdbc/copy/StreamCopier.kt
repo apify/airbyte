@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.jdbc.copy
 
@@ -60,7 +60,7 @@ interface StreamCopier {
      * Creates the staging file and all the necessary items to write data to this file.
      *
      * @return A string that unqiuely identifies the file. E.g. the filename, or a unique suffix
-     * that is appended to a shared filename prefix
+     *   that is appended to a shared filename prefix
      */
     fun prepareStagingFile(): String
 

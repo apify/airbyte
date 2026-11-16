@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination
 
@@ -19,7 +19,7 @@ abstract class JdbcDestinationAcceptanceTest : DestinationAcceptanceTest() {
 
     protected fun getJsonFromRecord(
         record: Record,
-        valueParser: Function<Any, Optional<String>>
+        valueParser: Function<Any, Optional<String>>,
     ): JsonNode {
         val node = mapper.createObjectNode()
 
@@ -39,7 +39,7 @@ abstract class JdbcDestinationAcceptanceTest : DestinationAcceptanceTest() {
                         DestinationAcceptanceTestUtils.putStringIntoJson(
                             stringValue,
                             field.name,
-                            node
+                            node,
                         )
                     }
                     else -> node.put(field.name, (value?.toString()))

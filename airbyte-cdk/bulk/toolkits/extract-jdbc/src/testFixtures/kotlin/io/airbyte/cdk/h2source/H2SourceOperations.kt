@@ -1,8 +1,15 @@
-/* Copyright (c) 2024 Airbyte, Inc., all rights reserved. */
+/* Copyright (c) 2026 Airbyte, Inc., all rights reserved. */
 package io.airbyte.cdk.h2source
 
+import com.fasterxml.jackson.databind.node.ObjectNode
+import io.airbyte.cdk.command.OpaqueStateValue
+import io.airbyte.cdk.discover.CdcStringMetaFieldType
+import io.airbyte.cdk.discover.CommonMetaField
 import io.airbyte.cdk.discover.FieldType
+import io.airbyte.cdk.discover.JdbcAirbyteStreamFactory
 import io.airbyte.cdk.discover.JdbcMetadataQuerier
+import io.airbyte.cdk.discover.MetaField
+import io.airbyte.cdk.discover.MetaFieldDecorator
 import io.airbyte.cdk.jdbc.ArrayFieldType
 import io.airbyte.cdk.jdbc.BigDecimalFieldType
 import io.airbyte.cdk.jdbc.BigIntegerFieldType
@@ -28,6 +35,7 @@ import io.airbyte.cdk.jdbc.ShortFieldType
 import io.airbyte.cdk.jdbc.StringFieldType
 import io.airbyte.cdk.jdbc.UrlFieldType
 import io.airbyte.cdk.jdbc.XmlFieldType
+import io.airbyte.cdk.output.sockets.NativeRecordPayload
 import io.airbyte.cdk.read.And
 import io.airbyte.cdk.read.Equal
 import io.airbyte.cdk.read.From
@@ -52,6 +60,7 @@ import io.airbyte.cdk.read.SelectNode
 import io.airbyte.cdk.read.SelectQuery
 import io.airbyte.cdk.read.SelectQueryGenerator
 import io.airbyte.cdk.read.SelectQuerySpec
+import io.airbyte.cdk.read.Stream
 import io.airbyte.cdk.read.Where
 import io.airbyte.cdk.read.WhereClauseLeafNode
 import io.airbyte.cdk.read.WhereClauseNode
@@ -61,16 +70,52 @@ import io.micronaut.context.annotation.Secondary
 import io.micronaut.context.env.Environment
 import jakarta.inject.Singleton
 import java.sql.JDBCType
+import java.time.OffsetDateTime
 
 /** Stateless connector-specific logic for [H2Source]. */
 @Singleton
 @Requires(env = [Environment.TEST])
 @Secondary
-class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGenerator {
+class H2SourceOperations :
+    JdbcMetadataQuerier.FieldTypeMapper,
+    SelectQueryGenerator,
+    JdbcAirbyteStreamFactory,
+    MetaFieldDecorator {
+
+    data object H2GlobalCursor : MetaField {
+        override val id: String = "_ab_cdc_fake_cursor"
+        override val type: FieldType = CdcStringMetaFieldType
+    }
+
+    override val globalCursor: MetaField = H2GlobalCursor
+
+    override val globalMetaFields: Set<MetaField> =
+        setOf(H2GlobalCursor, CommonMetaField.CDC_UPDATED_AT, CommonMetaField.CDC_DELETED_AT)
+
+    override fun decorateRecordData(
+        timestamp: OffsetDateTime,
+        globalStateValue: OpaqueStateValue?,
+        stream: Stream,
+        recordData: ObjectNode,
+    ) {
+        recordData.putNull(H2GlobalCursor.id)
+        recordData.putNull(CommonMetaField.CDC_UPDATED_AT.id)
+        recordData.putNull(CommonMetaField.CDC_DELETED_AT.id)
+    }
+
+    override fun decorateRecordData(
+        timestamp: OffsetDateTime,
+        globalStateValue: OpaqueStateValue?,
+        stream: Stream,
+        recordData: NativeRecordPayload,
+    ) {
+        // no-op
+    }
+
     override fun toFieldType(c: JdbcMetadataQuerier.ColumnMetadata): FieldType =
         when (c.type.jdbcType) {
             JDBCType.BIT,
-            JDBCType.BOOLEAN, -> BooleanFieldType
+            JDBCType.BOOLEAN -> BooleanFieldType
             JDBCType.TINYINT -> ByteFieldType
             JDBCType.SMALLINT -> ShortFieldType
             JDBCType.INTEGER -> IntFieldType
@@ -79,13 +124,13 @@ class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGener
             JDBCType.DOUBLE -> DoubleFieldType
             JDBCType.REAL,
             JDBCType.NUMERIC,
-            JDBCType.DECIMAL, -> BigDecimalFieldType
+            JDBCType.DECIMAL -> BigDecimalFieldType
             JDBCType.CHAR,
             JDBCType.VARCHAR,
-            JDBCType.LONGVARCHAR, -> StringFieldType
+            JDBCType.LONGVARCHAR -> StringFieldType
             JDBCType.NCHAR,
             JDBCType.NVARCHAR,
-            JDBCType.LONGNVARCHAR, -> NStringFieldType
+            JDBCType.LONGNVARCHAR -> NStringFieldType
             JDBCType.DATE -> LocalDateFieldType
             JDBCType.TIME -> LocalTimeFieldType
             JDBCType.TIMESTAMP -> LocalDateTimeFieldType
@@ -94,7 +139,7 @@ class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGener
             JDBCType.BLOB -> BinaryStreamFieldType
             JDBCType.BINARY,
             JDBCType.VARBINARY,
-            JDBCType.LONGVARBINARY, -> BytesFieldType
+            JDBCType.LONGVARBINARY -> BytesFieldType
             JDBCType.CLOB -> ClobFieldType
             JDBCType.NCLOB -> NClobFieldType
             JDBCType.DATALINK -> UrlFieldType
@@ -108,7 +153,7 @@ class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGener
             JDBCType.REF,
             JDBCType.ROWID,
             JDBCType.REF_CURSOR,
-            null, -> PokemonFieldType
+            null -> PokemonFieldType
         }
 
     override fun generate(ast: SelectQuerySpec): SelectQuery =
@@ -122,7 +167,7 @@ class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGener
 
     fun SelectNode.sql(): String =
         when (this) {
-            is SelectColumns -> "SELECT " + columns.map { it.id }.joinToString(", ")
+            is SelectColumns -> "SELECT " + columns.joinToString(", ") { it.id }
             is SelectColumnMaxValue -> "SELECT MAX(${column.id})"
         }
 
@@ -146,8 +191,8 @@ class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGener
 
     fun WhereClauseNode.sql(): String =
         when (this) {
-            is And -> conj.map { it.sql() }.joinToString(") AND (", "(", ")")
-            is Or -> disj.map { it.sql() }.joinToString(") OR (", "(", ")")
+            is And -> conj.joinToString(") AND (", "(", ")") { it.sql() }
+            is Or -> disj.joinToString(") OR (", "(", ")") { it.sql() }
             is Equal -> "${column.id} = ?"
             is GreaterOrEqual -> "${column.id} >= ?"
             is Greater -> "${column.id} > ?"
@@ -158,7 +203,7 @@ class H2SourceOperations : JdbcMetadataQuerier.FieldTypeMapper, SelectQueryGener
     fun OrderByNode.sql(): String =
         when (this) {
             NoOrderBy -> ""
-            is OrderBy -> "ORDER BY " + columns.map { it.id }.joinToString(", ")
+            is OrderBy -> "ORDER BY " + columns.joinToString(", ") { it.id }
         }
 
     fun LimitNode.sql(): String =

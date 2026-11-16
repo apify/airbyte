@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.workers.process
 
@@ -7,6 +7,7 @@ import com.google.common.annotations.VisibleForTesting
 import com.google.common.base.Joiner
 import com.google.common.base.Strings
 import com.google.common.collect.Lists
+import io.airbyte.commons.features.EnvVariableFeatureFlags
 import io.airbyte.commons.io.IOs
 import io.airbyte.commons.io.LineGobbler
 import io.airbyte.commons.map.MoreMaps
@@ -30,8 +31,9 @@ class DockerProcessFactory(
     private val workspaceRoot: Path,
     private val workspaceMountSource: String?,
     private val localMountSource: String?,
+    private val fileTransferMountSource: Path?,
     private val networkName: String?,
-    private val envMap: Map<String, String>
+    private val envMap: Map<String, String>,
 ) : ProcessFactory {
     private val imageExistsScriptPath: Path
 
@@ -65,7 +67,7 @@ class DockerProcessFactory(
         jobMetadata: Map<String, String>,
         internalToExternalPorts: Map<Int?, Int?>?,
         additionalEnvironmentVariables: Map<String, String>,
-        vararg args: String
+        vararg args: String,
     ): Process {
         try {
             if (!checkImageExists(imageName)) {
@@ -90,7 +92,7 @@ class DockerProcessFactory(
                     "-w",
                     rebasePath(jobRoot).toString(), // rebases the job root on the job data mount
                     "--log-driver",
-                    "none"
+                    "none",
                 )
             val containerName: String =
                 ProcessFactory.Companion.createProcessName(
@@ -98,13 +100,13 @@ class DockerProcessFactory(
                     jobType,
                     jobId,
                     attempt,
-                    DOCKER_NAME_LEN_LIMIT
+                    DOCKER_NAME_LEN_LIMIT,
                 )
             LOGGER.info(
                 "Creating docker container = {} with resources {} and allowedHosts {}",
                 containerName,
                 resourceRequirements,
-                allowedHosts
+                allowedHosts,
             )
             cmd.add("--name")
             cmd.add(containerName)
@@ -125,6 +127,20 @@ class DockerProcessFactory(
                 cmd.add(String.format("%s:%s", localMountSource, LOCAL_MOUNT_DESTINATION))
             }
 
+            if (fileTransferMountSource != null) {
+                cmd.add("-v")
+                cmd.add(
+                    "$fileTransferMountSource:${EnvVariableFeatureFlags.DEFAULT_AIRBYTE_STAGING_DIRECTORY}",
+                )
+                cmd.add("-e")
+                cmd.add(
+                    "${EnvVariableFeatureFlags.AIRBYTE_STAGING_DIRECTORY_PROPERTY_NAME}=${EnvVariableFeatureFlags.DEFAULT_AIRBYTE_STAGING_DIRECTORY}",
+                )
+
+                cmd.add("-e")
+                cmd.add("${EnvVariableFeatureFlags.USE_FILE_TRANSFER}=true")
+            }
+
             val allEnvMap = MoreMaps.merge(jobMetadata, envMap, additionalEnvironmentVariables)
             for ((key, value) in allEnvMap) {
                 cmd.add("-e")
@@ -141,7 +157,10 @@ class DockerProcessFactory(
                 }
                 if (!Strings.isNullOrEmpty(resourceRequirements.memoryRequest)) {
                     cmd.add(
-                        String.format("--memory-reservation=%s", resourceRequirements.memoryRequest)
+                        String.format(
+                            "--memory-reservation=%s",
+                            resourceRequirements.memoryRequest,
+                        ),
                     )
                 }
                 if (!Strings.isNullOrEmpty(resourceRequirements.memoryLimit)) {
@@ -200,7 +219,7 @@ class DockerProcessFactory(
                 val scriptPath = IOs.writeFile(basePath, IMAGE_EXISTS_SCRIPT, scriptContents)
                 if (!scriptPath.toFile().setExecutable(true)) {
                     throw RuntimeException(
-                        String.format("Could not set %s to executable", scriptPath)
+                        String.format("Could not set %s to executable", scriptPath),
                     )
                 }
                 return scriptPath
@@ -216,7 +235,9 @@ class DockerProcessFactory(
          * to enable this for `destination-bigquery` start the services locally with:
          * ```
          * ```
+         *
          * VERSION="dev"
+         *
          * ```
          * DEBUG_CONTAINER_IMAGE="destination-bigquery" docker compose -f docker-compose.yaml -f
          * docker-compose.debug.yaml up ``` Additionally you may have to update the image version of your
@@ -235,7 +256,7 @@ class DockerProcessFactory(
                         Function<String, Boolean> { imageName: String ->
                             ProcessFactory.Companion.extractShortImageName(containerName)
                                 .startsWith(imageName!!)
-                        }
+                        },
                     )
                     .orElse(false) &&
                     Optional.ofNullable<String>(System.getenv("DEBUG_CONTAINER_JAVA_OPTS"))
@@ -244,7 +265,7 @@ class DockerProcessFactory(
                 java.util.List.of(
                     "-e",
                     "JAVA_TOOL_OPTIONS=" + System.getenv("DEBUG_CONTAINER_JAVA_OPTS"),
-                    "-p5005:5005"
+                    "-p5005:5005",
                 )
             } else {
                 emptyList<String>()

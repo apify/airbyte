@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.stream
 
@@ -31,7 +31,7 @@ object AirbyteStreamUtils {
     @JvmStatic
     fun convertFromNameAndNamespace(
         name: String?,
-        namespace: String?
+        namespace: String?,
     ): AirbyteStreamNameNamespacePair {
         return AirbyteStreamNameNamespacePair(name, namespace)
     }

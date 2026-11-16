@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.staging
 
@@ -42,14 +42,14 @@ internal class SerialStagingConsumerFactoryTest {
                             -1L,
                             -1L,
                             "",
-                        )
+                        ),
                     ),
                     mock(),
                 )
             }
         Assertions.assertEquals(
             "You are trying to write multiple streams to the same table. Consider switching to a custom namespace format using \${SOURCE_NAMESPACE}, or moving one of them into a separate connection with a different stream prefix. Affected streams: source_schema.example_stream, source_schema.example_stream",
-            configErrorException.message
+            configErrorException.message,
         )
     }
 }

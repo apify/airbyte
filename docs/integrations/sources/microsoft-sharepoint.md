@@ -8,11 +8,9 @@ This page contains the setup guide and reference information for the [Microsoft 
 
 ### Prerequisites
 
-- Application \(client\) ID
-- Directory \(tenant\) ID
-- Drive name
-- Folder Path
-- Client secrets
+- A Microsoft 365 work or school account with access to the SharePoint sites and document libraries you want to sync.
+- For OAuth authentication: a Microsoft account that can consent to the delegated permissions the connector requests: `Files.Read.All`, `Sites.Read.All`, and `Sites.Selected`.
+- For Service Key authentication (Airbyte Open Source): an app registration in Microsoft Entra ID with its Application (client) ID, Directory (tenant) ID, and a client secret, plus the User Principal Name (UPN) of a user in your tenant. See [Step 1: Set up SharePoint application](#step-1-set-up-sharepoint-application).
 
 ## Setup guide
 
@@ -26,17 +24,18 @@ This page contains the setup guide and reference information for the [Microsoft 
 2. Click Sources and then click + New source.
 3. On the Set up the source page, select Microsoft SharePoint from the Source type dropdown.
 4. Enter a name for the Microsoft SharePoint connector.
-5. Select **Search Scope**. Specifies the location(s) to search for files. Valid options are 'ACCESSIBLE_DRIVES' for all SharePoint drives the user can access, 'SHARED_ITEMS' for shared items the user has access to, and 'ALL' to search both. Default value is 'ALL'.
-6. Enter **Folder Path**. Leave empty to search all folders of the drives. This does not apply to shared items.
-7. The **OAuth2.0** authorization method is selected by default. Click **Authenticate your Microsoft SharePoint account**. Log in and authorize your Microsoft account.
-8. For **Start Date**, enter the date in YYYY-MM-DD format. The data added on and after this date will be replicated.
-9. Add a stream:
+5. Select **Search Scope**: `ACCESSIBLE_DRIVES` searches the SharePoint document libraries you can access, `SHARED_ITEMS` searches items shared with you, and `ALL` searches both. The default is `ALL`. Microsoft is retiring the API the connector uses to find shared items. See [Search scope and shared items](#search-scope-and-shared-items) before you choose `SHARED_ITEMS` or `ALL`.
+6. Enter **Folder Path**. Leave empty to search all folders of the drives. This doesn't apply to shared items.
+7. (Optional) Enter **Site URL** to search a specific SharePoint site. See [Multi-Site Support](#multi-site-support).
+8. The **OAuth2.0** authorization method is selected by default. Click **Authenticate your Microsoft SharePoint account**. Log in and authorize your Microsoft account.
+9. For **Start Date**, enter the date in YYYY-MM-DD format. The connector replicates data added on and after this date.
+10. Add a stream:
    1. Write the **File Type**
-   2. In the **Format** box, use the dropdown menu to select the format of the files you'd like to replicate. The supported formats are **CSV**, **Parquet**, **Avro** and **JSONL**. Toggling the **Optional fields** button within the **Format** box will allow you to enter additional configurations based on the selected format.  For a detailed breakdown of these settings, refer to the [File Format section](#file-format-settings) below.
+   2. In the **Format** box, use the dropdown menu to select the format of the files you'd like to replicate. The supported formats are **CSV**, **Parquet**, **Avro**, **JSONL**, **Excel**, and **Document File Type Format**. Toggling the **Optional fields** button within the **Format** box will allow you to enter additional configurations based on the selected format.  For a detailed breakdown of these settings, refer to the [File Format section](#file-format-settings) below.
    3. Give a **Name** to the stream
    4. (Optional) - If you want to enforce a specific schema, you can enter a **Input schema**. By default, this value is set to `{}` and will automatically infer the schema from the file\(s\) you are replicating. For details on providing a custom schema, refer to the [User Schema section](#user-schema).
-   5. Optionally, enter the **Globs** which dictates which files to be synced. This is a regular expression that allows Airbyte to pattern match the specific files to replicate. If you are replicating all the files within your bucket, use `**` as the pattern. For more precise pattern matching options, refer to the [Path Patterns section](#path-patterns) below.
-10. Click **Set up source**
+   5. Optionally, enter the **Globs**, which determine which files to sync. Globs are glob-style path patterns, not regular expressions. To replicate all files, use `**` as the pattern. For more precise pattern matching options, refer to the [Path Patterns section](#path-patterns) below.
+11. Click **Set up source**
 <!-- /env:cloud -->
 
 <!-- env:oss -->
@@ -57,23 +56,23 @@ Microsoft Graph has two types of permissions:
 - **Delegated permissions** are used by apps that have a signed-in user present. For these apps, either the user or an administrator consents to the permissions that the app requests, and the app can act as the signed-in user when making calls to Microsoft Graph. Some delegated permissions can be consented by non-administrative users, but some higher-privileged permissions require administrator consent.
 - **Application permissions** are used by apps that run without a signed-in user present; for example, apps that run as background services or daemons. Application permissions can only be consented by an administrator.
 
-This source requires **Application permissions**. Follow these [instructions](https://docs.microsoft.com/en-us/graph/auth-v2-service?context=graph%2Fapi%2F1.0&view=graph-rest-1.0) for creating an app in the Azure portal. This process will produce the `client_id`, `client_secret`, and `tenant_id` needed for the tap configuration file.
+Service Key authentication requires **Application permissions**. Follow these [instructions](https://learn.microsoft.com/en-us/graph/auth-v2-service) to create an app in the Azure portal. This process produces the Client ID, Client Secret, and Tenant ID that you enter in the connector configuration.
 
-1. Login to [Azure Portal](https://portal.azure.com/#home)
-2. Click upper-left menu icon and select **Azure Active Directory**
+1. Log in to the [Azure portal](https://portal.azure.com/#home).
+2. Click the upper-left menu icon and select **Microsoft Entra ID**.
 3. Select **App Registrations**
 4. Click **New registration**
 5. Register an application
    1. Name:
    2. Supported account types: Accounts in this organizational directory only
    3. Register \(button\)
-6. Record the client_id and tenant_id which will be used by the tap for authentication and API integration.
+6. Record the Application (client) ID and Directory (tenant) ID.
 7. Select **Certificates & secrets**
 8. Provide **Description and Expires**
-   1. Description: tap-microsoft-teams client secret
+   1. Description: for example, `airbyte-sharepoint`
    2. Expires: 1-year
    3. Add
-9. Copy the client secret value, this will be the client_secret
+9. Copy the client secret value. This is the Client Secret.
 10. Select **API permissions**
     1. Click **Add a permission**
 11. Select **Microsoft Graph**
@@ -90,21 +89,39 @@ This source requires **Application permissions**. Follow these [instructions](ht
 2. Click **Sources** and then click **+ New source**.
 3. On the **Set up** the source page, select **Microsoft SharePoint** from the Source type dropdown.
 4. Enter the name for the Microsoft SharePoint connector.
-5. Select **Search Scope**. Specifies the location(s) to search for files. Valid options are 'ACCESSIBLE_DRIVES' for all SharePoint drives the user can access, 'SHARED_ITEMS' for shared items the user has access to, and 'ALL' to search both. Default value is 'ALL'.
-6. Enter **Folder Path**. Leave empty to search all folders of the drives. This does not apply to shared items.
-7. Switch to **Service Key Authentication**
-8. For **User Practical Name**, enter the [UPN](https://learn.microsoft.com/en-us/sharepoint/list-onedrive-urls) for your user.
-9. Enter **Tenant ID**, **Client ID** and **Client secret**.
-10. For **Start Date**, enter the date in YYYY-MM-DD format. The data added on and after this date will be replicated.
-11. Add a stream:
+5. Select **Search Scope**. Service Key Authentication can't list items shared with you, so select `ACCESSIBLE_DRIVES`. If you select `ALL`, the connector only searches accessible drives, and `SHARED_ITEMS` fails. See [Search scope and shared items](#search-scope-and-shared-items).
+6. Enter **Folder Path**. Leave empty to search all folders of the drives. This doesn't apply to shared items.
+7. (Optional) Enter **Site URL** to search a specific SharePoint site. See [Multi-Site Support](#multi-site-support).
+8. Switch to **Service Key Authentication**.
+9. For **User Principal Name**, enter the [UPN](https://learn.microsoft.com/en-us/sharepoint/list-onedrive-urls) for your user.
+10. Enter **Tenant ID**, **Client ID** and **Client Secret**.
+11. For **Start Date**, enter the date in YYYY-MM-DD format. The connector replicates data added on and after this date.
+12. Add a stream:
     1. Write the **File Type**
-    2. In the **Format** box, use the dropdown menu to select the format of the files you'd like to replicate. The supported formats are **CSV**, **Parquet**, **Avro** and **JSONL**. Toggling the **Optional fields** button within the **Format** box will allow you to enter additional configurations based on the selected format. For a detailed breakdown of these settings, refer to the [File Format section](#file-format-settings) below.
+    2. In the **Format** box, use the dropdown menu to select the format of the files you'd like to replicate. The supported formats are **CSV**, **Parquet**, **Avro**, **JSONL**, **Excel**, and **Document File Type Format**. Toggling the **Optional fields** button within the **Format** box will allow you to enter additional configurations based on the selected format. For a detailed breakdown of these settings, refer to the [File Format section](#file-format-settings) below.
     3. Give a **Name** to the stream
     4. (Optional) - If you want to enforce a specific schema, you can enter a **Input schema**. By default, this value is set to `{}` and will automatically infer the schema from the file\(s\) you are replicating. For details on providing a custom schema, refer to the [User Schema section](#user-schema).
-    5. Optionally, enter the **Globs** which dictates which files to be synced. This is a regular expression that allows Airbyte to pattern match the specific files to replicate. If you are replicating all the files within your bucket, use `**` as the pattern. For more precise pattern matching options, refer to the [Path Patterns section](#path-patterns) below.
-12. Click **Set up source**
+    5. Optionally, enter the **Globs**, which determine which files to sync. Globs are glob-style path patterns, not regular expressions. To replicate all files, use `**` as the pattern. For more precise pattern matching options, refer to the [Path Patterns section](#path-patterns) below.
+13. Click **Set up source**
 
 <!-- /env:oss -->
+
+## Search scope and shared items
+
+The **Search Scope** setting controls where the connector looks for files:
+
+- `ACCESSIBLE_DRIVES`: SharePoint document libraries from the site in **Site URL**, or from the main site if you leave it empty.
+- `SHARED_ITEMS`: Items that other users shared with you.
+- `ALL` (default): Both of the above.
+
+The connector finds shared items with the Microsoft Graph [`sharedWithMe` API](https://learn.microsoft.com/en-us/graph/api/drive-sharedwithme?view=graph-rest-1.0). Microsoft deprecated this API. It operates in a degraded state until November 2026, after which it stops returning data. There's no replacement API. After the retirement:
+
+- With `ALL`, the connector logs a warning, skips shared items, and continues to sync files from accessible drives.
+- With `SHARED_ITEMS`, the sync fails with a configuration error.
+- Files shared from a SharePoint site can still be synced. Set **Search Scope** to `ACCESSIBLE_DRIVES` and **Site URL** to that site. This syncs the site's whole document library, so use **Folder Path** and **Globs** to narrow the files you replicate.
+- Files shared from another user's OneDrive can't be synced.
+
+The `sharedWithMe` API requires a signed-in user, so it doesn't support application permissions. With Service Key Authentication, the connector never lists shared items: `SHARED_ITEMS` fails with a configuration error, and `ALL` behaves like `ACCESSIBLE_DRIVES`.
 
 ## Path Patterns
 
@@ -158,7 +175,7 @@ As you can probably tell, there are many ways to achieve the same goal with path
 
 ## User Schema
 
-When using the Avro, Jsonl, CSV or Parquet format, you can provide a schema to use for the output stream. **Note that this doesn't apply to the experimental Document file type format.**
+When using the Avro, Jsonl, CSV or Parquet format, you can provide a schema to use for the output stream. **Note that this doesn't apply to the Document file type format.**
 
 Providing a schema allows for more control over the output of this stream. Without a provided schema, columns and datatypes will be inferred from the first created file in the bucket matching your path pattern and suffix. This will probably be fine in most cases but there may be situations you want to enforce a schema instead, e.g.:
 
@@ -227,19 +244,49 @@ The Avro parser uses the [Fastavro library](https://fastavro.readthedocs.io/en/l
 
 There are currently no options for JSONL parsing.
 
-### Document File Type Format (Experimental)
+### Excel
 
-:::warning
-The Document file type format is currently an experimental feature and not subject to SLAs. Use at your own risk.
-:::
+There are currently no options for Excel parsing.
 
-The Document file type format is a special format that allows you to extract text from Markdown, TXT, PDF, Word, Powerpoint and Google documents. If selected, the connector will extract text from the documents and output it as a single field named `content`. The `document_key` field will hold a unique identifier for the processed file which can be used as a primary key. The content of the document will contain markdown formatting converted from the original file format. Each file matching the defined glob pattern needs to either be a markdown (`md`), PDF (`pdf`) or Docx (`docx`) file.
+### Document File Type Format
+
+The Document file type format is a special format that allows you to extract text from Markdown (`md`), text (`txt`), PDF (`pdf`), Word (`docx`), and PowerPoint (`pptx`) files. If selected, the connector extracts text from the documents and outputs it as a single field named `content`. The `document_key` field holds a unique identifier for the processed file, which you can use as a primary key. The content of the document contains Markdown formatting converted from the original file format. Each file matching the defined glob pattern must be one of these file types.
 
 One record will be emitted for each document. Keep in mind that large files can emit large records that might not fit into every destination as each destination has different limitations for string fields.
 
-Before parsing each document, the connector exports Google Document files to Docx format internally. Google Sheets, Google Slides, and drawings are internally exported and parsed by the connector as PDFs.
-
 <HideInUI>
+
+### Copy Raw Files Configuration
+
+<FieldAnchor field="delivery_method.delivery_type">
+
+:::info
+
+The raw file replication feature has the following requirements and limitations:
+- **Supported Airbyte Versions:**
+  - Cloud: All Workspaces
+  - OSS / Enterprise: `v1.2.0` or later
+- **Max File Size:** `1GB` per file
+- **Supported Destinations:**
+  - S3: `v1.4.0` or later
+
+:::
+
+Copy raw files without parsing their contents. Bits are copied into the destination exactly as they appeared in the source. Recommended for use with unstructured text data, non-text and compressed files.
+
+Format options will not be taken into account. Instead, files will be transferred to the file-based destination without parsing underlying data.
+
+</FieldAnchor>
+
+##### Preserve Sub-Directories in File Paths
+
+If enabled, sends subdirectory folder structure along with source file names to the destination. Otherwise, files will be synced by their names only. This option is ignored when file-based replication is not enabled.
+
+### Multi-Site Support
+
+By providing a url to the site URL field, the connector will be able to access the files in the specific sharepoint site.
+The site url should be in the format `https://<tenant_name>.sharepoint.com/sites/<site>`. If no field is provided, the connector will access the files in the main site.
+To have the connector iterate all sub-sites provide the site url as `https://<tenant_name>.sharepoint.com/sites/`.
 
 ### Supported sync modes
 
@@ -252,7 +299,7 @@ The Microsoft SharePoint source connector supports the following [sync modes](ht
 
 ### Supported Streams
 
-There is no predefined streams. The streams are based on content of files were added on the Set up page.
+There are no predefined streams. You define each stream on the source setup page, and its schema is based on the content of the files it matches.
 
 ### Performance considerations
 
@@ -267,6 +314,10 @@ The connector is restricted by normal Microsoft Graph [requests limitation](http
 | `array`          | `array`      |
 | `object`         | `object`     |
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -274,30 +325,49 @@ The connector is restricted by normal Microsoft Graph [requests limitation](http
 
 | Version | Date       | Pull Request                                             | Subject                                                                   |
 |:--------|:-----------|:---------------------------------------------------------|:--------------------------------------------------------------------------|
-| 0.5.2   | 2024-08-24 | [45646](https://github.com/airbytehq/airbyte/pull/45646) | Fix: handle wrong folder name                                             |
-| 0.5.1   | 2024-08-24 | [44660](https://github.com/airbytehq/airbyte/pull/44660) | Update dependencies                                                       |
-| 0.5.0   | 2024-08-19 | [42983](https://github.com/airbytehq/airbyte/pull/42983) | Migrate to CDK v4.5.1                                                     |
-| 0.4.5   | 2024-08-19 | [44382](https://github.com/airbytehq/airbyte/pull/44382) | Update dependencies                                                       |
-| 0.4.4   | 2024-08-12 | [43743](https://github.com/airbytehq/airbyte/pull/43743) | Update dependencies                                                       |
-| 0.4.3   | 2024-08-10 | [43565](https://github.com/airbytehq/airbyte/pull/43565) | Update dependencies                                                       |
-| 0.4.2   | 2024-08-03 | [43235](https://github.com/airbytehq/airbyte/pull/43235) | Update dependencies                                                       |
-| 0.4.1   | 2024-07-27 | [42704](https://github.com/airbytehq/airbyte/pull/42704) | Update dependencies                                                       |
-| 0.4.0   | 2024-07-25 | [42008](https://github.com/airbytehq/airbyte/pull/42008) | Migrate to CDK v3.5.3                                                     |
-| 0.3.1   | 2024-07-20 | [42143](https://github.com/airbytehq/airbyte/pull/42143) | Update dependencies                                                       |
-| 0.3.0   | 2024-07-16 | [42007](https://github.com/airbytehq/airbyte/pull/42007) | Migrate to CDK v2.4.0                                                     |
-| 0.2.11  | 2024-07-13 | [41688](https://github.com/airbytehq/airbyte/pull/41688) | Update dependencies                                                       |
-| 0.2.10  | 2024-07-10 | [41589](https://github.com/airbytehq/airbyte/pull/41589) | Update dependencies                                                       |
-| 0.2.9   | 2024-07-06 | [40917](https://github.com/airbytehq/airbyte/pull/40917) | Update dependencies                                                       |
-| 0.2.8   | 2024-06-26 | [40539](https://github.com/airbytehq/airbyte/pull/40539) | Update dependencies                                                       |
-| 0.2.7   | 2024-06-25 | [40357](https://github.com/airbytehq/airbyte/pull/40357) | Update dependencies                                                       |
-| 0.2.6   | 2024-06-24 | [40233](https://github.com/airbytehq/airbyte/pull/40233) | Update dependencies                                                       |
-| 0.2.5   | 2024-06-22 | [39987](https://github.com/airbytehq/airbyte/pull/39987) | Update dependencies                                                       |
-| 0.2.4   | 2024-05-29 | [38675](https://github.com/airbytehq/airbyte/pull/38675) | Avoid error on empty stream when running discover                         |
-| 0.2.3   | 2024-04-17 | [37372](https://github.com/airbytehq/airbyte/pull/37372) | Make refresh token optional                                               |
-| 0.2.2   | 2024-03-28 | [36573](https://github.com/airbytehq/airbyte/pull/36573) | Update QL to 400                                                          |
-| 0.2.1   | 2024-03-22 | [36381](https://github.com/airbytehq/airbyte/pull/36381) | Unpin CDK                                                                 |
-| 0.2.0   | 2024-03-06 | [35830](https://github.com/airbytehq/airbyte/pull/35830) | Add fetching shared items                                                 |
-| 0.1.0   | 2024-01-25 | [33537](https://github.com/airbytehq/airbyte/pull/33537) | New source                                                                |
+| 0.10.5 | 2026-11-03 | [89687](https://github.com/airbytehq/airbyte/pull/89687) | Keep syncing drive files and report a clear error when the deprecated Microsoft Graph sharedWithMe API stops returning shared items |
+| 0.10.4 | 2025-08-21 | [65118](https://github.com/airbytehq/airbyte/pull/65118) | Decertify connector |
+| 0.10.3 | 2025-07-13 | [60562](https://github.com/airbytehq/airbyte/pull/60562) | Update dependencies |
+| 0.10.2 | 2025-05-10 | [59113](https://github.com/airbytehq/airbyte/pull/59113) | Update dependencies |
+| 0.10.1 | 2025-05-07 | [59711](https://github.com/airbytehq/airbyte/pull/59711) | Fix edege case for unexcpeted uris. |
+| 0.10.0 | 2025-05-07 | [59700](https://github.com/airbytehq/airbyte/pull/59700) | Promoting release candidate 0.10.0-rc.1 to a main version. |
+| 0.10.0-rc.1 | 2025-05-05 | [57507](https://github.com/airbytehq/airbyte/pull/57507) | Adapt file-transfer records to latest protocol, requires platform >= 1.7.0, destination-s3 >= 1.8.0 |
+| 0.9.3 | 2025-04-19 | [58471](https://github.com/airbytehq/airbyte/pull/58471) | Update dependencies |
+| 0.9.2 | 2025-04-12 | [57920](https://github.com/airbytehq/airbyte/pull/57920) | Update dependencies |
+| 0.9.1 | 2025-04-05 | [57065](https://github.com/airbytehq/airbyte/pull/57065) | Update dependencies |
+| 0.9.0 | 2025-04-01 | [55912](https://github.com/airbytehq/airbyte/pull/55912) | Provide ability to iterate all sharepoint sites |
+| 0.8.2 | 2025-03-29 | [56712](https://github.com/airbytehq/airbyte/pull/56712) | Update dependencies |
+| 0.8.1 | 2025-03-22 | [56014](https://github.com/airbytehq/airbyte/pull/56014) | Update dependencies |
+| 0.8.0 | 2025-03-12 | [54658](https://github.com/airbytehq/airbyte/pull/54658) | Provide ability to sync other sites than Main sharepoint site |
+| 0.7.2 | 2025-03-08 | [55427](https://github.com/airbytehq/airbyte/pull/55427) | Update dependencies |
+| 0.7.1 | 2025-03-01 | [54749](https://github.com/airbytehq/airbyte/pull/54749) | Update dependencies |
+| 0.7.0 | 2025-02-27 | [54200](https://github.com/airbytehq/airbyte/pull/54200) | Add advanced Oauth |
+| 0.6.1 | 2025-02-22 | [45062](https://github.com/airbytehq/airbyte/pull/45062) | Update dependencies |
+| 0.6.0 | 2025-02-20 | [54140](https://github.com/airbytehq/airbyte/pull/54140) | Implement file transfer mode to move raw files |
+| 0.5.2 | 2024-08-24 | [45646](https://github.com/airbytehq/airbyte/pull/45646) | Fix: handle wrong folder name |
+| 0.5.1 | 2024-08-24 | [44660](https://github.com/airbytehq/airbyte/pull/44660) | Update dependencies |
+| 0.5.0 | 2024-08-19 | [42983](https://github.com/airbytehq/airbyte/pull/42983) | Migrate to CDK v4.5.1 |
+| 0.4.5 | 2024-08-19 | [44382](https://github.com/airbytehq/airbyte/pull/44382) | Update dependencies |
+| 0.4.4 | 2024-08-12 | [43743](https://github.com/airbytehq/airbyte/pull/43743) | Update dependencies |
+| 0.4.3 | 2024-08-10 | [43565](https://github.com/airbytehq/airbyte/pull/43565) | Update dependencies |
+| 0.4.2 | 2024-08-03 | [43235](https://github.com/airbytehq/airbyte/pull/43235) | Update dependencies |
+| 0.4.1 | 2024-07-27 | [42704](https://github.com/airbytehq/airbyte/pull/42704) | Update dependencies |
+| 0.4.0 | 2024-07-25 | [42008](https://github.com/airbytehq/airbyte/pull/42008) | Migrate to CDK v3.5.3 |
+| 0.3.1 | 2024-07-20 | [42143](https://github.com/airbytehq/airbyte/pull/42143) | Update dependencies |
+| 0.3.0 | 2024-07-16 | [42007](https://github.com/airbytehq/airbyte/pull/42007) | Migrate to CDK v2.4.0 |
+| 0.2.11 | 2024-07-13 | [41688](https://github.com/airbytehq/airbyte/pull/41688) | Update dependencies |
+| 0.2.10 | 2024-07-10 | [41589](https://github.com/airbytehq/airbyte/pull/41589) | Update dependencies |
+| 0.2.9 | 2024-07-06 | [40917](https://github.com/airbytehq/airbyte/pull/40917) | Update dependencies |
+| 0.2.8 | 2024-06-26 | [40539](https://github.com/airbytehq/airbyte/pull/40539) | Update dependencies |
+| 0.2.7 | 2024-06-25 | [40357](https://github.com/airbytehq/airbyte/pull/40357) | Update dependencies |
+| 0.2.6 | 2024-06-24 | [40233](https://github.com/airbytehq/airbyte/pull/40233) | Update dependencies |
+| 0.2.5 | 2024-06-22 | [39987](https://github.com/airbytehq/airbyte/pull/39987) | Update dependencies |
+| 0.2.4 | 2024-05-29 | [38675](https://github.com/airbytehq/airbyte/pull/38675) | Avoid error on empty stream when running discover |
+| 0.2.3 | 2024-04-17 | [37372](https://github.com/airbytehq/airbyte/pull/37372) | Make refresh token optional |
+| 0.2.2 | 2024-03-28 | [36573](https://github.com/airbytehq/airbyte/pull/36573) | Update QL to 400 |
+| 0.2.1 | 2024-03-22 | [36381](https://github.com/airbytehq/airbyte/pull/36381) | Unpin CDK |
+| 0.2.0 | 2024-03-06 | [35830](https://github.com/airbytehq/airbyte/pull/35830) | Add fetching shared items |
+| 0.1.0 | 2024-01-25 | [33537](https://github.com/airbytehq/airbyte/pull/33537) | New source |
 
 </details>
 

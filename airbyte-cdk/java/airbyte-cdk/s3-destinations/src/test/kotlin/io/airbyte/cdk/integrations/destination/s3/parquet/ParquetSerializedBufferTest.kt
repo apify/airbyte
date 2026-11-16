@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.parquet
@@ -254,7 +254,7 @@ class ParquetSerializedBufferTest {
         minExpectedByte: Long,
         maxExpectedByte: Long,
         config: S3DestinationConfig,
-        expectedData: String
+        expectedData: String,
     ) {
         val tempFile = Files.createTempFile(UUID.randomUUID().toString(), ".parquet").toFile()
         try {

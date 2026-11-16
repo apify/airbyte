@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs
 
@@ -39,7 +39,7 @@ abstract class GcsBaseParquetDestinationAcceptanceTest :
         testEnv: TestDestinationEnv?,
         streamName: String,
         namespace: String,
-        streamSchema: JsonNode
+        streamSchema: JsonNode,
     ): List<JsonNode> {
         val nameUpdater = getFieldNameUpdater(streamName, namespace, streamSchema)
 
@@ -75,7 +75,7 @@ abstract class GcsBaseParquetDestinationAcceptanceTest :
     @Throws(Exception::class)
     override fun retrieveDataTypesFromPersistedFiles(
         streamName: String,
-        namespace: String
+        namespace: String,
     ): Map<String?, Set<Schema.Type?>?> {
         val objectSummaries = getAllSyncedObjects(streamName, namespace)
         val resultDataTypes: MutableMap<String?, Set<Schema.Type?>?> = HashMap()

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.base.destination.typing_deduping
 
@@ -34,7 +34,7 @@ object CollectionUtils {
     @JvmStatic
     fun containsAllIgnoreCase(
         searchCollection: Collection<String>,
-        searchTerms: Collection<String>
+        searchTerms: Collection<String>,
     ): Boolean {
         require(!searchTerms.isEmpty()) {
             // There isn't a good behavior for an empty collection. Without this check, an empty

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium.internals
 
@@ -52,7 +52,7 @@ class DebeziumConverterUtils private constructor() {
                     return LocalDateTime.parse(input).toString()
                 } catch (e: DateTimeParseException) {
                     LOGGER.warn { "Cannot convert value '$input' to LocalDateTime type" }
-                    return input.toString()
+                    return input
                 }
             }
             LOGGER.warn {

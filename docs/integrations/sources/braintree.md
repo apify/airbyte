@@ -65,6 +65,10 @@ The connector is restricted by normal Braintree [requests limitation](https://de
 
 The Braintree connector should not run into Braintree API limitations under normal usage. Please [create an issue](https://github.com/airbytehq/airbyte/issues) if you see any rate limit issues that are not automatically retried successfully.
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -72,6 +76,39 @@ The Braintree connector should not run into Braintree API limitations under norm
 
 | Version | Date       | Pull Request                                             | Subject                                              |
 | :------ | :--------- | :------------------------------------------------------- | :--------------------------------------------------- |
+| 0.3.50 | 2026-11-03 | [90880](https://github.com/airbytehq/airbyte/pull/90880) | Upgrade base image to python-connector-base 4.0.2 (Python 3.11) and airbyte-cdk to 1.x, since airbyte-cdk 0.50 cannot run on Python 3.11 |
+| 0.3.49 | 2026-11-03 | [90476](https://github.com/airbytehq/airbyte/pull/90476) | Update dependencies |
+| 0.3.48 | 2026-10-27 | [89807](https://github.com/airbytehq/airbyte/pull/89807) | Update dependencies |
+| 0.3.47 | 2026-10-20 | [89116](https://github.com/airbytehq/airbyte/pull/89116) | Update dependencies |
+| 0.3.46 | 2026-10-13 | [88530](https://github.com/airbytehq/airbyte/pull/88530) | Update dependencies |
+| 0.3.45 | 2026-10-06 | [87755](https://github.com/airbytehq/airbyte/pull/87755) | Update dependencies |
+| 0.3.44 | 2026-09-29 | [87077](https://github.com/airbytehq/airbyte/pull/87077) | Update dependencies |
+| 0.3.43 | 2026-09-22 | [86546](https://github.com/airbytehq/airbyte/pull/86546) | Update dependencies |
+| 0.3.42 | 2026-09-15 | [85966](https://github.com/airbytehq/airbyte/pull/85966) | Update dependencies |
+| 0.3.41 | 2026-09-01 | [85242](https://github.com/airbytehq/airbyte/pull/85242) | Update dependencies |
+| 0.3.40 | 2026-08-25 | [85008](https://github.com/airbytehq/airbyte/pull/85008) | Update dependencies |
+| 0.3.39 | 2026-08-18 | [84498](https://github.com/airbytehq/airbyte/pull/84498) | Update dependencies |
+| 0.3.38 | 2026-08-11 | [83845](https://github.com/airbytehq/airbyte/pull/83845) | Update dependencies |
+| 0.3.37 | 2026-08-04 | [83373](https://github.com/airbytehq/airbyte/pull/83373) | Update dependencies |
+| 0.3.36 | 2026-07-28 | [82804](https://github.com/airbytehq/airbyte/pull/82804) | Update dependencies |
+| 0.3.35 | 2026-07-14 | [81738](https://github.com/airbytehq/airbyte/pull/81738) | Update dependencies |
+| 0.3.34 | 2026-07-07 | [81438](https://github.com/airbytehq/airbyte/pull/81438) | Update dependencies |
+| 0.3.33 | 2026-06-23 | [80373](https://github.com/airbytehq/airbyte/pull/80373) | Update dependencies |
+| 0.3.32 | 2026-06-09 | [79226](https://github.com/airbytehq/airbyte/pull/79226) | Update dependencies |
+| 0.3.31 | 2026-06-02 | [78571](https://github.com/airbytehq/airbyte/pull/78571) | Update dependencies |
+| 0.3.30 | 2026-04-28 | [77150](https://github.com/airbytehq/airbyte/pull/77150) | Update dependencies |
+| 0.3.29 | 2026-04-21 | [65051](https://github.com/airbytehq/airbyte/pull/65051) | Update dependencies |
+| 0.3.28 | 2025-02-01 | [52894](https://github.com/airbytehq/airbyte/pull/52894) | Update dependencies |
+| 0.3.27 | 2025-01-25 | [51769](https://github.com/airbytehq/airbyte/pull/51769) | Update dependencies |
+| 0.3.26 | 2025-01-11 | [51238](https://github.com/airbytehq/airbyte/pull/51238) | Update dependencies |
+| 0.3.25 | 2024-12-28 | [50500](https://github.com/airbytehq/airbyte/pull/50500) | Update dependencies |
+| 0.3.24 | 2024-12-21 | [50211](https://github.com/airbytehq/airbyte/pull/50211) | Update dependencies |
+| 0.3.23 | 2024-12-14 | [49556](https://github.com/airbytehq/airbyte/pull/49556) | Update dependencies |
+| 0.3.22 | 2024-12-12 | [49032](https://github.com/airbytehq/airbyte/pull/49032) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.3.21 | 2024-11-04 | [48212](https://github.com/airbytehq/airbyte/pull/48212) | Update dependencies |
+| 0.3.20 | 2024-10-21 | [47062](https://github.com/airbytehq/airbyte/pull/47062) | Update dependencies |
+| 0.3.19 | 2024-10-12 | [46849](https://github.com/airbytehq/airbyte/pull/46849) | Update dependencies |
+| 0.3.18 | 2024-10-05 | [46496](https://github.com/airbytehq/airbyte/pull/46496) | Update dependencies |
 | 0.3.17 | 2024-09-28 | [46180](https://github.com/airbytehq/airbyte/pull/46180) | Update dependencies |
 | 0.3.16 | 2024-09-21 | [45810](https://github.com/airbytehq/airbyte/pull/45810) | Update dependencies |
 | 0.3.15 | 2024-09-14 | [45555](https://github.com/airbytehq/airbyte/pull/45555) | Update dependencies |

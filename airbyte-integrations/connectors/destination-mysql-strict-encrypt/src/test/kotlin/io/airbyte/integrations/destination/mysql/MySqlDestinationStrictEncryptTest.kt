@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.destination.mysql
 
@@ -16,7 +16,7 @@ internal class MySqlDestinationStrictEncryptTest {
         println(MySQLDestinationStrictEncrypt().spec().connectionSpecification)
         Assertions.assertEquals(
             deserialize(readResource("expected_spec.json"), ConnectorSpecification::class.java),
-            MySQLDestinationStrictEncrypt().spec()
+            MySQLDestinationStrictEncrypt().spec(),
         )
     }
 }

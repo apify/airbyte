@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.source.relationaldb.state
@@ -11,13 +11,13 @@ class SourceStateIteratorForTest<T>(
     messageIterator: Iterator<T>,
     stream: ConfiguredAirbyteStream?,
     sourceStateMessageProducer: SourceStateMessageProducer<T>,
-    stateEmitFrequency: StateEmitFrequency
+    stateEmitFrequency: StateEmitFrequency,
 ) :
     SourceStateIterator<T>(
         messageIterator,
         stream,
         sourceStateMessageProducer,
-        stateEmitFrequency
+        stateEmitFrequency,
     ) {
     public override fun computeNext(): AirbyteMessage? = super.computeNext()
 }

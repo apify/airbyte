@@ -1,10 +1,11 @@
 #
-# Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+# Copyright (c) 2024 Airbyte, Inc., all rights reserved.
 #
 
 from collections import namedtuple
 
 import pytest
+
 
 TestCase = namedtuple(
     "TestCase", ("json_type", "data_type", "length", "decimal_place", "api_name", "pick_list_values", "autonumber", "expected_values")
@@ -27,7 +28,7 @@ datatype_inputs = pytest.mark.parametrize(
             "Field",
             ["Chelsea", "Arsenal", "ManUtd"],
             None,
-            {"enum": [None, "Chelsea", "Arsenal", "ManUtd"], "maxLength": 128, "title": "Field", "type": ["null", "string"]},
+            {"maxLength": 128, "title": "Field", "type": ["null", "string"]},
         ),
         TestCase("string", "textarea", 1024, None, "Field", [], None, {"maxLength": 1024, "title": "Field", "type": ["null", "string"]}),
         TestCase(
@@ -223,7 +224,7 @@ datatype_inputs = pytest.mark.parametrize(
             ["A", "B", "C", "D"],
             None,
             {
-                "items": {"enum": [None, "A", "B", "C", "D"], "type": ["null", "string"]},
+                "items": {"type": ["null", "string"]},
                 "minItems": 1,
                 "title": "Field",
                 "type": "array",

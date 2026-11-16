@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3
 
@@ -20,7 +20,7 @@ object UploadFormatConfigFactory {
         LOGGER.info { "File upload format config: $formatConfig" }
         val formatType =
             FileUploadFormat.valueOf(
-                formatConfig["format_type"].asText().uppercase(Locale.getDefault())
+                formatConfig["format_type"].asText().uppercase(Locale.getDefault()),
             )
 
         return when (formatType) {

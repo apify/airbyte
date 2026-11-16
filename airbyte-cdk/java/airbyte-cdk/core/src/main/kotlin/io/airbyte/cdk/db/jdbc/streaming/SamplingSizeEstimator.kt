@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.jdbc.streaming
 
@@ -15,7 +15,7 @@ class SamplingSizeEstimator(
     initialRowByteSize: Double,
     minFetchSize: Int,
     defaultFetchSize: Int,
-    maxFetchSize: Int
+    maxFetchSize: Int,
 ) :
     BaseSizeEstimator(bufferByteSize, minFetchSize, defaultFetchSize, maxFetchSize),
     FetchSizeEstimator {

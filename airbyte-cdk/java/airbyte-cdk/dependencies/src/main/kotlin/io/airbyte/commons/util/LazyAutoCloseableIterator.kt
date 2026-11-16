@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.util
 
@@ -21,7 +21,7 @@ import java.util.function.Supplier
  */
 internal class LazyAutoCloseableIterator<T>(
     iteratorSupplier: Supplier<AutoCloseableIterator<T>>,
-    airbyteStream: AirbyteStreamNameNamespacePair?
+    airbyteStream: AirbyteStreamNameNamespacePair?,
 ) : AbstractIterator<T>(), AutoCloseableIterator<T> {
     private val iteratorSupplier: Supplier<AutoCloseableIterator<T>>
     override val airbyteStream: Optional<AirbyteStreamNameNamespacePair>

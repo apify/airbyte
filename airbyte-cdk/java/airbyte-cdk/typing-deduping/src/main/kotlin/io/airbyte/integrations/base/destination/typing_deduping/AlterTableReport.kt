@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.base.destination.typing_deduping
 
@@ -9,7 +9,7 @@ class AlterTableReport(
     columnsToAdd: Set<String>,
     columnsToRemove: Set<String>,
     columnsToChangeType: Set<String>,
-    isDestinationV2Format: Boolean
+    isDestinationV2Format: Boolean,
 ) {
     val isNoOp: Boolean
         /**

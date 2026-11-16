@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.record_buffer
 
@@ -230,7 +230,7 @@ class SerializedBufferingStrategyTest {
                     AirbyteRecordMessage()
                         .withStream(stream.name)
                         .withNamespace(stream.namespace)
-                        .withData(MESSAGE_DATA)
+                        .withData(MESSAGE_DATA),
                 )
         }
     }

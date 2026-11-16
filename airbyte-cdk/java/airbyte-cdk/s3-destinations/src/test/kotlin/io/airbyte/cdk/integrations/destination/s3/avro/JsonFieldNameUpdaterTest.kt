@@ -1,11 +1,10 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3.avro
 
 import io.airbyte.commons.json.Jsons.deserialize
 import io.airbyte.commons.resources.MoreResources.readResource
-import io.airbyte.commons.util.MoreIterators.toList
 import java.io.IOException
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -18,9 +17,7 @@ internal class JsonFieldNameUpdaterTest {
         for (testCase in testCases) {
             val nameMap = testCase["nameMap"]
             val nameUpdater =
-                JsonFieldNameUpdater(
-                    toList(nameMap.fields()).associate { it.key to it.value.asText() }
-                )
+                JsonFieldNameUpdater(nameMap.properties().associate { it.key to it.value.asText() })
 
             val original = testCase["original"]
             val updated = testCase["updated"]

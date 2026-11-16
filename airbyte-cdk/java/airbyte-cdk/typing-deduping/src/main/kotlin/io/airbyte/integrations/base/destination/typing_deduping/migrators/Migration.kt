@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.base.destination.typing_deduping.migrators
@@ -36,15 +36,15 @@ interface Migration<DestinationState : MinimumDestinationState> {
     fun migrateIfNecessary(
         destinationHandler: DestinationHandler<DestinationState>,
         stream: StreamConfig,
-        state: DestinationInitialStatus<DestinationState>
+        state: DestinationInitialStatus<DestinationState>,
     ): MigrationResult<DestinationState>
 
     /**
      * @param invalidateInitialState If true, the migration modified the raw tables in a way that
-     * requires us to re-gather initial state.
+     *   requires us to re-gather initial state.
      */
     data class MigrationResult<DestinationState>(
         val updatedDestinationState: DestinationState,
-        val invalidateInitialState: Boolean
+        val invalidateInitialState: Boolean,
     )
 }

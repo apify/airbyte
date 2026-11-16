@@ -39,6 +39,10 @@ The Freshcaller connector should not run into Freshcaller API limitations under 
 
 Please read [How to find your API key](https://support.freshdesk.com/en/support/solutions/articles/225435-where-can-i-find-my-api-key-).
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -46,6 +50,22 @@ Please read [How to find your API key](https://support.freshdesk.com/en/support/
 
 | Version | Date       | Pull Request                                             | Subject                                           |
 | :------ | :--------- | :------------------------------------------------------- | :------------------------------------------------ |
+| 0.5.4 | 2025-10-21 | [68444](https://github.com/airbytehq/airbyte/pull/68444) | Update dependencies |
+| 0.5.3 | 2025-10-14 | [68067](https://github.com/airbytehq/airbyte/pull/68067) | Update dependencies |
+| 0.5.2 | 2025-10-07 | [67300](https://github.com/airbytehq/airbyte/pull/67300) | Update dependencies |
+| 0.5.1 | 2025-09-30 | [65016](https://github.com/airbytehq/airbyte/pull/65016) | Update dependencies |
+| 0.5.0 | 2025-09-17 | [66216](https://github.com/airbytehq/airbyte/pull/66216) | Migrate cdk to version 7 for source-freshcaller |
+| 0.4.25 | 2025-02-01 | [52843](https://github.com/airbytehq/airbyte/pull/52843) | Update dependencies |
+| 0.4.24 | 2025-01-25 | [52310](https://github.com/airbytehq/airbyte/pull/52310) | Update dependencies |
+| 0.4.23 | 2025-01-18 | [51638](https://github.com/airbytehq/airbyte/pull/51638) | Update dependencies |
+| 0.4.22 | 2025-01-11 | [51137](https://github.com/airbytehq/airbyte/pull/51137) | Update dependencies |
+| 0.4.21 | 2025-01-04 | [50542](https://github.com/airbytehq/airbyte/pull/50542) | Update dependencies |
+| 0.4.20 | 2024-12-21 | [50056](https://github.com/airbytehq/airbyte/pull/50056) | Update dependencies |
+| 0.4.19 | 2024-12-11 | [48897](https://github.com/airbytehq/airbyte/pull/48897) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.4.18 | 2024-10-29 | [47808](https://github.com/airbytehq/airbyte/pull/47808) | Update dependencies |
+| 0.4.17 | 2024-10-23 | [47065](https://github.com/airbytehq/airbyte/pull/47065) | Update dependencies |
+| 0.4.16 | 2024-10-12 | [46796](https://github.com/airbytehq/airbyte/pull/46796) | Update dependencies |
+| 0.4.15 | 2024-10-05 | [46435](https://github.com/airbytehq/airbyte/pull/46435) | Update dependencies |
 | 0.4.14 | 2024-09-28 | [46173](https://github.com/airbytehq/airbyte/pull/46173) | Update dependencies |
 | 0.4.13 | 2024-09-21 | [45760](https://github.com/airbytehq/airbyte/pull/45760) | Update dependencies |
 | 0.4.12 | 2024-09-14 | [45522](https://github.com/airbytehq/airbyte/pull/45522) | Update dependencies |
@@ -64,7 +84,7 @@ Please read [How to find your API key](https://support.freshdesk.com/en/support/
 | 0.3.3 | 2024-07-06 | [40843](https://github.com/airbytehq/airbyte/pull/40843) | Update dependencies |
 | 0.3.2 | 2024-07-01 | [40618](https://github.com/airbytehq/airbyte/pull/40618) | Migrate to base image and poetry, update CDK |
 | 0.3.1 | 2023-11-28 | [32874](https://github.com/airbytehq/airbyte/pull/32874) | 🐛 Source: fix page_size_option parameter in spec |
-| 0.3.0   | 2023-10-24 | [31102](https://github.com/airbytehq/airbyte/pull/14759) | ✨ Source: Migrate to Low Code CDK                |
+| 0.3.0   | 2023-10-24 | [14759](https://github.com/airbytehq/airbyte/pull/14759) | ✨ Source: Migrate to Low Code CDK                |
 | 0.2.0   | 2023-05-15 | [26065](https://github.com/airbytehq/airbyte/pull/26065) | Fix spec type check for `start_date`              |
 | 0.1.0   | 2022-08-11 | [14759](https://github.com/airbytehq/airbyte/pull/14759) | 🎉 New Source: Freshcaller                        |
 

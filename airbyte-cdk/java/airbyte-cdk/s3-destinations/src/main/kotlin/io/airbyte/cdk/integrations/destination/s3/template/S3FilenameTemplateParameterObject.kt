@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.template
@@ -23,7 +23,7 @@ internal constructor(
     val partId: String?,
     val fileUploadFormat: FileUploadFormat?,
     val timestamp: Timestamp?,
-    val customSuffix: String?
+    val customSuffix: String?,
 ) {
     class S3FilenameTemplateParameterObjectBuilder internal constructor() {
         private var objectPath: String? = null
@@ -41,7 +41,7 @@ internal constructor(
         }
 
         fun recordsData(
-            recordsData: SerializableBuffer?
+            recordsData: SerializableBuffer?,
         ): S3FilenameTemplateParameterObjectBuilder {
             this.recordsData = recordsData
             return this
@@ -63,7 +63,7 @@ internal constructor(
         }
 
         fun s3Format(
-            fileUploadFormat: FileUploadFormat?
+            fileUploadFormat: FileUploadFormat?,
         ): S3FilenameTemplateParameterObjectBuilder {
             this.fileUploadFormat = fileUploadFormat
             return this

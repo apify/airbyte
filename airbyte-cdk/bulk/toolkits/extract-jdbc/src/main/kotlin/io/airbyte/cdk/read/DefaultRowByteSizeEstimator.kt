@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.read
@@ -22,7 +22,7 @@ class DefaultRowByteSizeEstimator(
         // The counter value includes the byte count on field name encodings; subtract this.
         // We don't want the estimate to depend on the column name lengths.
         val adjustedFieldOverheadBytes: Long =
-            record.fields().asSequence().sumOf { (fieldName: String, _) ->
+            record.properties().asSequence().sumOf { (fieldName: String, _) ->
                 val fieldNameOvercount: Int = ",\"".length + fieldName.length + "\":".length
                 estimatedFieldOverheadBytes - fieldNameOvercount
             }

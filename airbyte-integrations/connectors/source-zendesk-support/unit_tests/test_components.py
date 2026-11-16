@@ -1,56 +1,10 @@
 # Copyright (c) 2023 Airbyte, Inc., all rights reserved.
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 import requests
-from airbyte_cdk.sources.declarative.requesters.request_option import RequestOptionType
-from source_zendesk_support.components import (
-    ZendeskSupportAttributeDefinitionsExtractor,
-    ZendeskSupportAuditLogsIncrementalSync,
-    ZendeskSupportExtractorEvents,
-)
-
-
-@pytest.mark.parametrize(
-    "stream_state, stream_slice, next_page_token, expected_params",
-    [
-        (
-            {},
-            {"start_time": "2022-01-01T00:00:00Z", "end_time": "2022-01-02T00:00:00Z"},
-            {},
-            {"start_time_field": ["2022-01-01T00:00:00Z", "2022-01-02T00:00:00Z"]},
-        ),
-        ({}, {}, {}, {}),
-    ],
-)
-def test_audit_logs_incremental_sync(mocker, stream_state, stream_slice, next_page_token, expected_params):
-    # Instantiate the incremental sync class
-    sync = ZendeskSupportAuditLogsIncrementalSync("2021-06-01T00:00:00Z", "updated_at", "%Y-%m-%dT%H:%M:%SZ", {}, {})
-
-    # Setup mock for start_time_option.field_name.eval
-    mock_field_name = mocker.MagicMock()
-    mock_field_name.eval.return_value = "start_time_field"
-
-    mock_start_time_option = mocker.MagicMock()
-    mock_start_time_option.field_name = mock_field_name
-    mock_start_time_option.inject_into = RequestOptionType.request_parameter
-
-    # Setting up the injected options
-    sync.start_time_option = mock_start_time_option
-    sync.end_time_option = mock_start_time_option  # Assuming same field_name for simplicity
-
-    # Patch eval methods to return appropriate field keys
-    sync._partition_field_start = mocker.MagicMock()
-    sync._partition_field_start.eval.return_value = "start_time"
-    sync._partition_field_end = mocker.MagicMock()
-    sync._partition_field_end.eval.return_value = "end_time"
-
-    # Get the request parameters
-    params = sync.get_request_params(stream_state=stream_state, stream_slice=stream_slice, next_page_token=next_page_token)
-
-    # Assert that params match the expected output
-    assert params == expected_params, f"Expected params {expected_params}, but got {params}"
 
 
 @pytest.mark.parametrize(
@@ -100,9 +54,9 @@ def test_audit_logs_incremental_sync(mocker, stream_state, stream_slice, next_pa
         ),
     ],
 )
-def test_extraсtor_events(response_data, expected_events):
+def test_extraсtor_events(response_data, expected_events, components_module):
     # Create an instance of the extractor
-    extractor = ZendeskSupportExtractorEvents()
+    extractor = components_module.ZendeskSupportExtractorEvents()
 
     # Mock the response from requests
     response = MagicMock(spec=requests.Response)
@@ -133,9 +87,9 @@ def test_extraсtor_events(response_data, expected_events):
         (None, []),  # This will be used to mock an exception in the response.json() call
     ],
 )
-def test_attribute_definitions_extractor(response_data, expected_records):
+def test_attribute_definitions_extractor(response_data, expected_records, components_module):
     # Create an instance of the extractor
-    extractor = ZendeskSupportAttributeDefinitionsExtractor()
+    extractor = components_module.ZendeskSupportAttributeDefinitionsExtractor()
 
     # Mock the response from requests
     response = MagicMock(spec=requests.Response)
@@ -149,3 +103,44 @@ def test_attribute_definitions_extractor(response_data, expected_records):
 
     # Assert that the returned records match the expected records
     assert records == expected_records, f"Expected records to be {expected_records}, but got {records}"
+
+
+def test_backfill_floor_precedes_the_5_2_0_regression(components_module):
+    """The floor is a bare epoch int, so pin it to the date it is supposed to mean.
+
+    v5.2.0 -- the release that switched `tickets` to the `updated_at` cursor -- merged on 2026-03-12, so the
+    floor has to sit before that for the one-time backfill to cover the whole regression window.
+    """
+    floor = components_module.TicketsStateMigration.BACKFILL_FLOOR
+
+    assert datetime.fromtimestamp(floor, timezone.utc) == datetime(2026, 3, 1, tzinfo=timezone.utc)
+    assert floor < datetime(2026, 3, 12, tzinfo=timezone.utc).timestamp()
+
+
+@pytest.mark.parametrize(
+    "stream_state, expected",
+    [
+        ({"updated_at": "1780000000"}, True),
+        ({}, False),
+        ({"generated_timestamp": 123}, False),
+    ],
+)
+def test_tickets_state_migration_should_migrate(stream_state, expected, components_module):
+    migration = components_module.TicketsStateMigration()
+    assert migration.should_migrate(stream_state) is expected
+
+
+@pytest.mark.parametrize(
+    "stream_state, expected",
+    [
+        # Above the floor -> clamped down to the floor.
+        ({"updated_at": "1780000000"}, "floor"),
+        # Below the floor -> left unchanged.
+        ({"updated_at": "1000000000"}, {"generated_timestamp": 1000000000}),
+    ],
+)
+def test_tickets_state_migration_migrate(stream_state, expected, components_module):
+    migration = components_module.TicketsStateMigration()
+    if expected == "floor":
+        expected = {"generated_timestamp": migration.BACKFILL_FLOOR}
+    assert migration.migrate(stream_state) == expected

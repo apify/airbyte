@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.source.teradata;
@@ -65,10 +65,13 @@ public class TeradataSource extends AbstractJdbcSource<JDBCType> implements Sour
   public JsonNode toDatabaseConfig(final JsonNode config) {
     final String schema = config.get(JdbcUtils.DATABASE_KEY).asText();
 
-    final String host = config.has(JdbcUtils.PORT_KEY) ? config.get(JdbcUtils.HOST_KEY).asText() + ":" + config.get(JdbcUtils.PORT_KEY).asInt()
-        : config.get(JdbcUtils.HOST_KEY).asText();
+    final String host = config.get(JdbcUtils.HOST_KEY).asText();
 
-    final String jdbcUrl = String.format("jdbc:teradata://%s/", host);
+    // Teradata JDBC URL format: jdbc:teradata://host/PARAM=value[,PARAM=value]. The port is a DBS_PORT
+    // connection parameter, not part of the host, and no trailing slash is allowed after a parameter.
+    final String jdbcUrl = config.has(JdbcUtils.PORT_KEY)
+        ? String.format("jdbc:teradata://%s/DBS_PORT=%d", host, config.get(JdbcUtils.PORT_KEY).asInt())
+        : String.format("jdbc:teradata://%s/", host);
 
     final ImmutableMap.Builder<Object, Object> configBuilder = ImmutableMap.builder()
         .put(JdbcUtils.USERNAME_KEY, config.get(JdbcUtils.USERNAME_KEY).asText())

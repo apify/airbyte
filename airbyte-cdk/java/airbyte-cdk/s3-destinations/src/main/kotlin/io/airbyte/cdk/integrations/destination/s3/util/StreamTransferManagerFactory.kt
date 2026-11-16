@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.util
@@ -34,7 +34,7 @@ object StreamTransferManagerFactory {
     internal constructor(
         private val bucketName: String?,
         private val objectKey: String,
-        private val s3Client: AmazonS3?
+        private val s3Client: AmazonS3?,
     ) {
         private var userMetadata: Map<String, String>? = null
         private var partSize = DEFAULT_PART_SIZE_MB.toLong()

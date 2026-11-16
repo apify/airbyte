@@ -1,5 +1,21 @@
 # Captain Data
 
+:::warning
+
+## Deprecation Notice
+
+The Captain Data source connector has been archived and is no longer available in Airbyte Cloud or Airbyte Open Source.
+
+This connector was built on the Captain Data **v3 API** (`https://api.captaindata.co/v3/`). Captain Data sunset the v3 API on January 9th, 2026 ("Captain Data v3 has been officially sunset. All v3 features and endpoints are no longer available." — see the [Captain Data product updates](https://docs.captaindata.com/v1/changelog/overview)). Every endpoint used by this connector (`/workspace`, `/workflows`, `/workflows/{uid}/jobs`, `/jobs/{uid}/results`) now returns `404 Not Found`, so the connector can no longer connect or sync.
+
+The replacement [Captain Data v1 API](https://docs.captaindata.com/v1/introduction) is a people/company enrichment API that does not expose the workflow, job, or job result resources this connector was built around, so there is no drop-in migration path.
+
+### Recommended Actions
+
+Users who wish to sync data from the new Captain Data v1 API are advised to build a custom connector with the [Connector Builder](https://docs.airbyte.com/platform/connector-development/connector-builder-ui/overview).
+
+:::
+
 This page contains the setup guide and reference information for the [Captain Data](https://docs.captaindata.co/#intro) source connector.
 
 ## Prerequisites
@@ -58,6 +74,10 @@ GET https://api.captaindata.co/v3/
 
 Captain Data [API reference](https://docs.captaindata.co/#intro) has v3 at present. The connector as default uses v3.
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -65,6 +85,32 @@ Captain Data [API reference](https://docs.captaindata.co/#intro) has v3 at prese
 
 | Version | Date       | Pull Request                                            | Subject                                     |
 | :------ |:-----------| :------------------------------------------------------ |:--------------------------------------------|
+| 0.2.26 | 2026-10-07 | [88177](https://github.com/airbytehq/airbyte/pull/88177) | Archive connector: Captain Data sunset the v3 API on 2026-01-09; all endpoints return 404 |
+| 0.2.25 | 2026-06-02 | [78635](https://github.com/airbytehq/airbyte/pull/78635) | Update dependencies |
+| 0.2.24 | 2025-05-10 | [59884](https://github.com/airbytehq/airbyte/pull/59884) | Update dependencies |
+| 0.2.23 | 2025-05-03 | [59321](https://github.com/airbytehq/airbyte/pull/59321) | Update dependencies |
+| 0.2.22 | 2025-04-26 | [58708](https://github.com/airbytehq/airbyte/pull/58708) | Update dependencies |
+| 0.2.21 | 2025-04-19 | [58274](https://github.com/airbytehq/airbyte/pull/58274) | Update dependencies |
+| 0.2.20 | 2025-04-12 | [57657](https://github.com/airbytehq/airbyte/pull/57657) | Update dependencies |
+| 0.2.19 | 2025-04-05 | [57117](https://github.com/airbytehq/airbyte/pull/57117) | Update dependencies |
+| 0.2.18 | 2025-03-29 | [56572](https://github.com/airbytehq/airbyte/pull/56572) | Update dependencies |
+| 0.2.17 | 2025-03-22 | [56152](https://github.com/airbytehq/airbyte/pull/56152) | Update dependencies |
+| 0.2.16 | 2025-03-08 | [55396](https://github.com/airbytehq/airbyte/pull/55396) | Update dependencies |
+| 0.2.15 | 2025-03-01 | [54834](https://github.com/airbytehq/airbyte/pull/54834) | Update dependencies |
+| 0.2.14 | 2025-02-22 | [54232](https://github.com/airbytehq/airbyte/pull/54232) | Update dependencies |
+| 0.2.13 | 2025-02-15 | [53900](https://github.com/airbytehq/airbyte/pull/53900) | Update dependencies |
+| 0.2.12 | 2025-02-08 | [53403](https://github.com/airbytehq/airbyte/pull/53403) | Update dependencies |
+| 0.2.11 | 2025-02-01 | [52892](https://github.com/airbytehq/airbyte/pull/52892) | Update dependencies |
+| 0.2.10 | 2025-01-25 | [52185](https://github.com/airbytehq/airbyte/pull/52185) | Update dependencies |
+| 0.2.9 | 2025-01-18 | [51741](https://github.com/airbytehq/airbyte/pull/51741) | Update dependencies |
+| 0.2.8 | 2025-01-11 | [51277](https://github.com/airbytehq/airbyte/pull/51277) | Update dependencies |
+| 0.2.7 | 2024-12-28 | [50475](https://github.com/airbytehq/airbyte/pull/50475) | Update dependencies |
+| 0.2.6 | 2024-12-21 | [50192](https://github.com/airbytehq/airbyte/pull/50192) | Update dependencies |
+| 0.2.5 | 2024-12-14 | [49569](https://github.com/airbytehq/airbyte/pull/49569) | Update dependencies |
+| 0.2.4 | 2024-12-12 | [49299](https://github.com/airbytehq/airbyte/pull/49299) | Update dependencies |
+| 0.2.3 | 2024-12-11 | [48900](https://github.com/airbytehq/airbyte/pull/48900) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.2.2 | 2024-11-04 | [48177](https://github.com/airbytehq/airbyte/pull/48177) | Update dependencies |
+| 0.2.1 | 2024-10-29 | [47769](https://github.com/airbytehq/airbyte/pull/47769) | Update dependencies |
 | 0.2.0 | 2024-08-19 | [44419](https://github.com/airbytehq/airbyte/pull/44419) | Refactor connector to manifest-only format |
 | 0.1.15 | 2024-08-17 | [44340](https://github.com/airbytehq/airbyte/pull/44340) | Update dependencies |
 | 0.1.14 | 2024-08-12 | [43919](https://github.com/airbytehq/airbyte/pull/43919) | Update dependencies |

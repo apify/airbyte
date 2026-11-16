@@ -1,0 +1,36 @@
+# See [Connector Acceptance Tests](https://docs.airbyte.com/connector-development/testing-connectors/connector-acceptance-tests-reference)
+# for more information about how to configure these tests
+connector_image: airbyte/source-google-calendar:dev
+acceptance_tests:
+  spec:
+    tests:
+      - spec_path: "manifest.yaml"
+        # The credentials spec was restructured under `credentials` in 1.1.0;
+        # legacy flat configs are migrated at runtime by config_normalization_rules.
+        backward_compatibility_tests_config:
+          disable_for_version: "1.0.1"
+  connection:
+    tests:
+      - config_path: "secrets/config.json"
+        status: "succeed"
+      - config_path: "integration_tests/invalid_config.json"
+        status: "failed"
+  basic_read:
+    tests:
+      - config_path: "secrets/config.json"
+        configured_catalog_path: "integration_tests/configured_catalog_full_refresh.json"
+  # The CDK standard-test runner used in CI reads every section below. Entries sharing a config are
+  # merged into one scenario; incremental runs read_from_future_state separately.
+  discovery:
+    tests:
+      - config_path: "secrets/config.json"
+  incremental:
+    tests:
+      - config_path: "secrets/config.json"
+        configured_catalog_path: "integration_tests/configured_catalog.json"
+        future_state:
+          future_state_path: "integration_tests/abnormal_state.json"
+  full_refresh:
+    tests:
+      - config_path: "secrets/config.json"
+        configured_catalog_path: "integration_tests/configured_catalog_full_refresh.json"

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3
 
@@ -27,10 +27,10 @@ class S3FormatConfigsTest {
                             "flattening",
                             Flattening.ROOT_LEVEL.value,
                             "compression",
-                            jsonNode(Map.of("compression_type", "No Compression"))
-                        )
-                    )
-                )
+                            jsonNode(Map.of("compression_type", "No Compression")),
+                        ),
+                    ),
+                ),
             )
 
         val formatConfig = getUploadFormatConfig(configJson)

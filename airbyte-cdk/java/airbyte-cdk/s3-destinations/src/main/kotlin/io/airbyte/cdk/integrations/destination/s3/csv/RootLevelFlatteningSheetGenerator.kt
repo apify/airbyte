@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.csv
@@ -12,7 +12,7 @@ import java.util.LinkedList
 
 class RootLevelFlatteningSheetGenerator(
     jsonSchema: JsonNode,
-    private val useV2FieldNames: Boolean = false
+    private val useV2FieldNames: Boolean = false,
 ) : BaseSheetGenerator(useV2FieldNames), CsvSheetGenerator {
     /** Keep a header list to iterate the input json object with a defined order. */
     private val recordHeaders: List<String> =

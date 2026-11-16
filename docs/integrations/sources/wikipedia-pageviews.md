@@ -32,19 +32,30 @@ The Wikipedia Pageviews source connector supports the following [sync modes](htt
 | Feature                       | Supported? |
 | :---------------------------- | :--------- |
 | Full Refresh Sync             | Yes        |
-| Incremental Sync              | No         |
+| Incremental Sync              | Yes        |
 | Replicate Incremental Deletes | No         |
 | SSL connection                | Yes        |
 | Namespaces                    | No         |
 
 ## Supported Streams
 
-- per-article
-- top
+- per-article (incremental, one record per day for the configured article)
+- top (full refresh, the top 1000 articles of the project on the `start` date)
+
+## Configuration notes
+
+- `start` and `end` are dates in `YYYYMMDD` format. Pageviews data is available from 2015-07-01.
+- `end` is optional. Leave it empty to keep syncing up to the latest day published by Wikimedia. Data for a given day is published a few hours after that UTC day ends, so the connector never requests dates later than two days ago; an `end` date in the future is capped accordingly.
+- `article` must be URI-encoded (spaces replaced with underscores).
+- Wikimedia rate-limits unauthenticated clients aggressively (HTTP 429 with a `Retry-After` header). The connector fetches `per-article` data in monthly windows and waits for the time Wikimedia asks for before retrying, so large date ranges still sync but may take a few minutes.
 
 ## Performance considerations
 
 100 req/s per endpoint.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -53,6 +64,31 @@ The Wikipedia Pageviews source connector supports the following [sync modes](htt
 
 | Version | Date       | Pull Request                                              | Subject        |
 | :------ | :--------- | :-------------------------------------------------------- | :------------- |
+| 0.2.25 | 2026-11-09 | [91443](https://github.com/airbytehq/airbyte/pull/91443) | Update to source-declarative-manifest 7.47.0 |
+| 0.2.24 | 2026-10-13 | [79077](https://github.com/airbytehq/airbyte/pull/79077) | Update dependencies |
+| 0.2.23 | 2026-10-07 | [88231](https://github.com/airbytehq/airbyte/pull/88231) | Fix syncs failing with HTTP 404 when `end` is today or in the future (cap the date range to the latest published day, make `end` optional, accept `YYYYMMDDHH` inputs, clear error when Wikimedia has no data); request `per-article` data in monthly windows instead of one request per day and honor `Retry-After` on HTTP 429 |
+| 0.2.22 | 2025-05-24 | [60778](https://github.com/airbytehq/airbyte/pull/60778) | Update dependencies |
+| 0.2.21 | 2025-05-10 | [59940](https://github.com/airbytehq/airbyte/pull/59940) | Update dependencies |
+| 0.2.20 | 2025-05-04 | [58919](https://github.com/airbytehq/airbyte/pull/58919) | Update dependencies |
+| 0.2.19 | 2025-04-19 | [58545](https://github.com/airbytehq/airbyte/pull/58545) | Update dependencies |
+| 0.2.18 | 2025-04-13 | [58040](https://github.com/airbytehq/airbyte/pull/58040) | Update dependencies |
+| 0.2.17 | 2025-04-05 | [57399](https://github.com/airbytehq/airbyte/pull/57399) | Update dependencies |
+| 0.2.16 | 2025-03-29 | [56888](https://github.com/airbytehq/airbyte/pull/56888) | Update dependencies |
+| 0.2.15 | 2025-03-22 | [56296](https://github.com/airbytehq/airbyte/pull/56296) | Update dependencies |
+| 0.2.14 | 2025-03-08 | [55618](https://github.com/airbytehq/airbyte/pull/55618) | Update dependencies |
+| 0.2.13 | 2025-03-01 | [55129](https://github.com/airbytehq/airbyte/pull/55129) | Update dependencies |
+| 0.2.12 | 2025-02-22 | [54472](https://github.com/airbytehq/airbyte/pull/54472) | Update dependencies |
+| 0.2.11 | 2025-02-15 | [54093](https://github.com/airbytehq/airbyte/pull/54093) | Update dependencies |
+| 0.2.10 | 2025-02-08 | [53587](https://github.com/airbytehq/airbyte/pull/53587) | Update dependencies |
+| 0.2.9 | 2025-02-01 | [53103](https://github.com/airbytehq/airbyte/pull/53103) | Update dependencies |
+| 0.2.8 | 2025-01-25 | [52418](https://github.com/airbytehq/airbyte/pull/52418) | Update dependencies |
+| 0.2.7 | 2025-01-18 | [51968](https://github.com/airbytehq/airbyte/pull/51968) | Update dependencies |
+| 0.2.6 | 2025-01-11 | [51393](https://github.com/airbytehq/airbyte/pull/51393) | Update dependencies |
+| 0.2.5 | 2024-12-28 | [50807](https://github.com/airbytehq/airbyte/pull/50807) | Update dependencies |
+| 0.2.4 | 2024-12-21 | [50345](https://github.com/airbytehq/airbyte/pull/50345) | Update dependencies |
+| 0.2.3 | 2024-12-14 | [49734](https://github.com/airbytehq/airbyte/pull/49734) | Update dependencies |
+| 0.2.2 | 2024-12-12 | [47763](https://github.com/airbytehq/airbyte/pull/47763) | Update dependencies |
+| 0.2.1 | 2024-10-28 | [47618](https://github.com/airbytehq/airbyte/pull/47618) | Update dependencies |
 | 0.2.0 | 2024-08-20 | [44460](https://github.com/airbytehq/airbyte/pull/44460) | Refactor connector to manifest-only format |
 | 0.1.10 | 2024-08-17 | [44202](https://github.com/airbytehq/airbyte/pull/44202) | Update dependencies |
 | 0.1.9 | 2024-08-12 | [43771](https://github.com/airbytehq/airbyte/pull/43771) | Update dependencies |

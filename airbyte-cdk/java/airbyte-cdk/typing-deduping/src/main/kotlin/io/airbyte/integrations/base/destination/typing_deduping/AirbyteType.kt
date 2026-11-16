@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.base.destination.typing_deduping
 
@@ -65,7 +65,7 @@ interface AirbyteType {
         private fun getStruct(schema: JsonNode): Struct {
             val propertiesMap = LinkedHashMap<String, AirbyteType>()
             val properties = schema["properties"]
-            properties?.fields()?.forEachRemaining { property: Map.Entry<String, JsonNode> ->
+            properties?.properties()?.forEach { property: Map.Entry<String, JsonNode> ->
                 val key = property.key
                 val value = property.value
                 propertiesMap[key] = fromJsonSchema(value)
@@ -101,16 +101,15 @@ interface AirbyteType {
                     getArray(schema)
                 } else {
                     AirbyteProtocolType.Companion.fromJson(
-                        getTrimmedJsonSchema(schema, typeOptions[0])
+                        getTrimmedJsonSchema(schema, typeOptions[0]),
                     )
                 }
             }
 
             // Recurse into a schema that forces a specific one of each option
-            val options =
-                typeOptions.map { typeOption: String ->
-                    fromJsonSchema(getTrimmedJsonSchema(schema, typeOption))
-                }
+            val options = typeOptions.map { typeOption: String ->
+                fromJsonSchema(getTrimmedJsonSchema(schema, typeOption))
+            }
 
             return Union(options)
         }

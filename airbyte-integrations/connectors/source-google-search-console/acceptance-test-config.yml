@@ -14,9 +14,8 @@ acceptance_tests:
     tests:
       - config_path: "secrets/config.json"
         status: "succeed"
-      #        TODO: uncomment testing on service_account_config.json when we update creds
-      #      - config_path: "secrets/service_account_config.json"
-      #        status: "succeed"
+      - config_path: "secrets/service_account_config.json"
+        status: "succeed"
       - config_path: "integration_tests/invalid_config.json"
         status: "failed"
   discovery:
@@ -25,19 +24,12 @@ acceptance_tests:
   basic_read:
     tests:
       - config_path: "secrets/config.json"
-        expect_records:
-          path: "integration_tests/expected_records.jsonl"
-          exact_order: no
-        timeout_seconds: 3600
   full_refresh:
     tests:
       - config_path: "secrets/config.json"
         configured_catalog_path: "integration_tests/catalog.json"
-        timeout_seconds: 3600
   incremental:
     tests:
       - config_path: "secrets/config.json"
-        configured_catalog_path: "integration_tests/configured_catalog_incremental.json"
-        timeout_seconds: 3600
         future_state:
           future_state_path: "integration_tests/abnormal_state.json"

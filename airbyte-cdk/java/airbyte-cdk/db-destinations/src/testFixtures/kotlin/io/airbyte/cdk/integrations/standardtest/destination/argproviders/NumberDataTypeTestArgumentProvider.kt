@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination.argproviders
 
@@ -18,14 +18,14 @@ class NumberDataTypeTestArgumentProvider : ArgumentsProvider {
         protocolVersion = ArgumentProviderUtil.getProtocolVersion(context)
         return Stream.of(
             getArguments(NUMBER_DATA_TYPE_TEST_CATALOG, NUMBER_DATA_TYPE_TEST_MESSAGES),
-            getArguments(NUMBER_DATA_TYPE_ARRAY_TEST_CATALOG, NUMBER_DATA_TYPE_ARRAY_TEST_MESSAGES)
+            getArguments(NUMBER_DATA_TYPE_ARRAY_TEST_CATALOG, NUMBER_DATA_TYPE_ARRAY_TEST_MESSAGES),
         )
     }
 
     private fun getArguments(catalogFile: String, messageFile: String): Arguments {
         return Arguments.of(
             ArgumentProviderUtil.prefixFileNameByVersion(catalogFile, protocolVersion),
-            ArgumentProviderUtil.prefixFileNameByVersion(messageFile, protocolVersion)
+            ArgumentProviderUtil.prefixFileNameByVersion(messageFile, protocolVersion),
         )
     }
 

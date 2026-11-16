@@ -1,12 +1,11 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.version
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
 import com.google.common.base.Preconditions
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
 import java.util.*
 
 /** A semVer Version class that allows "dev" as a version. */
@@ -164,9 +163,7 @@ open class Version {
          * does not handle version string with different digits correctly. For example:
          * `"11".compare("3") < 0`, while `Integer.compare(11, 3) > 0`.
          */
-        @SuppressFBWarnings(
-            "NP_NULL_PARAM_DEREF"
-        ) // We really should have 2 different subtypes of version, one for dev, and for standard
+        // We really should have 2 different subtypes of version, one for dev, and for standard
         // versions
         private fun compareVersion(v1: String?, v2: String?): Int {
             return Integer.compare(v1!!.toInt(), v2!!.toInt())

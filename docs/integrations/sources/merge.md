@@ -17,6 +17,7 @@ Access Token (which acts as bearer token) and linked accounts tokens are mandate
   - account_token: Linked account token seen after integration at linked account section
   - api_token: Bearer token seen at keys section, try to use production keys
   - start_date: Date filter for eligible streams
+- Make sure the Common Model Scopes for the models you want to sync are enabled for the Linked Account (ref - https://help.merge.dev/en/articles/5950052-common-model-and-field-scopes). Streams whose Scope is disabled return HTTP 403 and are skipped with a warning instead of failing the sync.
 
 ## Step 2: Set up the Merge connector in Airbyte
 
@@ -72,6 +73,10 @@ GET https://api.merge.dev/api/ats/v1/account-details
 
 Merge [API reference](https://api.merge.dev/api/ats/v1/) has v1 at present. The connector as default uses v1.
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -79,6 +84,33 @@ Merge [API reference](https://api.merge.dev/api/ats/v1/) has v1 at present. The 
 
 | Version | Date       | Pull Request                                       | Subject        |
 | :------ | :--------- | :------------------------------------------------- | :------------- |
+| 0.2.27 | 2026-11-09 | [91390](https://github.com/airbytehq/airbyte/pull/91390) | Upgrade base image to `source-declarative-manifest:7.47.0` |
+| 0.2.26 | 2026-10-13 | [78834](https://github.com/airbytehq/airbyte/pull/78834) | Update dependencies |
+| 0.2.25 | 2026-10-07 | [88273](https://github.com/airbytehq/airbyte/pull/88273) | Fix pagination: send the `next` cursor as the `cursor` query parameter (was appended to the URL path, causing 404s on multi-page streams) and request `page_size=100`; skip (instead of failing on) streams whose Common Model Scope is disabled for the Linked Account (HTTP 403) |
+| 0.2.24 | 2025-05-24 | [60605](https://github.com/airbytehq/airbyte/pull/60605) | Update dependencies |
+| 0.2.23 | 2025-05-10 | [59794](https://github.com/airbytehq/airbyte/pull/59794) | Update dependencies |
+| 0.2.22 | 2025-05-03 | [59229](https://github.com/airbytehq/airbyte/pull/59229) | Update dependencies |
+| 0.2.21 | 2025-04-26 | [58819](https://github.com/airbytehq/airbyte/pull/58819) | Update dependencies |
+| 0.2.20 | 2025-04-19 | [58225](https://github.com/airbytehq/airbyte/pull/58225) | Update dependencies |
+| 0.2.19 | 2025-04-12 | [57679](https://github.com/airbytehq/airbyte/pull/57679) | Update dependencies |
+| 0.2.18 | 2025-04-05 | [57085](https://github.com/airbytehq/airbyte/pull/57085) | Update dependencies |
+| 0.2.17 | 2025-03-29 | [56706](https://github.com/airbytehq/airbyte/pull/56706) | Update dependencies |
+| 0.2.16 | 2025-03-22 | [56049](https://github.com/airbytehq/airbyte/pull/56049) | Update dependencies |
+| 0.2.15 | 2025-03-08 | [55468](https://github.com/airbytehq/airbyte/pull/55468) | Update dependencies |
+| 0.2.14 | 2025-03-01 | [54825](https://github.com/airbytehq/airbyte/pull/54825) | Update dependencies |
+| 0.2.13 | 2025-02-22 | [54301](https://github.com/airbytehq/airbyte/pull/54301) | Update dependencies |
+| 0.2.12 | 2025-02-15 | [53802](https://github.com/airbytehq/airbyte/pull/53802) | Update dependencies |
+| 0.2.11 | 2025-02-08 | [53274](https://github.com/airbytehq/airbyte/pull/53274) | Update dependencies |
+| 0.2.10 | 2025-02-01 | [52715](https://github.com/airbytehq/airbyte/pull/52715) | Update dependencies |
+| 0.2.9 | 2025-01-25 | [52234](https://github.com/airbytehq/airbyte/pull/52234) | Update dependencies |
+| 0.2.8 | 2025-01-18 | [51822](https://github.com/airbytehq/airbyte/pull/51822) | Update dependencies |
+| 0.2.7 | 2025-01-11 | [51221](https://github.com/airbytehq/airbyte/pull/51221) | Update dependencies |
+| 0.2.6 | 2024-12-28 | [50627](https://github.com/airbytehq/airbyte/pull/50627) | Update dependencies |
+| 0.2.5 | 2024-12-21 | [50092](https://github.com/airbytehq/airbyte/pull/50092) | Update dependencies |
+| 0.2.4 | 2024-12-14 | [49652](https://github.com/airbytehq/airbyte/pull/49652) | Update dependencies |
+| 0.2.3 | 2024-12-12 | [49222](https://github.com/airbytehq/airbyte/pull/49222) | Update dependencies |
+| 0.2.2 | 2024-12-11 | [47906](https://github.com/airbytehq/airbyte/pull/47906) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.2.1 | 2024-10-28 | [47593](https://github.com/airbytehq/airbyte/pull/47593) | Update dependencies |
 | 0.2.0 | 2024-08-26 | [44768](https://github.com/airbytehq/airbyte/pull/44768) | Refactor connector to manifest-only format |
 | 0.1.15 | 2024-08-24 | [44665](https://github.com/airbytehq/airbyte/pull/44665) | Update dependencies |
 | 0.1.14 | 2024-08-17 | [44297](https://github.com/airbytehq/airbyte/pull/44297) | Update dependencies |

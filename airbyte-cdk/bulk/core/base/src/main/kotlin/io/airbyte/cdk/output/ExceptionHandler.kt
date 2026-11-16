@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.output
@@ -57,7 +57,7 @@ class ExceptionHandler(val classifiers: List<ExceptionClassifier>) {
             errorTraceMessage,
             AirbyteConnectionStatus()
                 .withMessage(connectionStatusMessage)
-                .withStatus(AirbyteConnectionStatus.Status.FAILED)
+                .withStatus(AirbyteConnectionStatus.Status.FAILED),
         )
     }
 

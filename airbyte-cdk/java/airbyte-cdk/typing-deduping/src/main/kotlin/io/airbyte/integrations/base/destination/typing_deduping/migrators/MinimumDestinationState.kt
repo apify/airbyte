@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.base.destination.typing_deduping.migrators
@@ -17,6 +17,7 @@ interface MinimumDestinationState {
      * this function (e.g. `currentState.withSoftReset<DestinationState>(softReset)`).
      *
      * Implementations generally look like this: (note the unchecked `as T` cast)
+     *
      * ```kotlin
      * data class ExampleState(val needsSoftReset: Boolean, <other fields...>): MinimumDestinationState {
      *   override fun needsSoftReset(): Boolean {

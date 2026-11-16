@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.record_buffer
 
@@ -23,7 +23,7 @@ interface BufferingStrategy : AutoCloseable {
      * @param stream stream associated with record
      * @param message [AirbyteMessage] to be added to the buffer
      * @return an optional value if a flushed occur with the respective flush type, otherwise an
-     * empty value means only a record was added
+     *   empty value means only a record was added
      * @throws Exception throw on failure
      */
     @Throws(Exception::class)
@@ -31,7 +31,7 @@ interface BufferingStrategy : AutoCloseable {
         stream: AirbyteStreamNameNamespacePair,
         message: AirbyteMessage,
         generationId: Long = 0,
-        syncId: Long = 0
+        syncId: Long = 0,
     ): Optional<BufferFlushType>
 
     /** Flush the buffered messages from a single stream */

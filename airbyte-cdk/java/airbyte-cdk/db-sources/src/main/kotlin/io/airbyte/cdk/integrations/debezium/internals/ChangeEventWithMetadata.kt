@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium.internals
 
@@ -17,6 +17,7 @@ class ChangeEventWithMetadata(private val event: ChangeEvent<String?, String?>) 
                 .key()
                 ?.let { Jsons.deserialize(it) }
                 .also { it ?: LOGGER.warn { "Event key is null $event" } }
+
     val eventValueAsJson: JsonNode?
         get() =
             event

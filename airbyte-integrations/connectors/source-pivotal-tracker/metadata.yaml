@@ -4,9 +4,9 @@ data:
       - www.pivotaltracker.com
   registryOverrides:
     oss:
-      enabled: true
+      enabled: false
     cloud:
-      enabled: true
+      enabled: false
   remoteRegistries:
     pypi:
       enabled: false
@@ -15,19 +15,19 @@ data:
     # Please update to the latest version of the connector base image.
     # https://hub.docker.com/r/airbyte/python-connector-base
     # Please use the full address with sha256 hash to guarantee build reproducibility.
-    baseImage: docker.io/airbyte/source-declarative-manifest:4.4.3@sha256:8937b693c7e01087f6e86e683826ac20f160f7952b8f0a13cbf4f9bfdd7af570
+    baseImage: docker.io/airbyte/source-declarative-manifest:6.48.10@sha256:09947fb38d07e515f9901a12f22cc44f1512f6148703341de80403c0e0c1b8c3
   connectorSubtype: api
   connectorType: source
   definitionId: d60f5393-f99e-4310-8d05-b1876820f40e
-  dockerImageTag: 0.3.1
+  dockerImageTag: 0.3.23
   dockerRepository: airbyte/source-pivotal-tracker
   githubIssueLabel: source-pivotal-tracker
   icon: pivotal-tracker.svg
-  license: MIT
+  license: ELv2
   name: Pivotal Tracker
   releaseDate: 2022-04-04
   releaseStage: alpha
-  supportLevel: community
+  supportLevel: archived
   documentationUrl: https://docs.airbyte.com/integrations/sources/pivotal-tracker
   tags:
     - cdk:low-code
@@ -37,11 +37,8 @@ data:
     ql: 100
   connectorTestSuitesOptions:
     - suite: unitTests
-    - suite: acceptanceTests
-      testSecrets:
-        - name: SECRET_SOURCE-PIVOTAL-TRACKER_CREDS
-          fileName: config.json
-          secretStore:
-            type: GSM
-            alias: airbyte-connector-testing-secret-store
+  externalDocumentationUrls:
+    - title: Pivotal Tracker API
+      url: https://www.pivotaltracker.com/help/api
+      type: api_reference
 metadataSpecVersion: "1.0"

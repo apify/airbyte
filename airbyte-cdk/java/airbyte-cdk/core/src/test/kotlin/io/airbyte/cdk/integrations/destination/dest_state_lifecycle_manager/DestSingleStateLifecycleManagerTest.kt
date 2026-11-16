@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.dest_state_lifecycle_manager
 
@@ -132,7 +132,7 @@ internal class DestSingleStateLifecycleManagerTest {
                 .withState(
                     AirbyteStateMessage()
                         .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
-                        .withData(Jsons.jsonNode("a"))
+                        .withData(Jsons.jsonNode("a")),
                 )
         private val MESSAGE2: AirbyteMessage =
             AirbyteMessage()
@@ -140,7 +140,7 @@ internal class DestSingleStateLifecycleManagerTest {
                 .withState(
                     AirbyteStateMessage()
                         .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
-                        .withData(Jsons.jsonNode("b"))
+                        .withData(Jsons.jsonNode("b")),
                 )
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination
 
@@ -90,7 +90,7 @@ object TestingNamespaces {
     private fun parseDateOrEmpty(dateCandidate: String): Optional<Instant> {
         return try {
             Optional.ofNullable(
-                LocalDate.parse(dateCandidate, FORMATTER).atStartOfDay().toInstant(ZoneOffset.UTC)
+                LocalDate.parse(dateCandidate, FORMATTER).atStartOfDay().toInstant(ZoneOffset.UTC),
             )
         } catch (e: DateTimeParseException) {
             Optional.empty()

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.source
 
@@ -31,7 +31,7 @@ object TestRunner {
         if (listener.summary.testsFailedCount > 0) {
             println(
                 "There are failing tests. See https://docs.airbyte.io/contributing-to-airbyte/building-new-connector/standard-source-tests " +
-                    "for more information about the standard source test suite."
+                    "for more information about the standard source test suite.",
             )
             System.exit(1)
         }

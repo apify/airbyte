@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.factory
 
@@ -17,7 +17,7 @@ internal class DSLContextFactoryTest : CommonFactoryTest() {
                 container.username,
                 container.password,
                 container.driverClassName,
-                container.getJdbcUrl()
+                container.getJdbcUrl(),
             )
         val dialect = SQLDialect.POSTGRES
         val dslContext = DSLContextFactory.create(dataSource, dialect)
@@ -34,7 +34,7 @@ internal class DSLContextFactoryTest : CommonFactoryTest() {
                 container.password,
                 container.driverClassName,
                 container.getJdbcUrl(),
-                dialect
+                dialect,
             )
         Assertions.assertNotNull(dslContext)
         Assertions.assertEquals(dialect, dslContext.configuration().dialect())
@@ -52,7 +52,7 @@ internal class DSLContextFactoryTest : CommonFactoryTest() {
                 container.getJdbcUrl(),
                 dialect,
                 connectionProperties,
-                JdbcConnector.CONNECT_TIMEOUT_DEFAULT
+                JdbcConnector.CONNECT_TIMEOUT_DEFAULT,
             )
         Assertions.assertNotNull(dslContext)
         Assertions.assertEquals(dialect, dslContext.configuration().dialect())

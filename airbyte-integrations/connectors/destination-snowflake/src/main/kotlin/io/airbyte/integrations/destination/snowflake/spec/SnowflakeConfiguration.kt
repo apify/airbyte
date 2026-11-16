@@ -1,0 +1,98 @@
+/*
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
+ */
+
+package io.airbyte.integrations.destination.snowflake.spec
+
+import io.airbyte.cdk.load.command.DestinationConfiguration
+import io.airbyte.cdk.load.command.DestinationConfigurationFactory
+import io.airbyte.cdk.load.table.DEFAULT_AIRBYTE_INTERNAL_NAMESPACE
+import jakarta.inject.Singleton
+
+data class SnowflakeConfiguration(
+    val host: String,
+    val role: String,
+    val warehouse: String,
+    val database: String,
+    val schema: String,
+    val username: String,
+    val authType: AuthTypeConfiguration,
+    val cdcDeletionMode: CdcDeletionMode,
+    val legacyRawTablesOnly: Boolean,
+    val internalTableSchema: String,
+    val trimSpace: Boolean,
+    val jdbcUrlParams: String?,
+    val retentionPeriodDays: Int,
+    val numberDataTypeConversion: NumberDataType = NumberDataType.FLOAT,
+) : DestinationConfiguration()
+
+sealed interface AuthTypeConfiguration
+
+data class KeyPairAuthConfiguration(
+    val privateKey: String,
+    val privateKeyPassword: String?,
+) : AuthTypeConfiguration
+
+data class UsernamePasswordAuthConfiguration(
+    val password: String,
+) : AuthTypeConfiguration
+
+data class ProgrammaticAccessTokenAuthConfiguration(
+    val programmaticAccessToken: String,
+) : AuthTypeConfiguration
+
+@Singleton
+class SnowflakeConfigurationFactory :
+    DestinationConfigurationFactory<SnowflakeSpecification, SnowflakeConfiguration> {
+    override fun makeWithoutExceptionHandling(
+        pojo: SnowflakeSpecification,
+    ): SnowflakeConfiguration {
+        val authTypeConfig =
+            when (pojo.credentials) {
+                is KeyPairAuthSpecification -> {
+                    // Despite what Kotlin thinks, this cast is necessary
+                    @Suppress("USELESS_CAST")
+                    val keyPairAuthSpec = pojo.credentials as KeyPairAuthSpecification
+                    KeyPairAuthConfiguration(
+                        keyPairAuthSpec.privateKey,
+                        keyPairAuthSpec.privateKeyPassword,
+                    )
+                }
+                is UsernamePasswordAuthSpecification -> {
+                    // Despite what Kotlin thinks, this cast is necessary
+                    @Suppress("USELESS_CAST")
+                    val usernamePasswordAuthSpec =
+                        pojo.credentials as UsernamePasswordAuthSpecification
+                    UsernamePasswordAuthConfiguration(usernamePasswordAuthSpec.password)
+                }
+                is ProgrammaticAccessTokenAuthSpecification -> {
+                    // Despite what Kotlin thinks, this cast is necessary
+                    @Suppress("USELESS_CAST")
+                    val patAuthSpec = pojo.credentials as ProgrammaticAccessTokenAuthSpecification
+                    ProgrammaticAccessTokenAuthConfiguration(patAuthSpec.programmaticAccessToken)
+                }
+                null -> {
+                    UsernamePasswordAuthConfiguration("")
+                }
+            }
+
+        return SnowflakeConfiguration(
+            host = pojo.host,
+            role = pojo.role,
+            warehouse = pojo.warehouse,
+            database = pojo.database,
+            schema = pojo.schema,
+            username = pojo.username,
+            authType = authTypeConfig,
+            cdcDeletionMode = pojo.cdcDeletionMode ?: CdcDeletionMode.HARD_DELETE,
+            legacyRawTablesOnly = pojo.legacyRawTablesOnly ?: false,
+            internalTableSchema =
+                pojo.internalTableSchema?.takeUnless(String::isBlank)
+                    ?: DEFAULT_AIRBYTE_INTERNAL_NAMESPACE,
+            trimSpace = pojo.trimSpace ?: true,
+            jdbcUrlParams = pojo.jdbcUrlParams,
+            retentionPeriodDays = pojo.retentionPeriodDays ?: 1,
+            numberDataTypeConversion = pojo.numberDataTypeConversion ?: NumberDataType.FLOAT,
+        )
+    }
+}

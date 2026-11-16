@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.base.ssh
 
@@ -23,7 +23,7 @@ object SshHelpers {
         val originalSpec =
             Jsons.deserialize(
                 MoreResources.readResource("spec.json"),
-                ConnectorSpecification::class.java
+                ConnectorSpecification::class.java,
             )
         return injectSshIntoSpec(originalSpec, group)
     }
@@ -33,7 +33,7 @@ object SshHelpers {
     @JvmStatic
     fun injectSshIntoSpec(
         connectorSpecification: ConnectorSpecification,
-        group: Optional<String> = Optional.empty()
+        group: Optional<String> = Optional.empty(),
     ): ConnectorSpecification {
         val originalSpec = Jsons.clone(connectorSpecification)
         val propNode = originalSpec.connectionSpecification["properties"] as ObjectNode

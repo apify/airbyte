@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db
 
@@ -21,10 +21,10 @@ object PostgresUtils {
                     conn
                         .createStatement()
                         .executeQuery(
-                            "SELECT CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END AS pg_current_wal_lsn;"
+                            "SELECT CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END AS pg_current_wal_lsn;",
                         )
                 },
-                { resultSet: ResultSet -> JdbcUtils.defaultSourceOperations.rowToJson(resultSet) }
+                { resultSet: ResultSet -> JdbcUtils.defaultSourceOperations.rowToJson(resultSet) },
             )
 
         Preconditions.checkState(jsonNodes.size == 1)

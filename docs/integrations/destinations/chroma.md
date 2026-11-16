@@ -2,19 +2,21 @@
 
 This page guides you through the process of setting up the [Chroma](https://docs.trychroma.com/?lang=py) destination connector.
 
-## Features
-
-| Feature                        | Supported?\(Yes/No\) | Notes |
-| :----------------------------- | :------------------- | :---- |
-| Full Refresh Sync              | Yes                  |       |
-| Incremental - Append Sync      | Yes                  |       |
-| Incremental - Append + Deduped | Yes                  |       |
-
 #### Output Schema
 
 Only one stream will exist to collect data from all source streams. This will be in a [collection](https://docs.trychroma.com/usage-guide#using-collections) in [Chroma](https://docs.trychroma.com/?lang=py) whose name will be defined by the user, and validated and corrected by Airbyte.
 
 For each record, a UUID string is generated and used as the document id. The embeddings generated as defined will be stored as embeddings. Data in the text fields will be stored as documents and those in the metadata fields will be stored as metadata.
+
+## Supported sync modes
+
+| Sync mode | Supported? |
+| :--- | :--- |
+| [Full Refresh - Overwrite](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite) | Yes |
+| [Full Refresh - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-append) | Yes |
+| [Full Refresh - Overwrite + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite-deduped) | Yes |
+| [Incremental Sync - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append) | Yes |
+| [Incremental Sync - Append + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append-deduped) | Yes |
 
 ## Getting Started \(Airbyte Open Source\)
 
@@ -70,6 +72,10 @@ You should now have all the requirements needed to configure Chroma as a destina
   - **Cohere API key** if using Cohere for embedding
   - Embedding **Field name** and **Embedding dimensions** if getting the embeddings from stream records
 
+## Namespace support
+
+This destination supports [namespaces](https://docs.airbyte.com/platform/using-airbyte/core-concepts/namespaces).
+
 ## Changelog
 
 <details>
@@ -77,6 +83,31 @@ You should now have all the requirements needed to configure Chroma as a destina
 
 | Version | Date       | Pull Request                                              | Subject                                                      |
 |:--------|:-----------| :-------------------------------------------------------- |:-------------------------------------------------------------|
+| 0.0.56 | 2026-10-07 | [88197](https://github.com/airbytehq/airbyte/pull/88197) | Fix username/password (client/server mode) connections failing with `No module named chromadb.auth.basic` by using the `chromadb.auth.basic_authn.BasicAuthClientProvider` path required by chromadb 0.5+ |
+| 0.0.55 | 2026-08-13 | [84361](https://github.com/airbytehq/airbyte/pull/84361) | Update the CDK to remediate CVE-2025-68664 in the langchain dependency |
+| 0.0.54 | 2025-05-03 | [59326](https://github.com/airbytehq/airbyte/pull/59326) | Update dependencies |
+| 0.0.53 | 2025-04-26 | [58256](https://github.com/airbytehq/airbyte/pull/58256) | Update dependencies |
+| 0.0.52 | 2025-04-12 | [57652](https://github.com/airbytehq/airbyte/pull/57652) | Update dependencies |
+| 0.0.51 | 2025-04-05 | [57169](https://github.com/airbytehq/airbyte/pull/57169) | Update dependencies |
+| 0.0.50 | 2025-03-29 | [56624](https://github.com/airbytehq/airbyte/pull/56624) | Update dependencies |
+| 0.0.49 | 2025-03-22 | [56120](https://github.com/airbytehq/airbyte/pull/56120) | Update dependencies |
+| 0.0.48 | 2025-03-08 | [55393](https://github.com/airbytehq/airbyte/pull/55393) | Update dependencies |
+| 0.0.47 | 2025-03-01 | [54852](https://github.com/airbytehq/airbyte/pull/54852) | Update dependencies |
+| 0.0.46 | 2025-02-22 | [54209](https://github.com/airbytehq/airbyte/pull/54209) | Update dependencies |
+| 0.0.45 | 2025-02-15 | [53930](https://github.com/airbytehq/airbyte/pull/53930) | Update dependencies |
+| 0.0.44 | 2025-02-08 | [53428](https://github.com/airbytehq/airbyte/pull/53428) | Update dependencies |
+| 0.0.43 | 2025-02-01 | [52941](https://github.com/airbytehq/airbyte/pull/52941) | Update dependencies |
+| 0.0.42 | 2025-01-25 | [52189](https://github.com/airbytehq/airbyte/pull/52189) | Update dependencies |
+| 0.0.41 | 2025-01-18 | [51744](https://github.com/airbytehq/airbyte/pull/51744) | Update dependencies |
+| 0.0.40 | 2025-01-11 | [51296](https://github.com/airbytehq/airbyte/pull/51296) | Update dependencies |
+| 0.0.39 | 2025-01-04 | [50913](https://github.com/airbytehq/airbyte/pull/50913) | Update dependencies |
+| 0.0.38 | 2024-12-28 | [50445](https://github.com/airbytehq/airbyte/pull/50445) | Update dependencies |
+| 0.0.37 | 2024-12-21 | [50221](https://github.com/airbytehq/airbyte/pull/50221) | Update dependencies |
+| 0.0.36 | 2024-12-14 | [48956](https://github.com/airbytehq/airbyte/pull/48956) | Update dependencies |
+| 0.0.35 | 2024-11-25 | [48668](https://github.com/airbytehq/airbyte/pull/48668) | Update dependencies |
+| 0.0.34 | 2024-11-04 | [48236](https://github.com/airbytehq/airbyte/pull/48236) | Update dependencies |
+| 0.0.33 | 2024-10-29 | [47053](https://github.com/airbytehq/airbyte/pull/47053) | Update dependencies |
+| 0.0.32 | 2024-10-12 | [46434](https://github.com/airbytehq/airbyte/pull/46434) | Update dependencies |
 | 0.0.31 | 2024-09-28 | [46192](https://github.com/airbytehq/airbyte/pull/46192) | Update dependencies |
 | 0.0.30 | 2024-09-21 | [45553](https://github.com/airbytehq/airbyte/pull/45553) | Update dependencies |
 | 0.0.29 | 2024-09-07 | [45322](https://github.com/airbytehq/airbyte/pull/45322) | Update dependencies |

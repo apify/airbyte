@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.output
@@ -18,7 +18,7 @@ const val DEFAULT_CLASSIFIER_PREFIX = "${EXCEPTION_CLASSIFIER_PREFIX}.default"
 @Singleton
 @ConfigurationProperties(DEFAULT_CLASSIFIER_PREFIX)
 class DefaultExceptionClassifier(
-    @Value("\${$DEFAULT_CLASSIFIER_PREFIX.order:1}") override val orderValue: Int
+    @Value("\${$DEFAULT_CLASSIFIER_PREFIX.order:1}") override val orderValue: Int,
 ) : ExceptionClassifier {
 
     override fun classify(e: Throwable): ConnectorError? {

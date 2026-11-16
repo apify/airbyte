@@ -6,15 +6,20 @@ import pathlib
 from typing import Any, List, Mapping
 from unittest.mock import Mock
 
+# The CDK imports pandas lazily when it first reads a Bulk result (since 7.39.0), and that import never
+# finishes while freezegun has the clock frozen. Importing it here keeps @freeze_time tests from hanging.
+import pandas  # noqa: F401
 import pytest
-from airbyte_cdk.models import ConfiguredAirbyteCatalog
-from airbyte_cdk.test.state_builder import StateBuilder
-from airbyte_protocol.models import AirbyteStateMessage
 from config_builder import ConfigBuilder
 from source_salesforce.api import Salesforce
 from source_salesforce.source import SourceSalesforce
 
-_ANY_CATALOG = ConfiguredAirbyteCatalog.parse_obj({"streams": []})
+from airbyte_cdk.models import AirbyteStateMessage, ConfiguredAirbyteCatalogSerializer
+from airbyte_cdk.test.catalog_builder import CatalogBuilder
+from airbyte_cdk.test.state_builder import StateBuilder
+
+
+_ANY_CATALOG = CatalogBuilder().build()
 _ANY_CONFIG = ConfigBuilder().build()
 _ANY_STATE = StateBuilder().build()
 
@@ -29,14 +34,14 @@ def time_sleep_mock(mocker):
 def bulk_catalog():
     with (pathlib.Path(__file__).parent / "bulk_catalog.json").open() as f:
         data = json.loads(f.read())
-    return ConfiguredAirbyteCatalog.parse_obj(data)
+    return ConfiguredAirbyteCatalogSerializer.load(data)
 
 
 @pytest.fixture(scope="module")
 def rest_catalog():
     with (pathlib.Path(__file__).parent / "rest_catalog.json").open() as f:
         data = json.loads(f.read())
-    return ConfiguredAirbyteCatalog.parse_obj(data)
+    return ConfiguredAirbyteCatalogSerializer.load(data)
 
 
 @pytest.fixture(scope="module")
@@ -121,49 +126,17 @@ def stream_api_v2_pk_too_many_properties(stream_config):
     return mock_stream_api(stream_config, describe_response_data=describe_response_data)
 
 
-def generate_stream(stream_name, stream_config, stream_api, state=None, legacy=True):
+def generate_stream(stream_name, stream_config, stream_api, state=None, legacy=True, source=None):
     if state is None:
         state = _ANY_STATE
 
-    stream = SourceSalesforce(_ANY_CATALOG, _ANY_CONFIG, state).generate_streams(stream_config, {stream_name: None}, stream_api)[0]
+    # Allow callers to reuse a specific source instance so the stream's cursor shares that source's
+    # message repository/queue (required when the same source instance also drives `read`).
+    if source is None:
+        source = SourceSalesforce(_ANY_CATALOG, _ANY_CONFIG, state)
+    stream = source.generate_streams(stream_config, {stream_name: None}, stream_api)[0]
     if legacy and hasattr(stream, "_legacy_stream"):
         # Many tests are going through `generate_streams` to test things that are part of the legacy interface. To smooth the transition,
         # we will access the legacy stream through the StreamFacade private field
         return stream._legacy_stream
     return stream
-
-
-def encoding_symbols_parameters():
-    return (
-        [
-            (x, {"Content-Type": "text/csv; charset=ISO-8859-1"}, b'"\xc4"\n,"4"\n\x00,"\xca \xfc"', [{"Ä": "4"}, {"Ä": "Ê ü"}])
-            for x in range(1, 11)
-        ]
-        + [
-            (
-                x,
-                {"Content-Type": "text/csv; charset=utf-8"},
-                b'"\xd5\x80"\n "\xd5\xaf","\xd5\xaf"\n\x00,"\xe3\x82\x82 \xe3\x83\xa4 \xe3\x83\xa4 \xf0\x9d\x9c\xb5"',
-                [{"Հ": "կ"}, {"Հ": "も ヤ ヤ 𝜵"}],
-            )
-            for x in range(1, 11)
-        ]
-        + [
-            (
-                x,
-                {"Content-Type": "text/csv"},
-                b'"\xd5\x80"\n "\xd5\xaf","\xd5\xaf"\n\x00,"\xe3\x82\x82 \xe3\x83\xa4 \xe3\x83\xa4 \xf0\x9d\x9c\xb5"',
-                [{"Հ": "կ"}, {"Հ": "も ヤ ヤ 𝜵"}],
-            )
-            for x in range(1, 11)
-        ]
-        + [
-            (
-                x,
-                {},
-                b'"\xd5\x80"\n "\xd5\xaf","\xd5\xaf"\n\x00,"\xe3\x82\x82 \xe3\x83\xa4 \xe3\x83\xa4 \xf0\x9d\x9c\xb5"',
-                [{"Հ": "կ"}, {"Հ": "も ヤ ヤ 𝜵"}],
-            )
-            for x in range(1, 11)
-        ]
-    )

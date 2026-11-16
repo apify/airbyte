@@ -1,4 +1,4 @@
-/* Copyright (c) 2024 Airbyte, Inc., all rights reserved. */
+/* Copyright (c) 2026 Airbyte, Inc., all rights reserved. */
 package io.airbyte.cdk.fakesource
 
 import io.airbyte.cdk.command.SourceConfiguration
@@ -21,6 +21,7 @@ data class FakeSourceConfiguration(
     val cursor: CursorConfiguration,
     override val maxConcurrency: Int,
     override val checkpointTargetInterval: Duration,
+    override val maxSnapshotReadDuration: Duration? = null,
 ) : SourceConfiguration {
     override val global: Boolean = cursor is CdcCursor
 
@@ -33,9 +34,9 @@ data class FakeSourceConfiguration(
 @Requires(env = [Environment.TEST])
 @Secondary
 class FakeSourceConfigurationFactory :
-    SourceConfigurationFactory<FakeSourceConfigurationJsonObject, FakeSourceConfiguration> {
+    SourceConfigurationFactory<FakeSourceConfigurationSpecification, FakeSourceConfiguration> {
     override fun makeWithoutExceptionHandling(
-        pojo: FakeSourceConfigurationJsonObject,
+        pojo: FakeSourceConfigurationSpecification,
     ): FakeSourceConfiguration {
         val sshConnectionOptions: SshConnectionOptions =
             SshConnectionOptions.fromAdditionalProperties(pojo.getAdditionalProperties())
@@ -46,8 +47,8 @@ class FakeSourceConfigurationFactory :
             sshConnectionOptions = sshConnectionOptions,
             cursor = pojo.getCursorConfigurationValue() ?: UserDefinedCursor,
             maxConcurrency = 1,
-            checkpointTargetInterval = Duration.parse(pojo.timeout).takeIf { it.isPositive }
-                    ?: Duration.ofDays(100L),
+            checkpointTargetInterval =
+                Duration.parse(pojo.timeout).takeIf { it.isPositive } ?: Duration.ofDays(100L),
         )
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.util
 
@@ -24,7 +24,7 @@ object HostPortResolver {
     private fun getIpAddress(container: GenericContainer<*>): String {
         // Weird double bang here. If I remove the Object.requireNotNull, there's a type error...
         return Objects.requireNonNull(
-            container.containerInfo.networkSettings.networks.entries.first().value.ipAddress
+            container.containerInfo.networkSettings.networks.entries.first().value.ipAddress,
         )!!
     }
 }

@@ -1,12 +1,12 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3
 
 import io.airbyte.protocol.models.v0.DestinationSyncMode
 
-class WriteConfig
+open class WriteConfig
 @JvmOverloads
 constructor(
     val namespace: String?,
@@ -18,7 +18,7 @@ constructor(
     val generationId: Long,
     val minimumGenerationId: Long,
     val storedFiles: MutableList<String> = arrayListOf(),
-    val objectsFromOldGeneration: MutableList<String> = arrayListOf()
+    val objectsFromOldGeneration: MutableList<String> = arrayListOf(),
 ) {
 
     fun addStoredFile(file: String) {

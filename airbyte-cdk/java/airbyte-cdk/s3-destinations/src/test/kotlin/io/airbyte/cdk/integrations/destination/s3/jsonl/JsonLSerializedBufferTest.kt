@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.jsonl
@@ -76,7 +76,7 @@ class JsonLSerializedBufferTest {
         withCompression: Boolean,
         minExpectedByte: Long,
         maxExpectedByte: Long,
-        expectedData: String
+        expectedData: String,
     ) {
         val outputFile = buffer.file
         (JsonLSerializedBuffer.createBufferFunction(null, { buffer })
@@ -94,7 +94,7 @@ class JsonLSerializedBufferTest {
                 // deterministic
                 assertTrue(
                     writer.byteCount in minExpectedByte..maxExpectedByte,
-                    "Expected size between $minExpectedByte and $maxExpectedByte, but actual size was ${writer.byteCount}"
+                    "Expected size between $minExpectedByte and $maxExpectedByte, but actual size was ${writer.byteCount}",
                 )
                 val inputStream: InputStream =
                     if (withCompression) {

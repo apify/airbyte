@@ -2,19 +2,32 @@
 
 ## Sync overview
 
-This source can sync data from the [Lago API](https://doc.getlago.com/docs/guide/intro/welcome). At present this connector only supports full refresh syncs meaning that each time you use the connector it will sync all available records from scratch. Please use cautiously if you expect your API to have a lot of records.
+This source syncs billing data from the [Lago API](https://getlago.com/docs/api-reference/intro). The connector supports full refresh syncs only, so each sync reads all available records again. For large datasets, account for the API requests needed to read the data on every sync.
 
-## This Source Supports the Following Streams
+## Supported streams
 
-- billable_metrics
-- plans
-- coupons
-- add_ons
-- invoices
-- customers
-- subscriptions
-- customer_usage
-- customer_usage_past
+| Stream | Data synced |
+| :----- | :---------- |
+| `billable_metrics` | Billable metric definitions |
+| `plans` | Pricing plans |
+| `coupons` | Coupons |
+| `add_ons` | Add-ons |
+| `invoices` | Invoices |
+| `customers` | Customers |
+| `subscriptions` | Subscriptions for each customer |
+| `wallets` | Prepaid credit wallets for each customer |
+| `customer_usage` | Usage for each subscription's current open billing period |
+| `fees` | Fees |
+| `customer_usage_past` | Usage for each subscription's closed billing periods |
+
+### Usage streams
+
+The connector retrieves subscriptions for each customer, then requests usage for each subscription. You don't need to enter customer or subscription IDs in the connector configuration.
+
+- [`customer_usage`](https://getlago.com/docs/api-reference/customer-usage/get-current) contains usage for the current open billing period. Amounts can change while the period is still open.
+- [`customer_usage_past`](https://getlago.com/docs/api-reference/customer-usage/get-past) contains usage for closed billing periods.
+
+Both usage streams skip a request when Lago returns a `405` response with the code `no_active_subscription`. That request produces no usage records, and the sync continues. Other `405` errors aren't ignored.
 
 ### Features
 
@@ -25,15 +38,108 @@ This source can sync data from the [Lago API](https://doc.getlago.com/docs/guide
 
 ## Getting started
 
-### Requirements
+### Prerequisites
 
-- Lago API URL
-- Lago API KEY
+- A Lago API key for the organization you want to sync. In Lago, go to **Developers > API keys**, click **Reveal**, and copy the key. See [Lago's API key documentation](https://getlago.com/docs/guide/security/api-keys).
+- Your Lago API base URL, including `/api/v1`. Use `https://api.getlago.com/api/v1` for US Lago Cloud, `https://api.eu.getlago.com/api/v1` for EU Lago Cloud, or your self-hosted Lago API URL followed by `/api/v1`. See [Lago's regions and endpoints](https://getlago.com/docs/guide/lago-cloud#regions-and-endpoints).
+
+If your organization restricts [API key permissions](https://getlago.com/docs/guide/security/api-keys#set-api-key-permissions), grant read access to the resources you plan to sync. The connection check reads `billable_metrics`, so the key must be able to list billable metrics. The `subscriptions` and `wallets` streams also read customers, and both usage streams read customers and subscriptions.
+
+### Set up the source in Airbyte
+
+1. Create a source and select **Lago**.
+2. Enter a name for the source.
+3. Set **API Url** to your Lago API base URL. The default is `https://api.getlago.com/api/v1`; change it for an EU or self-hosted deployment.
+4. Set **API Key** to the key you copied from Lago. Enter the key without the `Bearer` prefix; the connector adds it to the authorization header.
+5. Save the source and complete the connection check.
+
+## Rate limits and troubleshooting
+
+Lago applies [REST API rate limits](https://getlago.com/docs/api-reference/rate-limits) per organization, shared across API keys. Full refresh syncs and the requests needed to read customers, subscriptions, and usage can consume this shared budget. If you repeatedly encounter `429 Too Many Requests` errors, reduce competing API traffic or contact Lago about increasing your limits.
+
+If you receive `401 Unauthorized`, check that the API key is valid and the API URL matches your organization's region or self-hosted deployment. For `403 Forbidden`, check the key's permissions and whether your organization can access the requested feature. A successful connection check verifies access to `billable_metrics`; it doesn't verify access to every selected stream.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
 | Version | Date       | Pull Request                                              | Subject                                   |
 | :------ | :--------- | :-------------------------------------------------------- | :---------------------------------------- |
+| 0.7.73 | 2026-11-10 | [90361](https://github.com/airbytehq/airbyte/pull/90361) | Simplify error handling configuration for the `customer_usage` and `customer_usage_past` streams; no behavior change |
+| 0.7.72 | 2026-11-10 | [91516](https://github.com/airbytehq/airbyte/pull/91516) | Update dependencies |
+| 0.7.71 | 2026-11-03 | [90549](https://github.com/airbytehq/airbyte/pull/90549) | Update dependencies |
+| 0.7.70 | 2026-10-27 | [89877](https://github.com/airbytehq/airbyte/pull/89877) | Update dependencies |
+| 0.7.69 | 2026-10-20 | [89208](https://github.com/airbytehq/airbyte/pull/89208) | Update dependencies |
+| 0.7.68 | 2026-10-13 | [88601](https://github.com/airbytehq/airbyte/pull/88601) | Update dependencies |
+| 0.7.67 | 2026-10-06 | [87829](https://github.com/airbytehq/airbyte/pull/87829) | Update dependencies |
+| 0.7.66 | 2026-09-29 | [87165](https://github.com/airbytehq/airbyte/pull/87165) | Update dependencies |
+| 0.7.65 | 2026-09-22 | [86604](https://github.com/airbytehq/airbyte/pull/86604) | Update dependencies |
+| 0.7.64 | 2026-09-15 | [86058](https://github.com/airbytehq/airbyte/pull/86058) | Update dependencies |
+| 0.7.63 | 2026-09-08 | [85464](https://github.com/airbytehq/airbyte/pull/85464) | Update dependencies |
+| 0.7.62 | 2026-08-18 | [84595](https://github.com/airbytehq/airbyte/pull/84595) | Update dependencies |
+| 0.7.61 | 2026-08-11 | [83946](https://github.com/airbytehq/airbyte/pull/83946) | Update dependencies |
+| 0.7.60 | 2026-08-04 | [83472](https://github.com/airbytehq/airbyte/pull/83472) | Update dependencies |
+| 0.7.59 | 2026-07-28 | [82929](https://github.com/airbytehq/airbyte/pull/82929) | Update dependencies |
+| 0.7.58 | 2026-07-21 | [82426](https://github.com/airbytehq/airbyte/pull/82426) | Update dependencies |
+| 0.7.57 | 2026-07-14 | [81817](https://github.com/airbytehq/airbyte/pull/81817) | Update dependencies |
+| 0.7.56 | 2026-06-30 | [81060](https://github.com/airbytehq/airbyte/pull/81060) | Update dependencies |
+| 0.7.55 | 2026-06-23 | [80441](https://github.com/airbytehq/airbyte/pull/80441) | Update dependencies |
+| 0.7.54 | 2026-06-16 | [79859](https://github.com/airbytehq/airbyte/pull/79859) | Update dependencies |
+| 0.7.53 | 2026-06-09 | [79333](https://github.com/airbytehq/airbyte/pull/79333) | Update dependencies |
+| 0.7.52 | 2026-06-02 | [78721](https://github.com/airbytehq/airbyte/pull/78721) | Update dependencies |
+| 0.7.51 | 2026-04-28 | [77245](https://github.com/airbytehq/airbyte/pull/77245) | Update dependencies |
+| 0.7.50 | 2026-04-21 | [76585](https://github.com/airbytehq/airbyte/pull/76585) | Update dependencies |
+| 0.7.49 | 2026-03-24 | [75386](https://github.com/airbytehq/airbyte/pull/75386) | Update dependencies |
+| 0.7.48 | 2026-03-10 | [74531](https://github.com/airbytehq/airbyte/pull/74531) | Update dependencies |
+| 0.7.47 | 2026-02-24 | [73758](https://github.com/airbytehq/airbyte/pull/73758) | Update dependencies |
+| 0.7.46 | 2026-02-17 | [73407](https://github.com/airbytehq/airbyte/pull/73407) | Update dependencies |
+| 0.7.45 | 2026-02-10 | [73039](https://github.com/airbytehq/airbyte/pull/73039) | Update dependencies |
+| 0.7.44 | 2026-02-03 | [72575](https://github.com/airbytehq/airbyte/pull/72575) | Update dependencies |
+| 0.7.43 | 2026-01-20 | [71979](https://github.com/airbytehq/airbyte/pull/71979) | Update dependencies |
+| 0.7.42 | 2026-01-14 | [71433](https://github.com/airbytehq/airbyte/pull/71433) | Update dependencies |
+| 0.7.41 | 2025-12-18 | [70668](https://github.com/airbytehq/airbyte/pull/70668) | Update dependencies |
+| 0.7.40 | 2025-11-25 | [69873](https://github.com/airbytehq/airbyte/pull/69873) | Update dependencies |
+| 0.7.39 | 2025-11-18 | [69376](https://github.com/airbytehq/airbyte/pull/69376) | Update dependencies |
+| 0.7.38 | 2025-10-29 | [69052](https://github.com/airbytehq/airbyte/pull/69052) | Update dependencies |
+| 0.7.37 | 2025-10-21 | [68329](https://github.com/airbytehq/airbyte/pull/68329) | Update dependencies |
+| 0.7.36 | 2025-10-14 | [68017](https://github.com/airbytehq/airbyte/pull/68017) | Update dependencies |
+| 0.7.35 | 2025-10-07 | [67267](https://github.com/airbytehq/airbyte/pull/67267) | Update dependencies |
+| 0.7.34 | 2025-09-30 | [66310](https://github.com/airbytehq/airbyte/pull/66310) | Update dependencies |
+| 0.7.33 | 2025-09-09 | [66040](https://github.com/airbytehq/airbyte/pull/66040) | Update dependencies |
+| 0.7.32 | 2025-08-23 | [65373](https://github.com/airbytehq/airbyte/pull/65373) | Update dependencies |
+| 0.7.31 | 2025-08-09 | [64585](https://github.com/airbytehq/airbyte/pull/64585) | Update dependencies |
+| 0.7.30 | 2025-08-02 | [64292](https://github.com/airbytehq/airbyte/pull/64292) | Update dependencies |
+| 0.7.29 | 2025-07-26 | [63857](https://github.com/airbytehq/airbyte/pull/63857) | Update dependencies |
+| 0.7.28 | 2025-07-19 | [63469](https://github.com/airbytehq/airbyte/pull/63469) | Update dependencies |
+| 0.7.27 | 2025-07-12 | [63124](https://github.com/airbytehq/airbyte/pull/63124) | Update dependencies |
+| 0.7.26 | 2025-07-05 | [62644](https://github.com/airbytehq/airbyte/pull/62644) | Update dependencies |
+| 0.7.25 | 2025-06-28 | [62161](https://github.com/airbytehq/airbyte/pull/62161) | Update dependencies |
+| 0.7.24 | 2025-06-21 | [61862](https://github.com/airbytehq/airbyte/pull/61862) | Update dependencies |
+| 0.7.23 | 2025-06-14 | [61226](https://github.com/airbytehq/airbyte/pull/61226) | Update dependencies |
+| 0.7.22 | 2025-05-24 | [60418](https://github.com/airbytehq/airbyte/pull/60418) | Update dependencies |
+| 0.7.21 | 2025-05-10 | [59979](https://github.com/airbytehq/airbyte/pull/59979) | Update dependencies |
+| 0.7.20 | 2025-05-03 | [58861](https://github.com/airbytehq/airbyte/pull/58861) | Update dependencies |
+| 0.7.19 | 2025-04-19 | [58335](https://github.com/airbytehq/airbyte/pull/58335) | Update dependencies |
+| 0.7.18 | 2025-04-12 | [57237](https://github.com/airbytehq/airbyte/pull/57237) | Update dependencies |
+| 0.7.17 | 2025-03-29 | [56550](https://github.com/airbytehq/airbyte/pull/56550) | Update dependencies |
+| 0.7.16 | 2025-03-22 | [55974](https://github.com/airbytehq/airbyte/pull/55974) | Update dependencies |
+| 0.7.15 | 2025-03-08 | [54939](https://github.com/airbytehq/airbyte/pull/54939) | Update dependencies |
+| 0.7.14 | 2025-03-04 | [55179](https://github.com/airbytehq/airbyte/pull/55179) | Replace double partition router with extra_fields, fix wallets stream |
+| 0.7.13 | 2025-02-22 | [54382](https://github.com/airbytehq/airbyte/pull/54382) | Update dependencies |
+| 0.7.12 | 2025-02-15 | [53772](https://github.com/airbytehq/airbyte/pull/53772) | Update dependencies |
+| 0.7.11 | 2025-02-08 | [53370](https://github.com/airbytehq/airbyte/pull/53370) | Update dependencies |
+| 0.7.10 | 2025-02-01 | [52860](https://github.com/airbytehq/airbyte/pull/52860) | Update dependencies |
+| 0.7.9 | 2025-01-25 | [52368](https://github.com/airbytehq/airbyte/pull/52368) | Update dependencies |
+| 0.7.8 | 2025-01-18 | [51667](https://github.com/airbytehq/airbyte/pull/51667) | Update dependencies |
+| 0.7.7 | 2025-01-11 | [51126](https://github.com/airbytehq/airbyte/pull/51126) | Update dependencies |
+| 0.7.6 | 2024-12-28 | [50575](https://github.com/airbytehq/airbyte/pull/50575) | Update dependencies |
+| 0.7.5 | 2024-12-21 | [50044](https://github.com/airbytehq/airbyte/pull/50044) | Update dependencies |
+| 0.7.4 | 2024-12-14 | [49504](https://github.com/airbytehq/airbyte/pull/49504) | Update dependencies |
+| 0.7.3 | 2024-12-12 | [48208](https://github.com/airbytehq/airbyte/pull/48208) | Update dependencies |
+| 0.7.2 | 2024-10-29 | [47730](https://github.com/airbytehq/airbyte/pull/47730) | Update dependencies |
+| 0.7.1 | 2024-10-28 | [47596](https://github.com/airbytehq/airbyte/pull/47596) | Update dependencies |
 | 0.7.0 | 2024-09-12 | [45452](https://github.com/airbytehq/airbyte/pull/45452) | Endpoint customer usage: import current from subscription and add new stream customer_usage_past |
 | 0.6.0 | 2024-09-06 | [45193](https://github.com/airbytehq/airbyte/pull/45193) | Endpoint customer usage ignore 405 response |
 | 0.5.0 | 2024-08-23 | [44613](https://github.com/airbytehq/airbyte/pull/44613) | Refactor connector to manifest-only format |

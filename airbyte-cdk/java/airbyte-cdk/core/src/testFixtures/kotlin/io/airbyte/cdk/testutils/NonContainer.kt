@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.testutils
 
@@ -14,7 +14,7 @@ class NonContainer(
     private val password: String?,
     private val jdbcUrl: String?,
     private val driverClassName: String?,
-    dockerImageName: String
+    dockerImageName: String,
 ) : JdbcDatabaseContainer<NonContainer>(dockerImageName) {
     override fun getDriverClassName(): String? {
         return driverClassName

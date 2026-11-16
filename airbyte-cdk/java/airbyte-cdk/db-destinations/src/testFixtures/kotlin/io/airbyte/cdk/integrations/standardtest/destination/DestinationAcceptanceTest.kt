@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination
 
@@ -16,12 +16,8 @@ import io.airbyte.cdk.integrations.standardtest.destination.argproviders.DataTyp
 import io.airbyte.cdk.integrations.standardtest.destination.argproviders.util.ArgumentProviderUtil
 import io.airbyte.cdk.integrations.standardtest.destination.comparator.BasicTestDataComparator
 import io.airbyte.cdk.integrations.standardtest.destination.comparator.TestDataComparator
-import io.airbyte.commons.features.EnvVariableFeatureFlags
-import io.airbyte.commons.features.FeatureFlags
-import io.airbyte.commons.features.FeatureFlagsWrapper
 import io.airbyte.commons.jackson.MoreMappers
 import io.airbyte.commons.json.Jsons
-import io.airbyte.commons.lang.Exceptions
 import io.airbyte.commons.resources.MoreResources
 import io.airbyte.commons.util.MoreIterators
 import io.airbyte.configoss.JobGetSpecConfig
@@ -32,12 +28,12 @@ import io.airbyte.configoss.WorkerDestinationConfig
 import io.airbyte.protocol.models.Field
 import io.airbyte.protocol.models.JsonSchemaType
 import io.airbyte.protocol.models.v0.AirbyteCatalog
+import io.airbyte.protocol.models.v0.AirbyteGlobalState
 import io.airbyte.protocol.models.v0.AirbyteMessage
 import io.airbyte.protocol.models.v0.AirbyteMessage.Type
 import io.airbyte.protocol.models.v0.AirbyteRecordMessage
 import io.airbyte.protocol.models.v0.AirbyteRecordMessageMetaChange
 import io.airbyte.protocol.models.v0.AirbyteStateMessage
-import io.airbyte.protocol.models.v0.AirbyteStateStats
 import io.airbyte.protocol.models.v0.AirbyteStream
 import io.airbyte.protocol.models.v0.AirbyteStreamStatusTraceMessage
 import io.airbyte.protocol.models.v0.AirbyteTraceMessage
@@ -51,15 +47,12 @@ import io.airbyte.workers.exception.TestHarnessException
 import io.airbyte.workers.general.DbtTransformationRunner
 import io.airbyte.workers.general.DefaultCheckConnectionTestHarness
 import io.airbyte.workers.general.DefaultGetSpecTestHarness
-import io.airbyte.workers.helper.ConnectorConfigUpdater
 import io.airbyte.workers.helper.EntrypointEnvChecker
 import io.airbyte.workers.internal.AirbyteDestination
 import io.airbyte.workers.internal.DefaultAirbyteDestination
 import io.airbyte.workers.normalization.DefaultNormalizationRunner
 import io.airbyte.workers.normalization.NormalizationRunner
 import io.airbyte.workers.process.AirbyteIntegrationLauncher
-import io.airbyte.workers.process.DockerProcessFactory
-import io.airbyte.workers.process.ProcessFactory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.io.UncheckedIOException
@@ -84,58 +77,22 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.ArgumentsProvider
 import org.junit.jupiter.params.provider.ArgumentsSource
-import org.mockito.Mockito
 
 private val LOGGER = KotlinLogging.logger {}
 
 abstract class DestinationAcceptanceTest(
     // If false, ignore counts and only verify the final state message.
-    private val verifyIndividualStateAndCounts: Boolean = false,
+    verifyIndividualStateAndCounts: Boolean = false,
     private val useV2Fields: Boolean = false,
     private val supportsChangeCapture: Boolean = false,
     private val expectNumericTimestamps: Boolean = false,
     private val expectSchemalessObjectsCoercedToStrings: Boolean = false,
-    private val expectUnionsPromotedToDisjointRecords: Boolean = false
-) {
-    protected var testSchemas: HashSet<String> = HashSet()
-
-    private lateinit var testEnv: TestDestinationEnv
-    protected open val isCloudTest: Boolean = true
-    protected val featureFlags: FeatureFlags =
-        if (isCloudTest) {
-            FeatureFlagsWrapper.overridingDeploymentMode(EnvVariableFeatureFlags(), "CLOUD")
-        } else {
-            FeatureFlagsWrapper.overridingDeploymentMode(EnvVariableFeatureFlags(), "OSS")
-        }
-
-    private lateinit var jobRoot: Path
-    private lateinit var processFactory: ProcessFactory
-    private lateinit var mConnectorConfigUpdater: ConnectorConfigUpdater
-
-    protected var localRoot: Path? = null
+    private val expectUnionsPromotedToDisjointRecords: Boolean = false,
+) : BaseDestinationAcceptanceTest(verifyIndividualStateAndCounts = verifyIndividualStateAndCounts) {
     open protected var _testDataComparator: TestDataComparator = getTestDataComparator()
 
     protected open fun getTestDataComparator(): TestDataComparator {
         return BasicTestDataComparator { @Suppress("deprecation") this.resolveIdentifier(it) }
-    }
-
-    protected abstract val imageName: String
-        /**
-         * Name of the docker image that the tests will run against.
-         *
-         * @return docker image name
-         */
-        get
-
-    protected open fun supportsInDestinationNormalization(): Boolean {
-        return false
-    }
-
-    protected fun inDestinationNormalizationFlags(shouldNormalize: Boolean): Map<String, String> {
-        if (shouldNormalize && supportsInDestinationNormalization()) {
-            return java.util.Map.of("NORMALIZATION_TECHNIQUE", "LEGACY")
-        }
-        return emptyMap()
     }
 
     private val imageNameWithoutTag: String
@@ -166,14 +123,6 @@ abstract class DestinationAcceptanceTest(
 
     /**
      * Configuration specific to the integration. Will be passed to integration where appropriate in
-     * each test. Should be valid.
-     *
-     * @return integration-specific configuration
-     */
-    @Throws(Exception::class) protected abstract fun getConfig(): JsonNode
-
-    /**
-     * Configuration specific to the integration. Will be passed to integration where appropriate in
      * tests that test behavior when configuration is invalid. e.g incorrect password. Should be
      * invalid.
      *
@@ -188,14 +137,18 @@ abstract class DestinationAcceptanceTest(
      *
      * @param testEnv
      * - information about the test environment.
+     *
      * @param streamName
      * - name of the stream for which we are retrieving records.
+     *
      * @param namespace
      * - the destination namespace records are located in. Null if not applicable. Usually a JDBC
-     * schema.
+     *   schema.
+     *
      * @param streamSchema
      * - schema of the stream to be retrieved. This is only necessary for destinations in which data
-     * types cannot be accurately inferred (e.g. in CSV destination, every value is a string).
+     *   types cannot be accurately inferred (e.g. in CSV destination, every value is a string).
+     *
      * @return All of the records in the destination at the time this method is invoked.
      * @throws Exception
      * - can throw any exception, test framework will handle.
@@ -205,7 +158,7 @@ abstract class DestinationAcceptanceTest(
         testEnv: TestDestinationEnv?,
         streamName: String,
         namespace: String,
-        streamSchema: JsonNode
+        streamSchema: JsonNode,
     ): List<JsonNode>
 
     private fun pruneAndMaybeFlatten(node: JsonNode): JsonNode {
@@ -221,19 +174,19 @@ abstract class DestinationAcceptanceTest(
                 JavaBaseConstants.COLUMN_NAME_AB_META,
                 JavaBaseConstants.COLUMN_NAME_AB_GENERATION_ID,
                 // Sometimes added
-                "_airbyte_additional_properties"
+                "_airbyte_additional_properties",
             )
 
         val jsons = MoreMappers.initMapper().createObjectNode()
         // Iterate over every key value pair in the json node
-        for (entry in node.fields()) {
+        for (entry in node.properties()) {
             if (entry.key in metaKeys) {
                 continue
             }
 
             // If the message is normalized, flatten it
             if (entry.key == JavaBaseConstants.COLUMN_NAME_DATA) {
-                for (dataEntry in entry.value.fields()) {
+                for (dataEntry in entry.value.properties()) {
                     jsons.replace(dataEntry.key, dataEntry.value)
                 }
             } else {
@@ -248,7 +201,7 @@ abstract class DestinationAcceptanceTest(
         testEnv: TestDestinationEnv?,
         streamName: String,
         namespace: String,
-        streamSchema: JsonNode
+        streamSchema: JsonNode,
     ): List<JsonNode> {
         return retrieveRecords(testEnv, streamName, namespace, streamSchema)
             .map(this::pruneAndMaybeFlatten)
@@ -264,6 +217,7 @@ abstract class DestinationAcceptanceTest(
      *
      * @param config
      * - integration-specific configuration returned by [.getConfig].
+     *
      * @return the default schema, if applicatble.
      */
     @Throws(Exception::class)
@@ -369,11 +323,14 @@ abstract class DestinationAcceptanceTest(
      *
      * @param testEnv
      * - information about the test environment.
+     *
      * @param streamName
      * - name of the stream for which we are retrieving records.
+     *
      * @param namespace
      * - the destination namespace records are located in. Null if not applicable. Usually a JDBC
-     * schema.
+     *   schema.
+     *
      * @return All of the records in the destination at the time this method is invoked.
      * @throws Exception
      * - can throw any exception, test framework will handle.
@@ -382,23 +339,10 @@ abstract class DestinationAcceptanceTest(
     protected open fun retrieveNormalizedRecords(
         testEnv: TestDestinationEnv?,
         streamName: String?,
-        namespace: String?
+        namespace: String?,
     ): List<JsonNode> {
         throw IllegalStateException("Not implemented")
     }
-
-    /**
-     * Function that performs any setup of external resources required for the test. e.g.
-     * instantiate a postgres database. This function will be called before EACH test.
-     *
-     * @param testEnv
-     * - information about the test environment.
-     * @param TEST_SCHEMAS
-     * @throws Exception
-     * - can throw any exception, test framework will handle.
-     */
-    @Throws(Exception::class)
-    protected abstract fun setup(testEnv: TestDestinationEnv, TEST_SCHEMAS: HashSet<String>)
 
     /**
      * Function that performs any clean up of external resources required for the test. e.g. delete
@@ -407,6 +351,7 @@ abstract class DestinationAcceptanceTest(
      *
      * @param testEnv
      * - information about the test environment.
+     *
      * @throws Exception
      * - can throw any exception, test framework will handle.
      */
@@ -414,39 +359,10 @@ abstract class DestinationAcceptanceTest(
 
     @Deprecated(
         """This method is moved to the AdvancedTestDataComparator. Please move your destination
-                implementation of the method to your comparator implementation."""
+                implementation of the method to your comparator implementation.""",
     )
     protected open fun resolveIdentifier(identifier: String?): List<String?> {
         return listOf(identifier)
-    }
-
-    @BeforeEach
-    @Throws(Exception::class)
-    fun setUpInternal() {
-        val testDir = Path.of("/tmp/airbyte_tests/")
-        Files.createDirectories(testDir)
-        val workspaceRoot = Files.createTempDirectory(testDir, "test")
-        jobRoot = Files.createDirectories(Path.of(workspaceRoot.toString(), "job"))
-        localRoot = Files.createTempDirectory(testDir, "output")
-        LOGGER.info { "${"jobRoot: {}"} $jobRoot" }
-        LOGGER.info { "${"localRoot: {}"} $localRoot" }
-        testEnv = TestDestinationEnv(localRoot)
-        mConnectorConfigUpdater = Mockito.mock(ConnectorConfigUpdater::class.java)
-        testSchemas = HashSet()
-        setup(testEnv, testSchemas)
-
-        processFactory =
-            DockerProcessFactory(
-                workspaceRoot,
-                workspaceRoot.toString(),
-                localRoot.toString(),
-                "host",
-                getConnectorEnv()
-            )
-    }
-
-    open fun getConnectorEnv(): Map<String, String> {
-        return emptyMap()
     }
 
     @AfterEach
@@ -471,7 +387,7 @@ abstract class DestinationAcceptanceTest(
     fun testCheckConnection() {
         Assertions.assertEquals(
             StandardCheckConnectionOutput.Status.SUCCEEDED,
-            runCheck(getConfig()).status
+            runCheck(getConfig()).status,
         )
     }
 
@@ -484,7 +400,7 @@ abstract class DestinationAcceptanceTest(
     fun testCheckConnectionInvalidCredentials() {
         Assertions.assertEquals(
             StandardCheckConnectionOutput.Status.FAILED,
-            runCheck(getFailCheckConfig()).status
+            runCheck(getFailCheckConfig()).status,
         )
     }
 
@@ -499,7 +415,7 @@ abstract class DestinationAcceptanceTest(
         val catalog =
             Jsons.deserialize(
                 MoreResources.readResource(catalogFilename),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         configuredCatalog.streams.forEach {
@@ -528,7 +444,7 @@ abstract class DestinationAcceptanceTest(
         val catalog =
             Jsons.deserialize(
                 MoreResources.readResource(catalogFilename),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         configuredCatalog.streams.forEach {
@@ -543,7 +459,7 @@ abstract class DestinationAcceptanceTest(
         val lotsOfRecordAndStateBlocks =
             Collections.nCopies(
                 400,
-                messages.filter { it.type == Type.RECORD || it.type == Type.STATE }
+                messages.filter { it.type == Type.RECORD || it.type == Type.STATE },
             )
         val traceMessages = messages.filter { it.type == Type.TRACE }
         val concatenated = lotsOfRecordAndStateBlocks.flatten() + traceMessages
@@ -565,10 +481,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         configuredCatalog.streams.forEach {
@@ -577,8 +493,8 @@ abstract class DestinationAcceptanceTest(
         val firstSyncMessages: List<AirbyteMessage> =
             MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 )
                 .trim()
                 .lines()
@@ -595,10 +511,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         dummyCatalog.streams[0].name = DUMMY_CATALOG_NAME
         val configuredDummyCatalog = CatalogHelpers.toDefaultConfiguredCatalog(dummyCatalog)
@@ -638,35 +554,43 @@ abstract class DestinationAcceptanceTest(
                                         .put("currency", "USD")
                                         .put(
                                             "date",
-                                            "2020-03-31T00:00:00Z"
+                                            "2020-03-31T00:00:00Z",
                                         ) // TODO(sherifnada) hack: write decimals with sigfigs
                                         // because Snowflake stores 10.1 as "10" which
                                         // fails destination tests
                                         .put("HKD", 10.1)
                                         .put("NZD", 700.1)
-                                        .build()
-                                )
-                            )
+                                        .build(),
+                                ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.STATE)
                     .withState(
                         AirbyteStateMessage()
-                            .withData(Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)))
+                            .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
+                            .withGlobal(
+                                AirbyteGlobalState()
+                                    .withSharedState(
+                                        Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)),
+                                    ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.TRACE)
                     .withTrace(
                         AirbyteTraceMessage()
                             .withType(AirbyteTraceMessage.Type.STREAM_STATUS)
+                            .withEmittedAt(1234.0)
                             .withStreamStatus(
                                 AirbyteStreamStatusTraceMessage()
                                     .withStreamDescriptor(descriptor)
                                     .withStatus(
-                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus.COMPLETE
-                                    )
-                            )
-                    )
+                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus
+                                            .COMPLETE,
+                                    ),
+                            ),
+                    ),
             )
 
         runSyncAndVerifyStateOutput(config, secondSyncMessages, configuredCatalog2, false)
@@ -690,10 +614,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         configuredCatalog.streams.forEach {
@@ -716,37 +640,45 @@ abstract class DestinationAcceptanceTest(
                                         .put("currency", "USD\u2028")
                                         .put(
                                             "date",
-                                            "2020-03-\n31T00:00:00Z\r"
+                                            "2020-03-\n31T00:00:00Z\r",
                                         ) // TODO(sherifnada) hack: write decimals with sigfigs
                                         // because Snowflake stores 10.1 as "10" which
                                         // fails destination tests
                                         .put("HKD", 10.1)
                                         .put("NZD", 700.1)
-                                        .build()
-                                )
-                            )
+                                        .build(),
+                                ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.STATE)
                     .withState(
                         AirbyteStateMessage()
-                            .withData(Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)))
+                            .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
+                            .withGlobal(
+                                AirbyteGlobalState()
+                                    .withSharedState(
+                                        Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)),
+                                    ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.TRACE)
                     .withTrace(
                         AirbyteTraceMessage()
                             .withType(AirbyteTraceMessage.Type.STREAM_STATUS)
+                            .withEmittedAt(1234.0)
                             .withStreamStatus(
                                 AirbyteStreamStatusTraceMessage()
                                     .withStreamDescriptor(
-                                        StreamDescriptor().withName(catalog.streams[0].name)
+                                        StreamDescriptor().withName(catalog.streams[0].name),
                                     )
                                     .withStatus(
-                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus.COMPLETE
-                                    )
-                            )
-                    )
+                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus
+                                            .COMPLETE,
+                                    ),
+                            ),
+                    ),
             )
 
         runSyncAndVerifyStateOutput(config, secondSyncMessages, configuredCatalog, false)
@@ -762,7 +694,7 @@ abstract class DestinationAcceptanceTest(
                 DefaultNormalizationRunner(
                     processFactory,
                     getNormalizationImageName(),
-                    getNormalizationIntegrationType()
+                    getNormalizationIntegrationType(),
                 )
                 normalizationRunnerFactorySupportsDestinationImage = true
             } catch (e: IllegalStateException) {
@@ -770,7 +702,7 @@ abstract class DestinationAcceptanceTest(
             }
             Assertions.assertEquals(
                 normalizationFromDefinition(),
-                normalizationRunnerFactorySupportsDestinationImage
+                normalizationRunnerFactorySupportsDestinationImage,
             )
         }
     }
@@ -793,10 +725,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
 
@@ -811,8 +743,8 @@ abstract class DestinationAcceptanceTest(
         val firstSyncMessages: List<AirbyteMessage> =
             MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 )
                 .trim()
                 .lines()
@@ -837,35 +769,43 @@ abstract class DestinationAcceptanceTest(
                                         .put("currency", "USD")
                                         .put(
                                             "date",
-                                            "2020-03-31T00:00:00Z"
+                                            "2020-03-31T00:00:00Z",
                                         ) // TODO(sherifnada) hack: write decimals with sigfigs
                                         // because Snowflake stores 10.1 as "10" which
                                         // fails destination tests
                                         .put("HKD", 10.1)
                                         .put("NZD", 700.1)
-                                        .build()
-                                )
-                            )
+                                        .build(),
+                                ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.STATE)
                     .withState(
                         AirbyteStateMessage()
-                            .withData(Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)))
+                            .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
+                            .withGlobal(
+                                AirbyteGlobalState()
+                                    .withSharedState(
+                                        Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)),
+                                    ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.TRACE)
                     .withTrace(
                         AirbyteTraceMessage()
                             .withType(AirbyteTraceMessage.Type.STREAM_STATUS)
+                            .withEmittedAt(1234.0)
                             .withStreamStatus(
                                 AirbyteStreamStatusTraceMessage()
                                     .withStreamDescriptor(descriptor)
                                     .withStatus(
-                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus.COMPLETE
-                                    )
-                            )
-                    )
+                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus
+                                            .COMPLETE,
+                                    ),
+                            ),
+                    ),
             )
 
         runSyncAndVerifyStateOutput(config, secondSyncMessages, configuredCatalog, false)
@@ -878,7 +818,7 @@ abstract class DestinationAcceptanceTest(
         retrieveRawRecordsAndAssertSameMessages(
             catalog,
             expectedMessagesAfterSecondSync,
-            defaultSchema
+            defaultSchema,
         )
     }
 
@@ -894,10 +834,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        ProtocolVersion.V0
-                    )
+                        ProtocolVersion.V0,
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
 
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
@@ -912,16 +852,16 @@ abstract class DestinationAcceptanceTest(
                     listOf("currency"),
                     listOf("date"),
                     listOf("NZD"),
-                    listOf("USD")
-                )
+                    listOf("USD"),
+                ),
             )
         }
 
         var messages =
             MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        ProtocolVersion.V0
-                    )
+                        ProtocolVersion.V0,
+                    ),
                 )
                 .lines()
                 .map { Jsons.deserialize(it, AirbyteMessage::class.java) }
@@ -943,8 +883,8 @@ abstract class DestinationAcceptanceTest(
         messages =
             MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        ProtocolVersion.V0
-                    )
+                        ProtocolVersion.V0,
+                    ),
                 )
                 .lines()
                 .map { Jsons.deserialize(it, AirbyteMessage::class.java) }
@@ -952,8 +892,8 @@ abstract class DestinationAcceptanceTest(
         messages.addLast(
             Jsons.deserialize(
                 "{\"type\": \"RECORD\", \"record\": {\"stream\": \"exchange_rate\", \"emitted_at\": 1602637989500, \"data\": { \"id\": 2, \"currency\": \"EUR\", \"date\": \"2020-09-02T00:00:00Z\", \"NZD\": 1.14, \"USD\": 10.16}}}\n",
-                AirbyteMessage::class.java
-            )
+                AirbyteMessage::class.java,
+            ),
         )
 
         runSyncAndVerifyStateOutput(config, messages, configuredCatalog, true)
@@ -962,13 +902,12 @@ abstract class DestinationAcceptanceTest(
         actualMessages = retrieveNormalizedRecords(catalog, defaultSchema)
 
         // We expect all the of messages to be missing the removed column after normalization.
-        val expectedMessages =
-            messages.map { message: AirbyteMessage ->
-                if (message.record != null) {
-                    (message.record.data as ObjectNode).remove("HKD")
-                }
-                message
+        val expectedMessages = messages.map { message: AirbyteMessage ->
+            if (message.record != null) {
+                (message.record.data as ObjectNode).remove("HKD")
             }
+            message
+        }
 
         assertSameMessages(expectedMessages, actualMessages, true)
     }
@@ -990,7 +929,7 @@ abstract class DestinationAcceptanceTest(
         val catalog =
             Jsons.deserialize(
                 MoreResources.readResource(catalogFilename),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         val messages =
@@ -1027,10 +966,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         configuredCatalog.streams.forEach { s ->
@@ -1039,15 +978,15 @@ abstract class DestinationAcceptanceTest(
             s.withCursorField(emptyList())
             // use composite primary key of various types (string, float)
             s.withPrimaryKey(
-                java.util.List.of(listOf("id"), listOf("currency"), listOf("date"), listOf("NZD"))
+                java.util.List.of(listOf("id"), listOf("currency"), listOf("date"), listOf("NZD")),
             )
         }
 
         val firstSyncMessages =
             MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 )
                 .lines()
                 .filter { it.isNotEmpty() }
@@ -1057,7 +996,7 @@ abstract class DestinationAcceptanceTest(
             config,
             firstSyncMessages,
             configuredCatalog,
-            supportsNormalization()
+            supportsNormalization(),
         )
 
         val secondSyncMessages: List<AirbyteMessage> =
@@ -1077,9 +1016,9 @@ abstract class DestinationAcceptanceTest(
                                         .put("date", "2020-09-01T00:00:00Z")
                                         .put("HKD", 10.5)
                                         .put("NZD", 1.14)
-                                        .build()
-                                )
-                            )
+                                        .build(),
+                                ),
+                            ),
                     ),
                 io.airbyte.protocol.models.v0
                     .AirbyteMessage()
@@ -1096,17 +1035,23 @@ abstract class DestinationAcceptanceTest(
                                         .put("date", "2020-09-01T00:00:00Z")
                                         .put("HKD", 5.4)
                                         .put("NZD", 1.14)
-                                        .build()
-                                )
-                            )
+                                        .build(),
+                                ),
+                            ),
                     ),
                 io.airbyte.protocol.models.v0
                     .AirbyteMessage()
                     .withType(AirbyteMessage.Type.STATE)
                     .withState(
                         AirbyteStateMessage()
-                            .withData(Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)))
-                    )
+                            .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
+                            .withGlobal(
+                                AirbyteGlobalState()
+                                    .withSharedState(
+                                        Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)),
+                                    ),
+                            ),
+                    ),
             )
         runSyncAndVerifyStateOutput(config, secondSyncMessages, configuredCatalog, false)
 
@@ -1142,7 +1087,7 @@ abstract class DestinationAcceptanceTest(
         retrieveRawRecordsAndAssertSameMessages(
             catalog,
             expectedMessagesAfterSecondSync,
-            defaultSchema
+            defaultSchema,
         )
         if (normalizationFromDefinition()) {
             val actualMessages = retrieveNormalizedRecords(catalog, defaultSchema)
@@ -1182,8 +1127,8 @@ abstract class DestinationAcceptanceTest(
                 DefaultNormalizationRunner(
                     processFactory,
                     getNormalizationImageName(),
-                    getNormalizationIntegrationType()
-                )
+                    getNormalizationIntegrationType(),
+                ),
             )
         runner.start()
         val transformationRoot = Files.createDirectories(jobRoot.resolve("transform"))
@@ -1271,8 +1216,8 @@ abstract class DestinationAcceptanceTest(
                 DefaultNormalizationRunner(
                     processFactory,
                     getNormalizationImageName(),
-                    getNormalizationIntegrationType()
-                )
+                    getNormalizationIntegrationType(),
+                ),
             )
         runner.start()
         val transformationRoot = Files.createDirectories(jobRoot.resolve("transform"))
@@ -1289,7 +1234,7 @@ abstract class DestinationAcceptanceTest(
         dbtConfig.withDbtArguments("test")
         Assertions.assertFalse(
             runner.transform(JOB_ID, JOB_ATTEMPT, transformationRoot, config, null, dbtConfig),
-            "dbt test should fail, as we haven't run dbt run on this project yet"
+            "dbt test should fail, as we haven't run dbt run on this project yet",
         )
     }
 
@@ -1306,10 +1251,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         // A unique namespace is required to avoid test isolation problems.
         val namespace = TestingNamespaces.generate("source_namespace")
@@ -1321,8 +1266,8 @@ abstract class DestinationAcceptanceTest(
         val messages =
             MoreResources.readResource(
                     DataArgumentsProvider.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 )
                 .trim()
                 .lines()
@@ -1348,10 +1293,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val namespace1 = TestingNamespaces.generate("source_namespace")
         testSchemas.add(namespace1)
@@ -1399,12 +1344,15 @@ abstract class DestinationAcceptanceTest(
      *
      * @param testCaseId
      * - the id of each test case in namespace_test_cases.json so that we can handle an individual
-     * case specially for a specific database.
+     *   case specially for a specific database.
+     *
      * @param namespaceInCatalog
      * - namespace as it would appear in the catalog
+     *
      * @param namespaceInDst
      * - namespace as we would expect it to appear in the destination (this may be overridden for
-     * different databases).
+     *   different databases).
+     *
      * @throws Exception
      * - broad catch of exception to hydrate log information with additional test case context.
      */
@@ -1417,7 +1365,7 @@ abstract class DestinationAcceptanceTest(
             assertNamespaceNormalization(
                 testCaseId,
                 namespaceInDst,
-                namingConventionTransformer.getNamespace(namespaceInCatalog)
+                namingConventionTransformer.getNamespace(namespaceInCatalog),
             )
         }
 
@@ -1429,21 +1377,21 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.NAMESPACE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         catalog.streams.forEach(
-            Consumer { stream: AirbyteStream -> stream.namespace = namespaceInCatalog }
+            Consumer { stream: AirbyteStream -> stream.namespace = namespaceInCatalog },
         )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
 
         val messages =
             MoreResources.readResource(
                     DataArgumentsProvider.NAMESPACE_CONFIG.getMessageFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 )
                 .lines()
                 .map { Jsons.deserialize(it, AirbyteMessage::class.java) }
@@ -1460,9 +1408,9 @@ abstract class DestinationAcceptanceTest(
                 String.format(
                     "[Test Case %s] Destination failed to sync data to namespace %s, see \"namespace_test_cases.json for details\"",
                     testCaseId,
-                    namespaceInCatalog
+                    namespaceInCatalog,
                 ),
-                e
+                e,
             )
         }
     }
@@ -1481,7 +1429,7 @@ abstract class DestinationAcceptanceTest(
                 JOB_ID,
                 JOB_ATTEMPT,
                 jobRoot,
-                imageName
+                imageName,
             )
 
         assertNotNull(entrypoint)
@@ -1506,10 +1454,10 @@ abstract class DestinationAcceptanceTest(
             Jsons.deserialize<AirbyteCatalog>(
                 MoreResources.readResource(
                     DataArgumentsProvider.Companion.EXCHANGE_RATE_CONFIG.getCatalogFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 ),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         configuredCatalog.streams.forEach {
@@ -1519,8 +1467,8 @@ abstract class DestinationAcceptanceTest(
         val firstSyncMessages =
             MoreResources.readResource(
                     DataArgumentsProvider.EXCHANGE_RATE_CONFIG.getMessageFileVersion(
-                        getProtocolVersion()
-                    )
+                        getProtocolVersion(),
+                    ),
                 )
                 .trim()
                 .lines()
@@ -1554,29 +1502,37 @@ abstract class DestinationAcceptanceTest(
                                         .put("newFieldNumber", 3)
                                         .put("HKD", 10.1)
                                         .put("NZD", 700.1)
-                                        .build()
-                                )
-                            )
+                                        .build(),
+                                ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.STATE)
                     .withState(
                         AirbyteStateMessage()
-                            .withData(Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)))
+                            .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
+                            .withGlobal(
+                                AirbyteGlobalState()
+                                    .withSharedState(
+                                        Jsons.jsonNode(ImmutableMap.of("checkpoint", 2)),
+                                    ),
+                            ),
                     ),
                 AirbyteMessage()
                     .withType(Type.TRACE)
                     .withTrace(
                         AirbyteTraceMessage()
                             .withType(AirbyteTraceMessage.Type.STREAM_STATUS)
+                            .withEmittedAt(1234.0)
                             .withStreamStatus(
                                 AirbyteStreamStatusTraceMessage()
                                     .withStreamDescriptor(descriptor)
                                     .withStatus(
-                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus.COMPLETE
-                                    )
-                            )
-                    )
+                                        AirbyteStreamStatusTraceMessage.AirbyteStreamStatus
+                                            .COMPLETE,
+                                    ),
+                            ),
+                    ),
             )
 
         // Run sync and verify that all message were written without failing
@@ -1584,7 +1540,7 @@ abstract class DestinationAcceptanceTest(
             config,
             secondSyncMessagesWithNewFields,
             configuredCatalog2,
-            false
+            false,
         )
         val destinationOutput =
             retrieveRecords(testEnv, stream.name, getDefaultSchema(config)!!, stream.jsonSchema)
@@ -1616,7 +1572,7 @@ abstract class DestinationAcceptanceTest(
         val configuredCatalog =
             Jsons.deserialize(
                 MoreResources.readResource("v0/users_with_generation_id_configured_catalog.json"),
-                ConfiguredAirbyteCatalog::class.java
+                ConfiguredAirbyteCatalog::class.java,
             )
         val config = getConfig()
         val messages =
@@ -1633,7 +1589,7 @@ abstract class DestinationAcceptanceTest(
                 testEnv,
                 "users",
                 getDefaultSchema(config)!! /* ignored */,
-                stream.jsonSchema
+                stream.jsonSchema,
             )
 
         // Resolve common field keys.
@@ -1656,7 +1612,7 @@ abstract class DestinationAcceptanceTest(
                 // Generation id should match the one from the catalog
                 Assertions.assertEquals(
                     generationId,
-                    record.get(JavaBaseConstants.COLUMN_NAME_AB_GENERATION_ID).asLong()
+                    record.get(JavaBaseConstants.COLUMN_NAME_AB_GENERATION_ID).asLong(),
                 )
             }
         }
@@ -1673,11 +1629,11 @@ abstract class DestinationAcceptanceTest(
             Assertions.assertEquals(changes[0]["field"].asText(), "name")
             Assertions.assertEquals(
                 changes[0]["change"].asText(),
-                AirbyteRecordMessageMetaChange.Change.TRUNCATED.value()
+                AirbyteRecordMessageMetaChange.Change.TRUNCATED.value(),
             )
             Assertions.assertEquals(
                 changes[0]["reason"].asText(),
-                AirbyteRecordMessageMetaChange.Reason.SOURCE_FIELD_SIZE_LIMITATION.value()
+                AirbyteRecordMessageMetaChange.Reason.SOURCE_FIELD_SIZE_LIMITATION.value(),
             )
         }
 
@@ -1695,18 +1651,18 @@ abstract class DestinationAcceptanceTest(
             Assertions.assertEquals("id", changes[0]["field"].asText())
             Assertions.assertEquals(
                 AirbyteRecordMessageMetaChange.Change.NULLED.value(),
-                changes[0]["change"].asText()
+                changes[0]["change"].asText(),
             )
             Assertions.assertEquals(
                 AirbyteRecordMessageMetaChange.Reason.DESTINATION_SERIALIZATION_ERROR.value(),
-                changes[0]["reason"].asText()
+                changes[0]["reason"].asText(),
             )
 
             // Expect the third message to have added a new change to an old one
             val badRowWithPreviousChange = destinationOutput[3]
             val dataWithPreviousChange = getData(badRowWithPreviousChange)
             Assertions.assertTrue(
-                dataWithPreviousChange["id"] == null || dataWithPreviousChange["id"].isNull
+                dataWithPreviousChange["id"] == null || dataWithPreviousChange["id"].isNull,
             )
             val twoChanges =
                 getMeta(badRowWithPreviousChange)["changes"].elements().asSequence().toList()
@@ -1716,11 +1672,11 @@ abstract class DestinationAcceptanceTest(
 
     private fun toTimeTypeMap(
         schemaMap: Map<String, JsonNode>,
-        format: String
+        format: String,
     ): Map<String, Map<String, Boolean>> {
         return schemaMap.mapValues { schema ->
             schema.value["properties"]
-                .fields()
+                .properties()
                 .asSequence()
                 .filter { (_, value) -> value["format"]?.asText() == format }
                 .map { (key, value) ->
@@ -1738,7 +1694,7 @@ abstract class DestinationAcceptanceTest(
         val configuredCatalog =
             Jsons.deserialize(
                 MoreResources.readResource("v0/every_time_type_configured_catalog.json"),
-                ConfiguredAirbyteCatalog::class.java
+                ConfiguredAirbyteCatalog::class.java,
             )
         val config = getConfig()
         val messages =
@@ -1765,14 +1721,14 @@ abstract class DestinationAcceptanceTest(
                     testEnv,
                     stream.stream.name,
                     getDefaultSchema(config)!!, /* ignored */
-                    schema
+                    schema,
                 )
             val actual = records.map { node -> pruneAndMaybeFlatten(node) }
             val expected =
                 expectedByStream[stream.stream.name]!!.map {
                     if (expectNumericTimestamps) {
                         val node = MoreMappers.initMapper().createObjectNode()
-                        it.record.data.fields().forEach { (k, v) ->
+                        it.record.data.properties().forEach { (k, v) ->
                             if (dateFieldMeta[name]!!.containsKey(k)) {
                                 val daysSinceEpoch = LocalDate.parse(v.asText()).toEpochDay()
                                 node.put(k, daysSinceEpoch.toInt())
@@ -1825,14 +1781,14 @@ abstract class DestinationAcceptanceTest(
         // Kind of a hack, since we'd prefer to test this not happen on some destinations,
         // but verifiying that for CSV is painful.
         Assumptions.assumeTrue(
-            expectSchemalessObjectsCoercedToStrings || expectUnionsPromotedToDisjointRecords
+            expectSchemalessObjectsCoercedToStrings || expectUnionsPromotedToDisjointRecords,
         )
 
         // Run the sync
         val configuredCatalog =
             Jsons.deserialize(
                 MoreResources.readResource("v0/problematic_types_configured_catalog.json"),
-                ConfiguredAirbyteCatalog::class.java
+                ConfiguredAirbyteCatalog::class.java,
             )
         val config = getConfig()
         val messagesIn =
@@ -1855,18 +1811,18 @@ abstract class DestinationAcceptanceTest(
                 testEnv,
                 "problematic_types",
                 getDefaultSchema(config)!!,
-                destinationSchema
+                destinationSchema,
             )
 
         // Validate data
         val expectedMessages =
             if (!expectUnionsPromotedToDisjointRecords) {
                     MoreResources.readResource(
-                        "v0/problematic_types_coerced_schemaless_messages_out.txt"
+                        "v0/problematic_types_coerced_schemaless_messages_out.txt",
                     )
                 } else { // expectSchemalessObjectsCoercedToStrings
                     MoreResources.readResource(
-                        "v0/problematic_types_disjoint_union_messages_out.txt"
+                        "v0/problematic_types_disjoint_union_messages_out.txt",
                     )
                 }
                 .trim()
@@ -1897,15 +1853,15 @@ abstract class DestinationAcceptanceTest(
     protected open fun assertNamespaceNormalization(
         testCaseId: String?,
         expectedNormalizedNamespace: String?,
-        actualNormalizedNamespace: String?
+        actualNormalizedNamespace: String?,
     ) {
         Assertions.assertEquals(
             expectedNormalizedNamespace,
             actualNormalizedNamespace,
             String.format(
                 "Test case %s failed; if this is expected, please override assertNamespaceNormalization",
-                testCaseId
-            )
+                testCaseId,
+            ),
         )
     }
 
@@ -1921,12 +1877,12 @@ abstract class DestinationAcceptanceTest(
                         null,
                         null,
                         false,
-                        featureFlags
-                    )
+                        featureFlags,
+                    ),
                 )
                 .run(JobGetSpecConfig().withDockerImage(imageName), jobRoot)
                 .spec,
-            ConnectorSpecification::class.java
+            ConnectorSpecification::class.java,
         )
     }
 
@@ -1941,16 +1897,16 @@ abstract class DestinationAcceptanceTest(
                     null,
                     null,
                     false,
-                    featureFlags
+                    featureFlags,
                 ),
-                mConnectorConfigUpdater
+                mConnectorConfigUpdater,
             )
             .run(StandardCheckConnectionInput().withConnectionConfiguration(config), jobRoot)
             .checkConnection
     }
 
     protected fun runCheckWithCatchedException(
-        config: JsonNode?
+        config: JsonNode?,
     ): StandardCheckConnectionOutput.Status {
         try {
             val standardCheckConnectionOutput =
@@ -1963,13 +1919,13 @@ abstract class DestinationAcceptanceTest(
                             null,
                             null,
                             false,
-                            featureFlags
+                            featureFlags,
                         ),
-                        mConnectorConfigUpdater
+                        mConnectorConfigUpdater,
                     )
                     .run(
                         StandardCheckConnectionInput().withConnectionConfiguration(config),
-                        jobRoot
+                        jobRoot,
                     )
                     .checkConnection
             return standardCheckConnectionOutput.status
@@ -1991,141 +1947,23 @@ abstract class DestinationAcceptanceTest(
                         null,
                         null,
                         false,
-                        featureFlags
-                    )
+                        featureFlags,
+                    ),
             )
         }
 
-    private fun getDestination(imageName: String): AirbyteDestination {
-        return DefaultAirbyteDestination(
-            integrationLauncher =
-                AirbyteIntegrationLauncher(
-                    JOB_ID,
-                    JOB_ATTEMPT,
-                    imageName,
-                    processFactory,
-                    null,
-                    null,
-                    false,
-                    featureFlags
-                )
-        )
-    }
-
-    protected fun runSyncAndVerifyStateOutput(
-        config: JsonNode,
-        messages: List<AirbyteMessage>,
-        catalog: ConfiguredAirbyteCatalog,
-        runNormalization: Boolean,
-    ) {
-        runSyncAndVerifyStateOutput(
-            config,
-            messages,
-            catalog,
-            runNormalization,
-            imageName,
-            verifyIndividualStateAndCounts
-        )
-    }
-
     @Throws(Exception::class)
-    protected fun runSyncAndVerifyStateOutput(
+    override fun runSync(
         config: JsonNode,
         messages: List<AirbyteMessage>,
         catalog: ConfiguredAirbyteCatalog,
         runNormalization: Boolean,
         imageName: String,
-        verifyIndividualStateAndCounts: Boolean
-    ) {
-        val destinationOutput = runSync(config, messages, catalog, runNormalization, imageName)
-
-        var expected = messages.filter { it.type == Type.STATE }
-        var actual = destinationOutput.filter { it.type == Type.STATE }
-
-        if (verifyIndividualStateAndCounts) {
-            /* Collect the counts and add them to each expected state message */
-            val stateToCount = mutableMapOf<JsonNode, Int>()
-            messages.fold(0) { acc, message ->
-                if (message.type == Type.STATE) {
-                    stateToCount[message.state.data] = acc
-                    0
-                } else {
-                    acc + 1
-                }
-            }
-
-            expected.forEach { message ->
-                val clone = message.state
-                clone.destinationStats =
-                    AirbyteStateStats().withRecordCount(stateToCount[clone.data]!!.toDouble())
-                message.state = clone
-            }
-        } else {
-            /* Null the stats and collect only the final messages */
-            val finalActual =
-                actual.lastOrNull()
-                    ?: throw IllegalArgumentException(
-                        "All message sets used for testing should include a state record"
-                    )
-            val clone = finalActual.state
-            clone.destinationStats = null
-            finalActual.state = clone
-
-            expected = listOf(expected.last())
-            actual = listOf(finalActual)
-        }
-
-        Assertions.assertEquals(expected, actual)
-    }
-
-    @Throws(Exception::class)
-    private fun runSync(
-        config: JsonNode,
-        messages: List<AirbyteMessage>,
-        catalog: ConfiguredAirbyteCatalog,
-        runNormalization: Boolean,
-        imageName: String,
+        additionalEnvs: Map<String, String>,
     ): List<AirbyteMessage> {
-        val destinationConfig =
-            WorkerDestinationConfig()
-                .withConnectionId(UUID.randomUUID())
-                .withCatalog(
-                    convertProtocolObject(
-                        catalog,
-                        io.airbyte.protocol.models.ConfiguredAirbyteCatalog::class.java
-                    )
-                )
-                .withDestinationConnectionConfiguration(config)
-
-        val destination = getDestination(imageName)
-
-        destination.start(
-            destinationConfig,
-            jobRoot,
-            inDestinationNormalizationFlags(runNormalization)
-        )
-        messages.forEach(
-            Consumer { message: AirbyteMessage ->
-                Exceptions.toRuntime {
-                    destination.accept(
-                        convertProtocolObject(
-                            message,
-                            io.airbyte.protocol.models.AirbyteMessage::class.java
-                        )
-                    )
-                }
-            }
-        )
-        destination.notifyEndOfInput()
-
-        val destinationOutput: MutableList<AirbyteMessage> = ArrayList()
-        while (!destination.isFinished()) {
-            destination.attemptRead().ifPresent {
-                destinationOutput.add(convertProtocolObject(it, AirbyteMessage::class.java))
-            }
-        }
-
-        destination.close()
+        val destinationConfig = getDestinationConfig(config, catalog)
+        val destinationOutput =
+            super.runSync(messages, runNormalization, imageName, destinationConfig, additionalEnvs)
 
         if (!runNormalization || (supportsInDestinationNormalization())) {
             return destinationOutput
@@ -2135,7 +1973,7 @@ abstract class DestinationAcceptanceTest(
             DefaultNormalizationRunner(
                 processFactory,
                 getNormalizationImageName(),
-                getNormalizationIntegrationType()
+                getNormalizationIntegrationType(),
             )
         runner.start()
         val normalizationRoot = Files.createDirectories(jobRoot.resolve("normalize"))
@@ -2146,7 +1984,7 @@ abstract class DestinationAcceptanceTest(
                 normalizationRoot,
                 destinationConfig.destinationConnectionConfiguration,
                 destinationConfig.catalog,
-                null
+                null,
             )
         ) {
             throw TestHarnessException("Normalization Failed.")
@@ -2159,7 +1997,7 @@ abstract class DestinationAcceptanceTest(
     protected fun retrieveRawRecordsAndAssertSameMessages(
         catalog: AirbyteCatalog,
         messages: List<AirbyteMessage>,
-        defaultSchema: String?
+        defaultSchema: String?,
     ) {
         val actualMessages: MutableList<AirbyteRecordMessage> = ArrayList()
         for (stream in catalog.streams) {
@@ -2184,7 +2022,7 @@ abstract class DestinationAcceptanceTest(
     open protected fun assertSameMessages(
         expected: List<AirbyteMessage>,
         actual: List<AirbyteRecordMessage>,
-        pruneAirbyteInternalFields: Boolean
+        pruneAirbyteInternalFields: Boolean,
     ) {
         val expectedProcessed =
             expected
@@ -2209,7 +2047,7 @@ abstract class DestinationAcceptanceTest(
     @Throws(Exception::class)
     protected fun retrieveNormalizedRecords(
         catalog: AirbyteCatalog,
-        defaultSchema: String?
+        defaultSchema: String?,
     ): List<AirbyteRecordMessage> {
         val actualMessages: MutableList<AirbyteRecordMessage> = ArrayList()
 
@@ -2262,8 +2100,8 @@ abstract class DestinationAcceptanceTest(
                 CatalogHelpers.createAirbyteStream(
                     USERS_STREAM_NAME + i,
                     Field.of(NAME, JsonSchemaType.STRING),
-                    Field.of(ID, JsonSchemaType.STRING)
-                )
+                    Field.of(ID, JsonSchemaType.STRING),
+                ),
             )
         }
         val testCatalog = AirbyteCatalog().withStreams(configuredAirbyteStreams)
@@ -2276,8 +2114,8 @@ abstract class DestinationAcceptanceTest(
                 .withCatalog(
                     convertProtocolObject(
                         configuredTestCatalog,
-                        io.airbyte.protocol.models.ConfiguredAirbyteCatalog::class.java
-                    )
+                        io.airbyte.protocol.models.ConfiguredAirbyteCatalog::class.java,
+                    ),
                 )
                 .withDestinationConnectionConfiguration(config)
         val destination = destination
@@ -2298,7 +2136,7 @@ abstract class DestinationAcceptanceTest(
                         ", currentRecordNumberForStream=" +
                         currentRecordNumberForStream +
                         ", " +
-                        Instant.now()
+                        Instant.now(),
                 )
                 try {
                     Thread.sleep(10000)
@@ -2327,17 +2165,17 @@ abstract class DestinationAcceptanceTest(
                                         ImmutableMap.builder<Any, Any>()
                                             .put(NAME, LOREM_IPSUM)
                                             .put(ID, streamCounter.toString() + "_" + msgCounter)
-                                            .build()
-                                    )
+                                            .build(),
+                                    ),
                                 )
-                                .withEmittedAt(Instant.now().toEpochMilli())
+                                .withEmittedAt(Instant.now().toEpochMilli()),
                         )
                 try {
                     destination.accept(
                         convertProtocolObject(
                             msg,
-                            io.airbyte.protocol.models.AirbyteMessage::class.java
-                        )
+                            io.airbyte.protocol.models.AirbyteMessage::class.java,
+                        ),
                     )
                 } catch (e: Exception) {
                     LOGGER.error { "Failed to write a RECORD message: $e" }
@@ -2354,20 +2192,24 @@ abstract class DestinationAcceptanceTest(
                     .withType(AirbyteMessage.Type.STATE)
                     .withState(
                         AirbyteStateMessage()
-                            .withData(
-                                Jsons.jsonNode(
-                                    ImmutableMap.builder<Any, Any>()
-                                        .put("start_date", "2020-09-02")
-                                        .build()
-                                )
-                            )
+                            .withType(AirbyteStateMessage.AirbyteStateType.GLOBAL)
+                            .withGlobal(
+                                AirbyteGlobalState()
+                                    .withSharedState(
+                                        Jsons.jsonNode(
+                                            ImmutableMap.builder<Any, Any>()
+                                                .put("start_date", "2020-09-02")
+                                                .build(),
+                                        ),
+                                    ),
+                            ),
                     )
             try {
                 destination.accept(
                     convertProtocolObject(
                         msgState,
-                        io.airbyte.protocol.models.AirbyteMessage::class.java
-                    )
+                        io.airbyte.protocol.models.AirbyteMessage::class.java,
+                    ),
                 )
             } catch (e: Exception) {
                 LOGGER.error { "Failed to write a STATE message: $e" }
@@ -2381,7 +2223,7 @@ abstract class DestinationAcceptanceTest(
             String.format(
                 "Added %s messages to each of %s streams",
                 currentRecordNumberForStream,
-                currentStreamNumber
+                currentStreamNumber,
             )
         }
         // Close destination
@@ -2415,12 +2257,12 @@ abstract class DestinationAcceptanceTest(
     open fun getProtocolVersion(): ProtocolVersion = ProtocolVersion.V0
 
     private fun checkTestCompatibility(
-        testCompatibility: DataTypeTestArgumentProvider.TestCompatibility
+        testCompatibility: DataTypeTestArgumentProvider.TestCompatibility,
     ): Boolean {
         return testCompatibility.isTestCompatible(
             supportBasicDataTypeTest(),
             supportArrayDataTypeTest(),
-            supportObjectDataTypeTest()
+            supportObjectDataTypeTest(),
         )
     }
 
@@ -2430,7 +2272,7 @@ abstract class DestinationAcceptanceTest(
     open fun testDataTypeTestWithNormalization(
         messagesFilename: String,
         catalogFilename: String,
-        testCompatibility: DataTypeTestArgumentProvider.TestCompatibility
+        testCompatibility: DataTypeTestArgumentProvider.TestCompatibility,
     ) {
         if (!checkTestCompatibility(testCompatibility)) {
             return
@@ -2458,16 +2300,16 @@ abstract class DestinationAcceptanceTest(
             readCatalogFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.NUMBER_TYPE_CATALOG,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         val messages =
             readMessagesFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.NAN_TYPE_MESSAGE,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
 
         runAndCheck(catalog, configuredCatalog, messages)
@@ -2485,16 +2327,16 @@ abstract class DestinationAcceptanceTest(
             readCatalogFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.INTEGER_TYPE_CATALOG,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         val messages =
             readMessagesFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.NAN_TYPE_MESSAGE,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
 
         runAndCheck(catalog, configuredCatalog, messages)
@@ -2514,16 +2356,16 @@ abstract class DestinationAcceptanceTest(
             readCatalogFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.NUMBER_TYPE_CATALOG,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         val messages =
             readMessagesFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.INFINITY_TYPE_MESSAGE,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
 
         runAndCheck(catalog, configuredCatalog, messages)
@@ -2544,16 +2386,16 @@ abstract class DestinationAcceptanceTest(
             readCatalogFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.INTEGER_TYPE_CATALOG,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         val messages =
             readMessagesFromFile(
                 ArgumentProviderUtil.prefixFileNameByVersion(
                     DataTypeTestArgumentProvider.Companion.INFINITY_TYPE_MESSAGE,
-                    getProtocolVersion()
-                )
+                    getProtocolVersion(),
+                ),
             )
 
         runAndCheck(catalog, configuredCatalog, messages)
@@ -2563,7 +2405,7 @@ abstract class DestinationAcceptanceTest(
     private fun runAndCheck(
         catalog: AirbyteCatalog,
         configuredCatalog: ConfiguredAirbyteCatalog,
-        messages: List<AirbyteMessage>
+        messages: List<AirbyteMessage>,
     ) {
         if (normalizationFromDefinition()) {
             LOGGER.info { "Normalization is supported! Run test with normalization." }
@@ -2578,7 +2420,7 @@ abstract class DestinationAcceptanceTest(
     private fun runAndCheckWithNormalization(
         messages: List<AirbyteMessage>,
         configuredCatalog: ConfiguredAirbyteCatalog,
-        catalog: AirbyteCatalog
+        catalog: AirbyteCatalog,
     ) {
         val config = getConfig()
         runSyncAndVerifyStateOutput(config, messages, configuredCatalog, true)
@@ -2591,7 +2433,7 @@ abstract class DestinationAcceptanceTest(
     private fun runAndCheckWithoutNormalization(
         messages: List<AirbyteMessage>,
         configuredCatalog: ConfiguredAirbyteCatalog,
-        catalog: AirbyteCatalog
+        catalog: AirbyteCatalog,
     ) {
         val config = getConfig()
         runSyncAndVerifyStateOutput(config, messages, configuredCatalog, false)
@@ -2599,15 +2441,15 @@ abstract class DestinationAcceptanceTest(
     }
 
     /**
-     * Can be used in overridden [
-     * getSpecialNumericTypesSupportTest()][.getSpecialNumericTypesSupportTest] method to specify if
-     * connector supports Integer/Number NaN or Integer/Number Infinity types
+     * Can be used in overridden
+     * [ getSpecialNumericTypesSupportTest()][.getSpecialNumericTypesSupportTest] method to specify
+     * if connector supports Integer/Number NaN or Integer/Number Infinity types
      */
     class SpecialNumericTypes(
         val supportIntegerNan: Boolean = false,
         val supportNumberNan: Boolean = false,
         val supportIntegerInfinity: Boolean = false,
-        val supportNumberInfinity: Boolean = false
+        val supportNumberInfinity: Boolean = false,
     )
 
     class NamespaceTestCaseProvider : ArgumentsProvider {
@@ -2623,14 +2465,14 @@ abstract class DestinationAcceptanceTest(
                         TestingNamespaces.generateFromOriginal(
                             namespaceInCatalog,
                             testCase["namespace"].asText(),
-                            testCase["normalized"].asText()
+                            testCase["normalized"].asText(),
                         )
                     Arguments.of(
                         testCase["id"]
                             .asText(), // Add uniqueness to namespace to avoid collisions between
                         // tests.
                         namespaceInCatalog,
-                        namespaceInDst
+                        namespaceInDst,
                     )
                 }
                 .stream()
@@ -2649,8 +2491,8 @@ abstract class DestinationAcceptanceTest(
         private val RANDOM = Random()
         private const val NORMALIZATION_VERSION = "dev"
 
-        private const val JOB_ID = "0"
-        private const val JOB_ATTEMPT = 0
+        public const val JOB_ID = "0"
+        public const val JOB_ATTEMPT = 0
 
         private const val DUMMY_CATALOG_NAME = "DummyCatalog"
 
@@ -2674,6 +2516,7 @@ abstract class DestinationAcceptanceTest(
          *
          * @param record
          * - record that will be pruned.
+         *
          * @return pruned json node.
          */
         private fun safePrune(record: AirbyteRecordMessage): AirbyteRecordMessage {
@@ -2718,7 +2561,7 @@ abstract class DestinationAcceptanceTest(
                         "NORMALIZED_AT",
                         "HASHID",
                         "unique_key",
-                        "UNIQUE_KEY"
+                        "UNIQUE_KEY",
                     )
                 if (
                     airbyteInternalFields.any { internalField: String ->
@@ -2746,7 +2589,6 @@ abstract class DestinationAcceptanceTest(
             /**
              * NaN and Infinity test are not supported by default. Please override this method to
              * specify NaN/Infinity types support example:
-             *
              * <pre>
              *
              * protected SpecialNumericTypes getSpecialNumericTypesSupportTest() { return
@@ -2761,7 +2603,7 @@ abstract class DestinationAcceptanceTest(
         private fun readCatalogFromFile(catalogFilename: String): AirbyteCatalog {
             return Jsons.deserialize(
                 MoreResources.readResource(catalogFilename),
-                AirbyteCatalog::class.java
+                AirbyteCatalog::class.java,
             )
         }
 
@@ -2775,19 +2617,19 @@ abstract class DestinationAcceptanceTest(
         /** Mutate the input airbyte record message namespace. */
         private fun getRecordMessagesWithNewNamespace(
             airbyteMessages: List<AirbyteMessage>,
-            namespace: String?
+            namespace: String?,
         ): List<AirbyteMessage> {
             airbyteMessages.forEach(
                 Consumer { message: AirbyteMessage ->
                     if (message.record != null) {
                         message.record.namespace = namespace
                     }
-                }
+                },
             )
             return airbyteMessages
         }
 
-        private fun <V0, V1> convertProtocolObject(v1: V1, klass: Class<V0>): V0 {
+        fun <V0, V1> convertProtocolObject(v1: V1, klass: Class<V0>): V0 {
             return Jsons.`object`(Jsons.jsonNode(v1), klass)!!
         }
     }

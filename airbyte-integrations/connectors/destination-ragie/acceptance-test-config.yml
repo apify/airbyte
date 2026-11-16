@@ -1,0 +1,6 @@
+bypass_reason: "No test config in GSM for this connector"
+acceptance_tests:
+  spec:
+    tests:
+      - spec_path: integration_tests/spec.json
+connector_image: airbyte/destination-ragie

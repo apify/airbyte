@@ -7,6 +7,7 @@ import os
 
 import pytest
 import responses
+
 from airbyte_cdk.models import AirbyteStream, ConfiguredAirbyteCatalog, ConfiguredAirbyteStream
 
 
@@ -25,7 +26,7 @@ def catalog(request):
 
 @pytest.fixture(name="config")
 def config_fixture():
-    return {"api_key": 123, "start_date": "2019-10-10T00:00:00"}
+    return {"api_key": 123, "start_date": "2019-10-10T00:00:00", "lookback_window": 0}
 
 
 @pytest.fixture()

@@ -1,5 +1,6 @@
-name: Check for formatting errors
-run-name: Check for formatting errors on ${{ github.ref }}
+name: Global Format Check
+# This workflow checks the formatting of the codebase using pre-commit hooks.
+
 on:
   workflow_dispatch:
 
@@ -10,51 +11,46 @@ on:
 
 jobs:
   format-check:
-    # IMPORTANT: This name must match the require check name on the branch protection settings
-    name: "Check for formatting errors"
-    # Do not run this job on forks
-    # Forked PRs are handled by the community_ci.yml workflow
-    if: github.event.pull_request.head.repo.fork != true
-    runs-on: tooling-test-small
+    name: "Format Check"
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Airbyte (with credentials)
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          token: ${{ secrets.GH_PAT_APPROVINGTON_OCTAVIA }}
-          fetch-depth: 1
-      - name: Run airbyte-ci format check [MASTER]
-        id: airbyte_ci_format_check_all_master
-        if: github.ref == 'refs/heads/master'
-        uses: ./.github/actions/run-airbyte-ci
-        continue-on-error: true
-        with:
-          context: "master"
-          sentry_dsn: ${{ secrets.SENTRY_AIRBYTE_CI_DSN }}
-          subcommand: "format check all"
-
-      - name: Run airbyte-ci format check [PULL REQUEST]
-        id: airbyte_ci_format_check_all_pr
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Detect non-Markdown changes
         if: github.event_name == 'pull_request'
-        uses: ./.github/actions/run-airbyte-ci
-        continue-on-error: false
+        id: changes
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         with:
-          context: "pull_request"
-          sentry_dsn: ${{ secrets.SENTRY_AIRBYTE_CI_DSN }}
-          subcommand: "format check all"
-
-      - name: Run airbyte-ci format check [WORKFLOW DISPATCH]
-        id: airbyte_ci_format_check_all_manual
-        if: github.event_name == 'workflow_dispatch'
-        uses: ./.github/actions/run-airbyte-ci
-        continue-on-error: false
+          predicate-quantifier: every
+          filters: |
+            non_markdown:
+              - '**'
+              - '!**/*.md'
+      - name: Setup Java
+        if: github.event_name != 'pull_request' || steps.changes.outputs.non_markdown == 'true'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
-          context: "manual"
-          sentry_dsn: ${{ secrets.SENTRY_AIRBYTE_CI_DSN }}
-          subcommand: "format check all"
+          distribution: "zulu"
+          java-version: "21"
+      - name: Setup Python
+        if: github.event_name != 'pull_request' || steps.changes.outputs.non_markdown == 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          check-latest: true
+          update-environment: true
+      - name: Run Pre-Commit
+        if: github.event_name != 'pull_request' || steps.changes.outputs.non_markdown == 'true'
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        id: format-check
+        with:
+          extra_args: --all-files
 
       - name: Match GitHub User to Slack User [MASTER]
-        if: github.ref == 'refs/heads/master'
+        if: >
+          always() && steps.format-check.outcome == 'failure' &&
+          github.ref == 'refs/heads/master' &&
+          github.event.pull_request.head.repo.fork == false
         id: match-github-to-slack-user
         uses: ./.github/actions/match-github-to-slack-user
         env:
@@ -62,16 +58,33 @@ jobs:
           GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Format Failure on Master Slack Channel [MASTER]
-        if: steps.airbyte_ci_format_check_all_master.outcome == 'failure' && github.ref == 'refs/heads/master'
-        uses: abinoda/slack-action@master
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN_AIRBYTE_TEAM }}
+        if: >
+          always() && steps.format-check.outcome == 'failure' &&
+          github.ref == 'refs/heads/master' &&
+          github.event.pull_request.head.repo.fork == false
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
         with:
-          args: >-
-            {\"channel\":\"C03BEADRPNY\", \"blocks\":[
-            {\"type\":\"divider\"},
-            {\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"Formatting is broken on master! :bangbang: \n\n\"}},
-            {\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"_merged by_: *${{ github.actor }}* \n\"}},
-            {\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"<@${{ steps.match-github-to-slack-user.outputs.slack_user_ids }}> \n\"}},
-            {\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\" :octavia-shocked: <https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}|View Action Run> :octavia-shocked: \n\"}},
-            {\"type\":\"divider\"}]}
+          token: ${{ secrets.SLACK_BOT_TOKEN_AIRBYTE_TEAM }}
+          method: chat.postMessage
+          payload: |
+            channel: C03BEADRPNY
+            text: "Formatting broken on master!"
+            blocks:
+              - type: divider
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "Formatting is broken on master! :bangbang: \n\n"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "_merged by_: *${{ github.actor }}* \n"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "<@${{ steps.match-github-to-slack-user.outputs.slack_user_ids }}> \n"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: " :octavia-shocked: <https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}|View Action Run> :octavia-shocked: \n"
+              - type: divider

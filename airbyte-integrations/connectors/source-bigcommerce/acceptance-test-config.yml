@@ -4,7 +4,7 @@ connector_image: airbyte/source-bigcommerce:dev
 acceptance_tests:
   spec:
     tests:
-      - spec_path: "source_bigcommerce/spec.yaml"
+      - spec_path: "manifest.yaml"
   connection:
     tests:
       - config_path: "secrets/config.json"
@@ -33,7 +33,6 @@ acceptance_tests:
             bypass_reason: "sandbox account does not have records"
           - name: "order_products"
             bypass_reason: "sandbox account does not have records"
-        fail_on_extra_columns: false
   incremental:
     tests:
       - config_path: "secrets/config.json"

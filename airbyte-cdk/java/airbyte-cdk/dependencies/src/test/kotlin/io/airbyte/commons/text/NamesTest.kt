@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.text
 
@@ -14,7 +14,7 @@ internal class NamesTest {
         Assertions.assertEquals("UsErS", Names.toAlphanumericAndUnderscore("UsErS"))
         Assertions.assertEquals(
             "users_USE_special_____",
-            Names.toAlphanumericAndUnderscore("users USE special !@#$")
+            Names.toAlphanumericAndUnderscore("users USE special !@#$"),
         )
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3
@@ -18,7 +18,7 @@ import java.util.stream.Stream
 class S3DestinationFlushFunction(
     override val optimalBatchSizeBytes: Long,
     private val strategyProvider: () -> BufferingStrategy,
-    private val generationAndSyncIds: Map<StreamDescriptor, Pair<Long, Long>> = emptyMap()
+    private val generationAndSyncIds: Map<StreamDescriptor, Pair<Long, Long>> = emptyMap(),
 ) : DestinationFlushFunction {
 
     override fun flush(streamDescriptor: StreamDescriptor, stream: Stream<PartialAirbyteMessage>) {
@@ -27,13 +27,16 @@ class S3DestinationFlushFunction(
         strategyProvider().use { strategy ->
             for (partialMessage in stream) {
                 val partialRecord = partialMessage.record!!
-                val data =
+                if (partialRecord.file != null) {
+                    throw RuntimeException(FILE_RECORD_ERROR_MESSAGE)
+                }
                 /**
                  * This should always be null, but if something changes upstream to trigger a clone
                  * of the record, then `null` becomes `JsonNull` and `data == null` goes from `true`
                  * to `false`
                  */
-                if (partialRecord.data == null || partialRecord.data!!.isNull) {
+                val data =
+                    if (partialRecord.data == null || partialRecord.data!!.isNull) {
                         Jsons.deserialize(partialMessage.serialized)
                     } else {
                         partialRecord.data
@@ -52,5 +55,10 @@ class S3DestinationFlushFunction(
             }
             strategy.flushSingleStream(nameAndNamespace)
         }
+    }
+
+    companion object {
+        val FILE_RECORD_ERROR_MESSAGE =
+            "received a message of RECORD type with a populated `file` attribute. This should only happen in file transfer mode"
     }
 }

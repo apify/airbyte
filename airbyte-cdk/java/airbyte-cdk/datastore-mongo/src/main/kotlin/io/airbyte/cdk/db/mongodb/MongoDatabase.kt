@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.mongodb
 
@@ -86,7 +86,7 @@ class MongoDatabase(connectionString: String, databaseName: String) :
     fun read(
         collectionName: String,
         columnNames: List<String>,
-        filter: Optional<Bson>
+        filter: Optional<Bson>,
     ): Stream<JsonNode> {
         try {
             val collection = database.getCollection(collectionName)
@@ -113,7 +113,7 @@ class MongoDatabase(connectionString: String, databaseName: String) :
 
     private fun getStream(
         cursor: MongoCursor<Document>,
-        mapper: CheckedFunction<Document, JsonNode, Exception>
+        mapper: CheckedFunction<Document, JsonNode, Exception>,
     ): Stream<JsonNode> {
         return StreamSupport.stream(
             object : AbstractSpliterator<JsonNode>(Long.MAX_VALUE, ORDERED) {
@@ -127,7 +127,7 @@ class MongoDatabase(connectionString: String, databaseName: String) :
                     }
                 }
             },
-            false
+            false,
         )
     }
 

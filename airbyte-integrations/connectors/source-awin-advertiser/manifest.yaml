@@ -1,0 +1,1064 @@
+version: 6.48.15
+
+type: DeclarativeSource
+
+description: |-
+  Website: https://www.awin.com/
+  Documentation: https://help.awin.com/apidocs/for-advertisers
+
+check:
+  type: CheckStream
+  stream_names:
+    - campaign_performance
+
+definitions:
+  streams:
+    campaign_performance:
+      type: DeclarativeStream
+      name: campaign_performance
+      primary_key:
+        - date
+        - publisherId
+        - campaign
+      retriever:
+        type: SimpleRetriever
+        requester:
+          $ref: "#/definitions/base_requester"
+          path: /advertisers/{{ config['advertiserId'] }}/reports/campaign
+          http_method: GET
+          request_parameters:
+            interval: day
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path:
+              - result
+        decoder:
+          type: JsonDecoder
+      incremental_sync:
+        type: DatetimeBasedCursor
+        cursor_field: date
+        lookback_window: P{{ config['lookback_days'] }}D
+        cursor_datetime_formats:
+          - "%Y-%m-%d"
+        datetime_format: "%Y-%m-%d"
+        start_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ config[\"start_date\"] }}"
+          datetime_format: "%Y-%m-%d"
+        start_time_option:
+          type: RequestOption
+          field_name: startDate
+          inject_into: request_parameter
+        end_time_option:
+          type: RequestOption
+          field_name: endDate
+          inject_into: request_parameter
+        end_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+          datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+        step: "{{ config['step_increment'] }}"
+        cursor_granularity: P1D
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          $ref: "#/schemas/campaign_performance"
+    transactions:
+      type: DeclarativeStream
+      name: transactions
+      primary_key:
+        - id
+      retriever:
+        type: SimpleRetriever
+        requester:
+          $ref: "#/definitions/base_requester"
+          path: /advertisers/{{ config['advertiserId'] }}/transactions/
+          http_method: GET
+          request_parameters:
+            showBasketProducts: "true"
+          error_handler:
+            type: CompositeErrorHandler
+            error_handlers:
+              - type: DefaultErrorHandler
+                max_retries: 3
+                backoff_strategies:
+                  - type: ExponentialBackoffStrategy
+                    factor: 2
+                response_filters:
+                  - type: HttpResponseFilter
+                    error_message: Rate limits hit
+                    http_codes:
+                      - 429
+                    action: RATE_LIMITED
+              - type: DefaultErrorHandler
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path: []
+        decoder:
+          type: JsonDecoder
+      incremental_sync:
+        type: DatetimeBasedCursor
+        cursor_field: transactionDate
+        lookback_window: P{{ config['lookback_days'] }}D
+        cursor_datetime_formats:
+          - "%Y-%m-%dT%H:%M:%S"
+        datetime_format: "%Y-%m-%dT%H:%M:%S"
+        start_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ config[\"start_date\"] }}T00:00:00Z"
+          datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+        start_time_option:
+          type: RequestOption
+          field_name: startDate
+          inject_into: request_parameter
+        end_time_option:
+          type: RequestOption
+          field_name: endDate
+          inject_into: request_parameter
+        end_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%S') }}"
+          datetime_format: "%Y-%m-%dT%H:%M:%S"
+        step: "{{ config['step_increment'] }}"
+        cursor_granularity: P1D
+      transformations:
+        - type: AddFields
+          fields:
+            - path:
+                - is_deleted
+              value: "{{ record.get('commissionStatus') == 'deleted' }}"
+              value_type: boolean
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          $ref: "#/schemas/transactions"
+    publisher_performance:
+      type: DeclarativeStream
+      name: publisher_performance
+      primary_key:
+        - date
+        - publisherId
+        - region
+        - currency
+      retriever:
+        type: SimpleRetriever
+        requester:
+          $ref: "#/definitions/base_requester"
+          path: /advertisers/{{ config['advertiserId'] }}/reports/publisher
+          http_method: GET
+          request_parameters:
+            dateType: transaction
+            timezone: UTC
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path: []
+        decoder:
+          type: JsonDecoder
+      incremental_sync:
+        type: DatetimeBasedCursor
+        cursor_field: date
+        lookback_window: P{{ config['lookback_days'] }}D
+        cursor_datetime_formats:
+          - "%Y-%m-%d"
+        datetime_format: "%Y-%m-%d"
+        start_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ config[\"start_date\"] }}"
+          datetime_format: "%Y-%m-%d"
+        start_time_option:
+          type: RequestOption
+          field_name: startDate
+          inject_into: request_parameter
+        end_time_option:
+          type: RequestOption
+          field_name: endDate
+          inject_into: request_parameter
+        end_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ now_utc().strftime('%Y-%m-%dT23:59:59') }}"
+          datetime_format: "%Y-%m-%dT%H:%M:%S"
+        step: P1D
+        cursor_granularity: P1D
+      transformations:
+        - type: AddFields
+          fields:
+            - path:
+                - date
+              value: "{{ stream_interval.start_time }}"
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          $ref: "#/schemas/publisher_performance"
+    creative_performance:
+      type: DeclarativeStream
+      name: creative_performance
+      primary_key:
+        - date
+        - region
+        - creativeId
+        - publisherId
+      retriever:
+        type: SimpleRetriever
+        requester:
+          $ref: "#/definitions/base_requester"
+          path: /advertisers/{{ config['advertiserId'] }}/reports/creative
+          http_method: GET
+          request_parameters:
+            dateType: transaction
+            timezone: UTC
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path: []
+        decoder:
+          type: JsonDecoder
+        partition_router:
+          type: ListPartitionRouter
+          cursor_field: region
+          values: "{{ config.get('regions', []) }}"
+          request_option:
+            type: RequestOption
+            field_name: region
+            inject_into: request_parameter
+      incremental_sync:
+        type: DatetimeBasedCursor
+        cursor_field: date
+        global_substream_cursor: true
+        lookback_window: P{{ config['lookback_days'] }}D
+        cursor_datetime_formats:
+          - "%Y-%m-%d"
+        datetime_format: "%Y-%m-%d"
+        start_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ config[\"start_date\"] }}"
+          datetime_format: "%Y-%m-%d"
+        start_time_option:
+          type: RequestOption
+          field_name: startDate
+          inject_into: request_parameter
+        end_time_option:
+          type: RequestOption
+          field_name: endDate
+          inject_into: request_parameter
+        end_datetime:
+          type: MinMaxDatetime
+          datetime: "{{ now_utc().strftime('%Y-%m-%dT23:59:59') }}"
+          datetime_format: "%Y-%m-%dT%H:%M:%S"
+        step: P1D
+        cursor_granularity: P1D
+      transformations:
+        - type: AddFields
+          fields:
+            - path:
+                - date
+              value: "{{ stream_interval.start_time }}"
+            - path:
+                - region
+              value: "{{ stream_partition.region }}"
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          $ref: "#/schemas/creative_performance"
+    publishers:
+      type: DeclarativeStream
+      name: publishers
+      primary_key:
+        - id
+      retriever:
+        type: SimpleRetriever
+        requester:
+          $ref: "#/definitions/base_requester"
+          path: /advertisers/{{ config['advertiserId'] }}/publishers
+          http_method: GET
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path: []
+        decoder:
+          type: JsonDecoder
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          $ref: "#/schemas/publishers"
+    accounts:
+      type: DeclarativeStream
+      name: accounts
+      primary_key:
+        - accountId
+      retriever:
+        type: SimpleRetriever
+        requester:
+          $ref: "#/definitions/base_requester"
+          path: /accounts
+          http_method: GET
+          request_parameters:
+            type: advertiser
+        record_selector:
+          type: RecordSelector
+          extractor:
+            type: DpathExtractor
+            field_path:
+              - accounts
+        decoder:
+          type: JsonDecoder
+      schema_loader:
+        type: InlineSchemaLoader
+        schema:
+          $ref: "#/schemas/accounts"
+  base_requester:
+    type: HttpRequester
+    url_base: https://api.awin.com
+    authenticator:
+      type: BearerAuthenticator
+      api_token: "{{ config[\"api_key\"] }}"
+
+api_budget:
+  type: HTTPAPIBudget
+  policies:
+    - type: MovingWindowCallRatePolicy
+      rates:
+        - limit: 20
+          interval: PT1M
+      matchers: []
+
+streams:
+  - $ref: "#/definitions/streams/campaign_performance"
+  - $ref: "#/definitions/streams/transactions"
+  - $ref: "#/definitions/streams/publisher_performance"
+  - $ref: "#/definitions/streams/creative_performance"
+  - $ref: "#/definitions/streams/publishers"
+  - $ref: "#/definitions/streams/accounts"
+
+spec:
+  type: Spec
+  connection_specification:
+    type: object
+    $schema: http://json-schema.org/draft-07/schema#
+    required:
+      - advertiserId
+      - api_key
+      - step_increment
+      - lookback_days
+      - start_date
+    properties:
+      advertiserId:
+        type: string
+        description: >-
+          Your Awin Advertiser ID. You can find this in your Awin dashboard or
+          account settings.
+        name: advertiserId
+        order: 0
+        title: advertiserId
+      api_key:
+        type: string
+        description: >-
+          Your Awin API key. Generate this from your Awin account under API
+          Credentials.
+        order: 1
+        title: API Key
+        airbyte_secret: true
+      step_increment:
+        type: string
+        description: >
+          The time window size for each API request in ISO8601 duration format.
+
+          For the campaign performance stream, Awin API explicitly limits the
+          period between startDate and endDate to 400 days maximum.
+        order: 2
+        title: Step Increment
+        default: P400D
+      lookback_days:
+        type: integer
+        description: >-
+          Number of days to look back on each sync to catch any updates to
+          existing records.
+        order: 3
+        title: Lookback Days
+      start_date:
+        type: string
+        description: Start date for data replication in YYYY-MM-DD format
+        order: 4
+        title: Start Date
+        format: date
+        pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}$
+      regions:
+        type: array
+        description: >-
+          Awin regions to request for the creative performance stream. The Awin
+          creative report requires a region, so the stream reads one report per
+          selected region and returns no records when none are selected. A region
+          added after this stream has synced data is read only from the last
+          synced date minus Lookback Days, so refresh the creative_performance
+          stream after adding a region to backfill its earlier history.
+        order: 5
+        title: Creative performance regions
+        items:
+          type: string
+          enum:
+            - AT
+            - AU
+            - BE
+            - BR
+            - BU
+            - CA
+            - CH
+            - DE
+            - DK
+            - ES
+            - FI
+            - FR
+            - GB
+            - IE
+            - IT
+            - NL
+            - "NO"
+            - PL
+            - SE
+            - US
+    additionalProperties: true
+
+metadata:
+  autoImportSchema:
+    campaign_performance: true
+    transactions: true
+    publisher_performance: false
+    creative_performance: false
+    publishers: false
+    accounts: false
+  testedStreams:
+    campaign_performance:
+      hasRecords: true
+      streamHash: 5ce77ed7ebbff66c788adad09a8e642135d257a0
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    transactions:
+      streamHash: 6bc35d3e4bdc67457b45eea06a4d55d33aa9cade
+      hasResponse: true
+      responsesAreSuccessful: true
+      hasRecords: true
+      primaryKeysArePresent: true
+      primaryKeysAreUnique: true
+  assist:
+    docsUrl: https://help.awin.com/apidocs/for-advertisers
+
+schemas:
+  campaign_performance:
+    type: object
+    $schema: http://json-schema.org/schema#
+    additionalProperties: true
+    properties:
+      campaign:
+        type: string
+      date:
+        type: string
+      publisherId:
+        type: string
+      publisherName:
+        type:
+          - string
+          - "null"
+      totals:
+        type:
+          - object
+          - "null"
+        properties:
+          commissionAmount:
+            type:
+              - object
+              - "null"
+            properties:
+              approved:
+                type:
+                  - string
+                  - "null"
+              bonus:
+                type:
+                  - string
+                  - "null"
+              declined:
+                type:
+                  - string
+                  - "null"
+              pending:
+                type:
+                  - string
+                  - "null"
+              total:
+                type:
+                  - string
+                  - "null"
+          quantity:
+            type:
+              - object
+              - "null"
+            properties:
+              approved:
+                type:
+                  - number
+                  - "null"
+              bonus:
+                type:
+                  - number
+                  - "null"
+              click:
+                type:
+                  - number
+                  - "null"
+              declined:
+                type:
+                  - number
+                  - "null"
+              pending:
+                type:
+                  - number
+                  - "null"
+              total:
+                type:
+                  - number
+                  - "null"
+          saleAmount:
+            type:
+              - object
+              - "null"
+            properties:
+              approved:
+                type:
+                  - string
+                  - "null"
+              bonus:
+                type:
+                  - string
+                  - "null"
+              declined:
+                type:
+                  - string
+                  - "null"
+              pending:
+                type:
+                  - string
+                  - "null"
+              total:
+                type:
+                  - string
+                  - "null"
+    required:
+      - date
+      - publisherId
+      - campaign
+  transactions:
+    type: object
+    $schema: http://json-schema.org/schema#
+    additionalProperties: true
+    properties:
+      type:
+        type:
+          - string
+          - "null"
+      advertiserCost:
+        type:
+          - object
+          - "null"
+        properties: {}
+      advertiserCountry:
+        type:
+          - string
+          - "null"
+      advertiserId:
+        type:
+          - number
+          - "null"
+      amended:
+        type:
+          - boolean
+          - "null"
+      clickDate:
+        type:
+          - string
+          - "null"
+      clickDevice:
+        type:
+          - string
+          - "null"
+      clickRefs:
+        type:
+          - object
+          - "null"
+        properties:
+          clickRef:
+            type:
+              - string
+              - "null"
+      commissionAmount:
+        type:
+          - object
+          - "null"
+        properties:
+          amount:
+            type:
+              - number
+              - "null"
+          currency:
+            type:
+              - string
+              - "null"
+      commissionStatus:
+        type:
+          - string
+          - "null"
+      customParameters:
+        type:
+          - array
+          - "null"
+        items:
+          type:
+            - object
+            - "null"
+          properties:
+            key:
+              type:
+                - string
+                - "null"
+            value:
+              type:
+                - string
+                - "null"
+      customerAcquisition:
+        type:
+          - string
+          - "null"
+      customerCountry:
+        type:
+          - string
+          - "null"
+      id:
+        type: number
+      ipHash:
+        type:
+          - string
+          - "null"
+      lapseTime:
+        type:
+          - number
+          - "null"
+      networkFee:
+        type:
+          - object
+          - "null"
+        properties:
+          amount:
+            type:
+              - number
+              - "null"
+          currency:
+            type:
+              - string
+              - "null"
+      orderRef:
+        type:
+          - string
+          - "null"
+      paidToPublisher:
+        type:
+          - boolean
+          - "null"
+      paymentId:
+        type:
+          - number
+          - "null"
+      publisherId:
+        type:
+          - number
+          - "null"
+      publisherUrl:
+        type:
+          - string
+          - "null"
+      saleAmount:
+        type:
+          - object
+          - "null"
+        properties:
+          amount:
+            type:
+              - number
+              - "null"
+          currency:
+            type:
+              - string
+              - "null"
+      siteName:
+        type:
+          - string
+          - "null"
+      transactionDate:
+        type: string
+      transactionDevice:
+        type:
+          - string
+          - "null"
+      transactionParts:
+        type:
+          - array
+          - "null"
+        items:
+          type:
+            - object
+            - "null"
+          properties:
+            amount:
+              type:
+                - number
+                - "null"
+            commissionAmount:
+              type:
+                - number
+                - "null"
+            commissionGroupCode:
+              type:
+                - string
+                - "null"
+            commissionGroupId:
+              type:
+                - number
+                - "null"
+            commissionGroupName:
+              type:
+                - string
+                - "null"
+            trackedParts:
+              type:
+                - array
+                - "null"
+              items:
+                type:
+                  - object
+                  - "null"
+                properties:
+                  amount:
+                    type:
+                      - number
+                      - "null"
+                  code:
+                    type:
+                      - string
+                      - "null"
+                  currency:
+                    type:
+                      - string
+                      - "null"
+      transactionQueryId:
+        type:
+          - number
+          - "null"
+      url:
+        type:
+          - string
+          - "null"
+      voucherCode:
+        type:
+          - string
+          - "null"
+      voucherCodeUsed:
+        type:
+          - boolean
+          - "null"
+      basketProducts:
+        type:
+          - array
+          - "null"
+        items:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+      is_deleted:
+        type:
+          - boolean
+          - "null"
+    required:
+      - id
+      - transactionDate
+  publisher_performance:
+    type: object
+    $schema: http://json-schema.org/schema#
+    additionalProperties: true
+    properties:
+      date:
+        type:
+          - "null"
+          - string
+        format: date
+      advertiserId:
+        type:
+          - "null"
+          - integer
+      advertiserName:
+        type:
+          - "null"
+          - string
+      publisherId:
+        type:
+          - "null"
+          - integer
+      publisherName:
+        type:
+          - "null"
+          - string
+      region:
+        type:
+          - "null"
+          - string
+      currency:
+        type:
+          - "null"
+          - string
+      impressions:
+        type:
+          - "null"
+          - integer
+      clicks:
+        type:
+          - "null"
+          - integer
+      pendingNo:
+        type:
+          - "null"
+          - integer
+      pendingValue:
+        type:
+          - "null"
+          - number
+      pendingComm:
+        type:
+          - "null"
+          - number
+      confirmedNo:
+        type:
+          - "null"
+          - integer
+      confirmedValue:
+        type:
+          - "null"
+          - number
+      confirmedComm:
+        type:
+          - "null"
+          - number
+      bonusNo:
+        type:
+          - "null"
+          - integer
+      bonusValue:
+        type:
+          - "null"
+          - number
+      bonusComm:
+        type:
+          - "null"
+          - number
+      totalNo:
+        type:
+          - "null"
+          - integer
+      totalValue:
+        type:
+          - "null"
+          - number
+      totalComm:
+        type:
+          - "null"
+          - number
+      declinedNo:
+        type:
+          - "null"
+          - integer
+      declinedValue:
+        type:
+          - "null"
+          - number
+      declinedComm:
+        type:
+          - "null"
+          - number
+      tags:
+        type:
+          - "null"
+          - array
+        items:
+          type:
+            - "null"
+            - string
+  creative_performance:
+    type: object
+    $schema: http://json-schema.org/schema#
+    additionalProperties: true
+    properties:
+      date:
+        type:
+          - "null"
+          - string
+        format: date
+      advertiserId:
+        type:
+          - "null"
+          - integer
+      advertiserName:
+        type:
+          - "null"
+          - string
+      publisherId:
+        type:
+          - "null"
+          - integer
+      publisherName:
+        type:
+          - "null"
+          - string
+      region:
+        type:
+          - "null"
+          - string
+      currency:
+        type:
+          - "null"
+          - string
+      impressions:
+        type:
+          - "null"
+          - integer
+      clicks:
+        type:
+          - "null"
+          - integer
+      creativeId:
+        type:
+          - "null"
+          - integer
+      creativeName:
+        type:
+          - "null"
+          - string
+      tagName:
+        type:
+          - "null"
+          - string
+      pendingNo:
+        type:
+          - "null"
+          - integer
+      pendingValue:
+        type:
+          - "null"
+          - number
+      pendingComm:
+        type:
+          - "null"
+          - number
+      confirmedNo:
+        type:
+          - "null"
+          - integer
+      confirmedValue:
+        type:
+          - "null"
+          - number
+      confirmedComm:
+        type:
+          - "null"
+          - number
+      bonusNo:
+        type:
+          - "null"
+          - integer
+      bonusValue:
+        type:
+          - "null"
+          - number
+      bonusComm:
+        type:
+          - "null"
+          - number
+      totalNo:
+        type:
+          - "null"
+          - integer
+      totalValue:
+        type:
+          - "null"
+          - number
+      totalComm:
+        type:
+          - "null"
+          - number
+      declinedNo:
+        type:
+          - "null"
+          - integer
+      declinedValue:
+        type:
+          - "null"
+          - number
+      declinedComm:
+        type:
+          - "null"
+          - number
+  publishers:
+    type: object
+    $schema: http://json-schema.org/schema#
+    additionalProperties: true
+    properties:
+      id:
+        type:
+          - "null"
+          - integer
+      name:
+        type:
+          - "null"
+          - string
+      primaryRegion:
+        type:
+          - "null"
+          - string
+      primaryType:
+        type:
+          - "null"
+          - string
+      salesRegions:
+        type:
+          - "null"
+          - array
+        items:
+          type:
+            - "null"
+            - string
+  accounts:
+    type: object
+    $schema: http://json-schema.org/schema#
+    additionalProperties: true
+    properties:
+      accountId:
+        type:
+          - "null"
+          - integer
+      accountName:
+        type:
+          - "null"
+          - string
+      accountType:
+        type:
+          - "null"
+          - string
+      userRole:
+        type:
+          - "null"
+          - string

@@ -1,0 +1,359 @@
+# Copyright (c) 2025 Airbyte, Inc., all rights reserved.
+
+"""
+Mock server tests for the search_analytics_site_report_by_site stream.
+
+The search_analytics_site_report_by_site stream is an incremental stream that:
+- Uses POST requests to /webmasters/v3/sites/{site_url}/searchAnalytics/query
+- Partitions by site_urls from config AND search_types (web, news, image, video, googleNews)
+- Uses dimensions: ["date", "country", "device"]
+- Uses aggregationType: byProperty, except auto for googleNews
+- Uses DatetimeBasedCursor with P3D step for incremental sync
+- Has pagination via startRow/rowLimit in request body
+"""
+
+import json
+import re
+from typing import Any, Dict, List
+from unittest import TestCase
+
+import requests_mock as rm
+from freezegun import freeze_time
+from mock_server.config import ConfigBuilder
+from mock_server.response_builder import create_oauth_response
+
+from airbyte_cdk.models import SyncMode
+from airbyte_cdk.test.catalog_builder import CatalogBuilder
+from airbyte_cdk.test.entrypoint_wrapper import read
+from airbyte_cdk.test.mock_http import HttpMocker, HttpRequest, HttpResponse
+from airbyte_cdk.test.state_builder import StateBuilder
+from unit_tests.conftest import get_source
+
+
+_STREAM_NAME = "search_analytics_site_report_by_site"
+_SEARCH_TYPES = ["web", "news", "image", "video", "googleNews"]
+
+
+def _build_search_analytics_response(rows: list) -> dict:
+    """Build a response body for the searchAnalytics endpoint."""
+    return {"rows": rows}
+
+
+def _build_search_analytics_row(
+    date: str,
+    country: str,
+    device: str,
+    clicks: int = 100,
+    impressions: int = 1000,
+    ctr: float = 0.1,
+    position: float = 5.0,
+) -> dict:
+    """Build a single search analytics row with date, country, and device dimensions."""
+    return {
+        "keys": [date, country, device],
+        "clicks": clicks,
+        "impressions": impressions,
+        "ctr": ctr,
+        "position": position,
+    }
+
+
+def _oauth_request() -> HttpRequest:
+    """Build a mock OAuth token request."""
+    return HttpRequest(
+        url="https://oauth2.googleapis.com/token",
+        body="grant_type=refresh_token&client_id=test_client_id&client_secret=test_client_secret&refresh_token=test_refresh_token",
+    )
+
+
+@freeze_time("2024-01-04T00:00:00Z")
+class TestSearchAnalyticsSiteReportBySiteStream(TestCase):
+    """Tests for the search_analytics_site_report_by_site stream.
+
+    This stream partitions by site_urls AND search_types (5 types).
+    Uses dimensions: ["date", "country", "device"] for the API request.
+    Uses aggregationType: byProperty, except auto for googleNews.
+    """
+
+    def _read_stream(self, config: dict, state: list = None, sync_mode: SyncMode = SyncMode.full_refresh) -> list:
+        """Helper to read the stream and return output."""
+        source = get_source(config, state=state)
+        catalog = CatalogBuilder().with_stream(_STREAM_NAME, sync_mode).build()
+        return read(source, config, catalog, state=state)
+
+    @HttpMocker()
+    def test_full_refresh_single_site(self, http_mocker: HttpMocker) -> None:
+        """Test full refresh with a single site URL."""
+        http_mocker.post(_oauth_request(), create_oauth_response())
+
+        config = ConfigBuilder().with_site_urls(["https://example.com/"]).with_start_date("2024-01-01").with_end_date("2024-01-03").build()
+
+        captured_bodies: List[Dict[str, Any]] = []
+
+        def search_analytics_callback(request: rm.request._RequestObjectProxy, context: Any) -> str:
+            """Callback to capture request bodies and return appropriate responses."""
+            body = json.loads(request.body)
+            captured_bodies.append(body)
+
+            # Return data only for "web" search type
+            if body.get("type") == "web":
+                return json.dumps(
+                    _build_search_analytics_response(
+                        [
+                            _build_search_analytics_row("2024-01-01", "usa", "DESKTOP", clicks=100, impressions=1000),
+                            _build_search_analytics_row("2024-01-01", "gbr", "MOBILE", clicks=50, impressions=500),
+                        ]
+                    )
+                )
+            return json.dumps(_build_search_analytics_response([]))
+
+        http_mocker._mocker.post(
+            re.compile(r"https://www\.googleapis\.com/webmasters/v3/sites/.*/searchAnalytics/query"),
+            text=search_analytics_callback,
+        )
+
+        output = self._read_stream(config)
+        records = [message for message in output.records if message.record.stream == _STREAM_NAME]
+
+        # Verify we captured requests for all 5 search types
+        captured_search_types = {body.get("type") for body in captured_bodies}
+        assert captured_search_types == set(_SEARCH_TYPES), f"Expected {_SEARCH_TYPES}, got {captured_search_types}"
+
+        # Verify dimensions in request body
+        for body in captured_bodies:
+            assert body.get("dimensions") == [
+                "date",
+                "country",
+                "device",
+            ], f"Expected dimensions ['date', 'country', 'device'], got {body.get('dimensions')}"
+
+        # Google does not support byProperty for Google News partitions.
+        for body in captured_bodies:
+            expected_aggregation_type = "auto" if body.get("type") == "googleNews" else "byProperty"
+            assert (
+                body.get("aggregationType") == expected_aggregation_type
+            ), f"Expected aggregationType {expected_aggregation_type!r} for {body.get('type')}, got {body.get('aggregationType')!r}"
+
+        # Should have 2 records (from web search type)
+        assert len(records) == 2
+
+        # Verify transformations added site_url and search_type
+        for record in records:
+            assert record.record.data["site_url"] == "https://example.com/"
+            assert record.record.data["search_type"] == "web"
+            assert "date" in record.record.data
+            assert "country" in record.record.data
+            assert "device" in record.record.data
+
+    @HttpMocker()
+    def test_google_news_partition_uses_auto_aggregation_type(self, http_mocker: HttpMocker) -> None:
+        """Use the Google-supported aggregation type for Google News partitions."""
+        http_mocker.post(_oauth_request(), create_oauth_response())
+
+        config = ConfigBuilder().with_site_urls(["https://example.com/"]).with_start_date("2024-01-01").with_end_date("2024-01-03").build()
+
+        captured_bodies: List[Dict[str, Any]] = []
+        google_error = {
+            "error": {
+                "code": 400,
+                "message": "'BY_PROPERTY' is not a valid aggregation type in the context of the request.",
+                "errors": [
+                    {
+                        "message": "'BY_PROPERTY' is not a valid aggregation type in the context of the request.",
+                        "domain": "global",
+                        "reason": "invalidParameter",
+                        "location": "aggregation_type",
+                        "locationType": "parameter",
+                    }
+                ],
+                "status": "INVALID_ARGUMENT",
+            }
+        }
+
+        def search_analytics_callback(request: rm.request._RequestObjectProxy, context: Any) -> str:
+            body = json.loads(request.body)
+            captured_bodies.append(body)
+
+            if body.get("type") in ("googleNews", "discover") and body.get("aggregationType") == "byProperty":
+                context.status_code = 400
+                return json.dumps(google_error)
+            if body.get("type") in ("googleNews", "web"):
+                return json.dumps(_build_search_analytics_response([_build_search_analytics_row("2024-01-01", "usa", "DESKTOP")]))
+            return json.dumps(_build_search_analytics_response([]))
+
+        http_mocker._mocker.post(
+            re.compile(r"https://www\.googleapis\.com/webmasters/v3/sites/.*/searchAnalytics/query"),
+            text=search_analytics_callback,
+        )
+
+        output = self._read_stream(config)
+        records = [message for message in output.records if message.record.stream == _STREAM_NAME]
+
+        google_news_bodies = [body for body in captured_bodies if body.get("type") == "googleNews"]
+        assert google_news_bodies
+        assert all(body.get("aggregationType") == "auto" for body in google_news_bodies)
+
+        for search_type in ("web", "news", "image", "video"):
+            bodies = [body for body in captured_bodies if body.get("type") == search_type]
+            assert bodies
+            assert all(body.get("aggregationType") == "byProperty" for body in bodies)
+
+        record_search_types = {record.record.data["search_type"] for record in records}
+        assert {"googleNews", "web"} <= record_search_types
+        trace_errors = [message for message in output.trace_messages if hasattr(message, "error")]
+        assert not trace_errors, f"Expected no trace error messages, got: {trace_errors}"
+
+    @HttpMocker()
+    def test_always_use_aggregation_type_auto_overrides_all_search_types(self, http_mocker: HttpMocker) -> None:
+        """The compatibility config continues to override every search type."""
+        http_mocker.post(_oauth_request(), create_oauth_response())
+
+        config = (
+            ConfigBuilder()
+            .with_site_urls(["https://example.com/"])
+            .with_start_date("2024-01-01")
+            .with_end_date("2024-01-03")
+            .with_always_use_aggregation_type_auto(True)
+            .build()
+        )
+        captured_bodies: List[Dict[str, Any]] = []
+
+        def search_analytics_callback(request: rm.request._RequestObjectProxy, context: Any) -> str:
+            body = json.loads(request.body)
+            captured_bodies.append(body)
+            return json.dumps(_build_search_analytics_response([]))
+
+        http_mocker._mocker.post(
+            re.compile(r"https://www\.googleapis\.com/webmasters/v3/sites/.*/searchAnalytics/query"),
+            text=search_analytics_callback,
+        )
+
+        self._read_stream(config)
+
+        assert {body.get("type") for body in captured_bodies} == set(_SEARCH_TYPES)
+        assert all(body.get("aggregationType") == "auto" for body in captured_bodies)
+
+    @HttpMocker()
+    def test_error_handler_fail_on_400(self, http_mocker: HttpMocker) -> None:
+        """Test FAIL error handler for 400 errors.
+
+        The error handler should fail on 400 errors with appropriate error message.
+        """
+        http_mocker.post(_oauth_request(), create_oauth_response())
+
+        config = ConfigBuilder().with_site_urls(["https://example.com/"]).with_start_date("2024-01-01").with_end_date("2024-01-03").build()
+
+        def bad_request_callback(request: rm.request._RequestObjectProxy, context: Any) -> str:
+            """Return 400 error for all requests."""
+            context.status_code = 400
+            return json.dumps({"error": {"message": "Invalid request"}})
+
+        http_mocker._mocker.post(
+            re.compile(r"https://www\.googleapis\.com/webmasters/v3/sites/.*/searchAnalytics/query"),
+            text=bad_request_callback,
+        )
+
+        output = self._read_stream(config)
+        records = [message for message in output.records if message.record.stream == _STREAM_NAME]
+
+        # Should have 0 records due to error
+        assert len(records) == 0
+
+        # Verify the sync failed with appropriate error handling
+        trace_messages = [msg for msg in output.trace_messages if hasattr(msg, "error")]
+        assert len(trace_messages) > 0 or len(records) == 0, "Expected failure indication for FAIL handler on 400 response"
+
+    @HttpMocker()
+    def test_incremental_sync_first_sync_no_state(self, http_mocker: HttpMocker) -> None:
+        """Test incremental sync with no prior state (first sync).
+
+        This simulates the first sync where no state is passed in.
+        The connector should fetch all data from start_date and emit a state message.
+        """
+        http_mocker.post(_oauth_request(), create_oauth_response())
+
+        config = ConfigBuilder().with_site_urls(["https://example.com/"]).with_start_date("2024-01-01").with_end_date("2024-01-03").build()
+
+        def search_analytics_callback(request: rm.request._RequestObjectProxy, context: Any) -> str:
+            body = json.loads(request.body)
+            if body.get("type") == "web":
+                return json.dumps(
+                    _build_search_analytics_response(
+                        [
+                            _build_search_analytics_row("2024-01-01", "usa", "DESKTOP", clicks=100, impressions=1000),
+                            _build_search_analytics_row("2024-01-02", "gbr", "MOBILE", clicks=150, impressions=1500),
+                        ]
+                    )
+                )
+            return json.dumps(_build_search_analytics_response([]))
+
+        http_mocker._mocker.post(
+            re.compile(r"https://www\.googleapis\.com/webmasters/v3/sites/.*/searchAnalytics/query"),
+            text=search_analytics_callback,
+        )
+
+        output = self._read_stream(config, state=None, sync_mode=SyncMode.incremental)
+        records = [message for message in output.records if message.record.stream == _STREAM_NAME]
+
+        # Should have 2 records from web search type
+        assert len(records) == 2
+
+        # Verify state message was emitted
+        state_messages = output.state_messages
+        assert len(state_messages) > 0, "Expected state message to be emitted after first sync"
+
+    @HttpMocker()
+    def test_incremental_sync_with_prior_state(self, http_mocker: HttpMocker) -> None:
+        """Test incremental sync with prior state (second sync).
+
+        This simulates a subsequent sync where state is passed in.
+        The connector should fetch data starting from the state cursor value.
+        """
+        http_mocker.post(_oauth_request(), create_oauth_response())
+
+        config = ConfigBuilder().with_site_urls(["https://example.com/"]).with_start_date("2024-01-01").with_end_date("2024-01-05").build()
+
+        # Build state with prior cursor value
+        prior_state = (
+            StateBuilder()
+            .with_stream_state(
+                _STREAM_NAME,
+                {
+                    "states": [
+                        {
+                            "partition": {"site_url": "https://example.com/", "search_type": "web"},
+                            "cursor": {"date": "2024-01-02"},
+                        }
+                    ]
+                },
+            )
+            .build()
+        )
+
+        def search_analytics_callback(request: rm.request._RequestObjectProxy, context: Any) -> str:
+            body = json.loads(request.body)
+            if body.get("type") == "web":
+                return json.dumps(
+                    _build_search_analytics_response(
+                        [
+                            _build_search_analytics_row("2024-01-03", "usa", "DESKTOP", clicks=200, impressions=2000),
+                            _build_search_analytics_row("2024-01-04", "deu", "TABLET", clicks=250, impressions=2500),
+                        ]
+                    )
+                )
+            return json.dumps(_build_search_analytics_response([]))
+
+        http_mocker._mocker.post(
+            re.compile(r"https://www\.googleapis\.com/webmasters/v3/sites/.*/searchAnalytics/query"),
+            text=search_analytics_callback,
+        )
+
+        output = self._read_stream(config, state=prior_state, sync_mode=SyncMode.incremental)
+        records = [message for message in output.records if message.record.stream == _STREAM_NAME]
+
+        # Should have 2 records from web search type (after state cursor)
+        assert len(records) == 2
+
+        # Verify state message was emitted with updated cursor
+        state_messages = output.state_messages
+        assert len(state_messages) > 0, "Expected state message to be emitted"

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination
 
@@ -25,16 +25,18 @@ class LocalAirbyteDestination(private val dest: Destination) : AirbyteDestinatio
     override fun start(
         destinationConfig: WorkerDestinationConfig,
         jobRoot: Path,
-        additionalEnvironmentVariables: Map<String, String>
+        additionalEnvironmentVariables: Map<String, String>,
     ) {
         consumer =
             dest.getConsumer(
                 destinationConfig.destinationConnectionConfiguration,
                 Jsons.`object`(
                     Jsons.jsonNode(destinationConfig.catalog),
-                    ConfiguredAirbyteCatalog::class.java
-                )!!
-            ) { Destination::defaultOutputRecordCollector }
+                    ConfiguredAirbyteCatalog::class.java,
+                )!!,
+            ) {
+                Destination::defaultOutputRecordCollector
+            }
         consumer!!.start()
     }
 

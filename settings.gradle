@@ -1,24 +1,54 @@
-import com.gradle.scan.plugin.PublishedBuildScan
-
 pluginManagement {
+    // Repository URLs are indirected through 'airbyte.dependencies.maven.*' properties so that
+    // restricted environments can point the build at internal mirrors. Defaults live in
+    // gradle.properties and match the public URLs, so an unconfigured build is unchanged.
+    // Setting a property to the empty string omits that repository entirely, which turns an
+    // unreachable repo into a resolution error instead of a network hang.
+    // See docs/platform/connector-development/local-connector-development.md for the full list.
+    def repoUrl = { String key ->
+        settings.hasProperty(key) ? settings.getProperty(key).toString().trim() ?: null : null
+    }
+    def airbytePublicJarsUrl = repoUrl('airbyte.dependencies.maven.airbytePublicJars')
+    // Absent by default: falls through to the gradlePluginPortal()/mavenCentral() shorthands below.
+    def pluginPortalUrl = repoUrl('airbyte.dependencies.maven.gradlePluginPortal')
+    def mavenCentralUrl = repoUrl('airbyte.dependencies.maven.central')
+
     repositories {
         // # Gradle looks for dependency artifacts in repositories listed in 'repositories' blocks in descending order.
 
         // ## Prefer repos controlled by Airbyte.
-        // TODO: add airbyte-controlled proxy repos here
+        if (airbytePublicJarsUrl) {
+            maven {
+                url = airbytePublicJarsUrl
+            }
+        }
 
         // ## Look into other, public repos.
         // Gradle plugin portal.
-        gradlePluginPortal()
+        if (pluginPortalUrl) {
+            maven {
+                name 'gradle-plugin-portal'
+                url = pluginPortalUrl
+            }
+        } else {
+            gradlePluginPortal()
+        }
         // Maven Central has most of everything.
-        mavenCentral()
+        if (mavenCentralUrl) {
+            maven {
+                name 'maven-central'
+                url = mavenCentralUrl
+            }
+        } else {
+            mavenCentral()
+        }
     }
 }
 
 // Configure the gradle enterprise plugin to enable build scans. Enabling the plugin at the top of the settings file allows the build scan to record
 // as much information as possible.
 plugins {
-    id "com.gradle.enterprise" version "3.15.1"
+    id "com.gradle.develocity" version "3.19.2"
     id 'com.github.burrunan.s3-build-cache' version "1.8.1"
 }
 
@@ -28,21 +58,36 @@ dependencyResolutionManagement {
     // Set FAIL_ON_PROJECT_REPOS to ensure there are no more `repositories { ... }` blocks than necessary.
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
 
+    // See the note in pluginManagement above: URLs are overridable via
+    // 'airbyte.dependencies.maven.*' properties, and an empty value omits the repository.
+    def repoUrl = { String key ->
+        settings.hasProperty(key) ? settings.getProperty(key).toString().trim() ?: null : null
+    }
+    def airbytePublicJarsUrl = repoUrl('airbyte.dependencies.maven.airbytePublicJars')
+    // Absent by default: falls through to the mavenCentral() shorthand below.
+    def mavenCentralUrl = repoUrl('airbyte.dependencies.maven.central')
+    def jitpackUrl = repoUrl('airbyte.dependencies.maven.jitpack')
+    def elasticSearchSnapshotsUrl = repoUrl('airbyte.dependencies.maven.elasticSearchSnapshots')
+    def redshiftUrl = repoUrl('airbyte.dependencies.maven.redshift')
+    def confluentUrl = repoUrl('airbyte.dependencies.maven.confluent')
+
     repositories {
         // # Gradle looks for dependency artifacts in repositories listed in 'repositories' blocks in descending order.
 
         // ## Prefer repos controlled by Airbyte.
 
-        maven {
-            // This repo hosts our public artifacts and can be referenced by anyone.
-            name 'airbyte-public-jars'
-            url 'https://airbyte.mycloudrepo.io/public/repositories/airbyte-public-jars/'
-            content {
-                // Whitelist artifacts served by this repo because it's slow.
-                includeGroup 'io.airbyte'
-                includeGroupByRegex 'io\\.airbyte\\..*'
-                includeGroup 'com.hadoop.gplcompression'
-                includeGroup 'com.therealvan'
+        if (airbytePublicJarsUrl) {
+            maven {
+                // This repo hosts our public artifacts and can be referenced by anyone.
+                name 'airbyte-public-jars'
+                url airbytePublicJarsUrl
+                content {
+                    // Whitelist artifacts served by this repo because it's slow.
+                    includeGroup 'io.airbyte'
+                    includeGroupByRegex 'io\\.airbyte\\..*'
+                    includeGroup 'com.hadoop.gplcompression'
+                    includeGroup 'com.therealvan'
+                }
             }
         }
         // TODO: add airbyte-controlled proxy repos here
@@ -50,30 +95,43 @@ dependencyResolutionManagement {
         // ## Look into other, public repos.
 
         // Maven Central has most of everything.
-        mavenCentral()
+        if (mavenCentralUrl) {
+            maven {
+                name 'maven-central'
+                url mavenCentralUrl
+            }
+        } else {
+            mavenCentral()
+        }
         // Jitpack is used to pull dependencies directly from github.
-        maven {
-            name 'jitpack'
-            url 'https://jitpack.io'
-            content {
-                includeGroupByRegex 'com\\.github\\..*'
-                includeGroup 'net.jimblackler.jsonschemafriend'
+        if (jitpackUrl) {
+            maven {
+                name 'jitpack'
+                url jitpackUrl
+                content {
+                    includeGroupByRegex 'com\\.github\\..*'
+                    includeGroup 'net.jimblackler.jsonschemafriend'
+                }
             }
         }
         // Elastic Search repo.
-        maven {
-            name 'elastic-search-snapshots'
-            url 'https://snapshots.elastic.co/maven/'
-            content {
-                includeGroup 'co.elastic.clients'
+        if (elasticSearchSnapshotsUrl) {
+            maven {
+                name 'elastic-search-snapshots'
+                url elasticSearchSnapshotsUrl
+                content {
+                    includeGroup 'co.elastic.clients'
+                }
             }
         }
         // Redshift repo.
-        maven {
-            name 'redshift'
-            url 'https://s3.amazonaws.com/redshift-maven-repository/release'
-            content {
-                includeGroup 'com.amazon.redshift'
+        if (redshiftUrl) {
+            maven {
+                name 'redshift'
+                url redshiftUrl
+                content {
+                    includeGroup 'com.amazon.redshift'
+                }
             }
         }
         // Rockset repo.
@@ -93,23 +151,25 @@ dependencyResolutionManagement {
             }
         }
         // Confluent repo.
-        maven {
-            name 'confluent'
-            url "https://packages.confluent.io/maven"
-            content {
-                includeGroup 'io.confluent'
-                includeGroup 'org.apache.kafka'
+        if (confluentUrl) {
+            maven {
+                name 'confluent'
+                url confluentUrl
+                content {
+                    includeGroup 'io.confluent'
+                    includeGroup 'org.apache.kafka'
+                }
             }
         }
     }
 }
 
-gradleEnterprise {
+develocity {
     buildScan {
-        termsOfServiceUrl = "https://gradle.com/terms-of-service"
-        termsOfServiceAgree = "yes"
+        termsOfUseUrl = "https://gradle.com/terms-of-service"
+        termsOfUseAgree = "yes"
         uploadInBackground = !isCI // Disable in CI or scan URLs may not work.
-        buildScanPublished { PublishedBuildScan scan ->
+        buildScanPublished { scan ->
             file("scan-journal.log") << "${new Date()} - ${scan.buildScanId} - ${scan.buildScanUri}\n"
         }
     }
@@ -138,46 +198,40 @@ if (isCI) {
 
 rootProject.name = 'airbyte'
 
+boolean hasGradleBuildFile(java.nio.file.Path path) {
+    def buildFiles = file(path).list { file, name -> name.matches("build\\.gradle(?:\\.kts)?") }
+    return buildFiles.length == 1
+}
+
+void includeCdkProjects(String dir, String gradlePathPrefix, String projectNamePrefix) {
+    def path = rootDir.toPath().resolve(dir)
+    if (!path.toFile().exists()) {
+        path = rootDir.toPath().resolve("airbyte-submodule").resolve(dir)
+        if (!path.toFile().exists()) {
+            return
+        }
+    }
+    path.eachDir { subDir ->
+        if (!hasGradleBuildFile(subDir)) {
+            return
+        }
+        String gradlePath = gradlePathPrefix + subDir.getFileName()
+        include gradlePath
+        project(gradlePath).name = projectNamePrefix + subDir.getFileName()
+    }
+}
+
+// Include convenience aggregator.
+include ":airbyte-cdk"
 // Include all java CDK modules.
-def cdkPath = rootDir.toPath().resolve('airbyte-cdk/java/airbyte-cdk')
-if (cdkPath.toFile().exists()) {
-    cdkPath.eachDir { dir ->
-        def buildFiles = file(dir).list { file, name -> name == "build.gradle" }
-        if (buildFiles.length == 1) {
-            def path = ":airbyte-cdk:java:airbyte-cdk:${dir.getFileName()}"
-            include path
-            project(path).name = "airbyte-cdk-${dir.getFileName()}"
-        }
-    }
-}
-def bulkCdkCorePath = rootDir.toPath().resolve('airbyte-cdk/bulk/core')
-if (bulkCdkCorePath.toFile().exists()) {
-    bulkCdkCorePath.eachDir { dir ->
-        def buildFiles = file(dir).list { file, name -> name == "build.gradle" }
-        if (buildFiles.length == 1) {
-            def path = ":airbyte-cdk:bulk:core:${dir.getFileName()}"
-            include path
-            project(path).name = "bulk-cdk-core-${dir.getFileName()}"
-        }
-    }
-}
-def bulkCdkToolkitPath = rootDir.toPath().resolve('airbyte-cdk/bulk/toolkits')
-if (bulkCdkToolkitPath.toFile().exists()) {
-    bulkCdkToolkitPath.eachDir { dir ->
-        def buildFiles = file(dir).list { file, name -> name == "build.gradle" }
-        if (buildFiles.length == 1) {
-            def path = ":airbyte-cdk:bulk:toolkits:${dir.getFileName()}"
-            include path
-            project(path).name = "bulk-cdk-toolkit-${dir.getFileName()}"
-        }
-    }
-}
+includeCdkProjects("airbyte-cdk/java/airbyte-cdk", ":airbyte-cdk:java:airbyte-cdk:", "airbyte-cdk-")
+includeCdkProjects("airbyte-cdk/bulk/core", ":airbyte-cdk:bulk:core:", "bulk-cdk-core-")
+includeCdkProjects("airbyte-cdk/bulk/toolkits", ":airbyte-cdk:bulk:toolkits:", "bulk-cdk-toolkit-")
 
 // Include all java connector projects.
 def integrationsPath = rootDir.toPath().resolve('airbyte-integrations/connectors')
 integrationsPath.eachDir { dir ->
-    def buildFiles = file(dir).list { file, name -> name == "build.gradle" }
-    if (buildFiles.length != 1) {
+    if (!hasGradleBuildFile(dir)) {
         // Ignore python and other non-gradle connectors.
         return
     }
@@ -193,8 +247,3 @@ integrationsPath.eachDir { dir ->
     }
     include ":airbyte-integrations:connectors:${dir.getFileName()}"
 }
-
-// Include miscellaneous modules.
-include ':airbyte-integrations:connector-templates:generator'
-include ':airbyte-integrations:connectors-performance:source-harness'
-include ':airbyte-integrations:connectors-performance:destination-harness'

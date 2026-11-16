@@ -1,39 +1,54 @@
-# Aha API
+# Aha
 
-API Documentation link [here](https://www.aha.io/api)
+This page contains the setup guide and reference information for the [Aha!](https://www.aha.io/) source connector. The connector reads data from the [Aha! REST API](https://www.aha.io/api).
 
-## Overview
+## Prerequisites
 
-The Aha API source supports full refresh syncs
+- An Aha! account with access to the data you want to sync
+- An Aha! API key
+- The URL of your Aha! account, for example `https://yourcompany.aha.io`
 
-### Output schema
+## Setup guide
 
-Two output streams are available from this source:
+### Step 1: Generate an Aha! API key
 
-_[features](https://www.aha.io/api/resources/features/list_features).
-_[products](https://www.aha.io/api/resources/products/list_products_in_the_account).
+Generate an API key in Aha! as described in the [Aha! authentication documentation](https://www.aha.io/api#authentication).
 
-### Features
+### Step 2: Set up the connector in Airbyte
+
+1. In Airbyte, create a new source and select **Aha**.
+2. For **API Bearer Token**, enter your Aha! API key.
+3. For **Aha Url Instance**, enter the base URL of your Aha! account, such as `https://yourcompany.aha.io`. Don't include a trailing slash or the `/api/v1` path. The connector appends `/api/v1` to this URL.
+4. Click **Set up source**. Airbyte tests the connection by reading the `products_stream` stream.
+
+## Supported sync modes
 
 | Feature           | Supported? |
 | :---------------- | :--------- |
 | Full Refresh Sync | Yes        |
 | Incremental Sync  | No         |
 
-### Performance considerations
+## Supported streams
 
-Rate Limiting information is updated [here](https://www.aha.io/api#rate-limiting).
+| Stream | Aha! API endpoint | Notes |
+| :----- | :---------------- | :---- |
+| `features_stream` | [List features](https://www.aha.io/api/resources/features/list_features) | |
+| `products_stream` | [List products](https://www.aha.io/api/resources/products/list_products_in_the_account) | |
+| `idea_categories_stream` | `GET /products/{product_id}/idea_categories` | Read once for each product in `products_stream`. |
+| `ideas_stream` | [List ideas](https://www.aha.io/api/resources/ideas/list_ideas) | |
+| `idea_endorsements_stream` | `GET /ideas/{idea_id}/endorsements` | Read once for each idea in `ideas_stream`. |
+| `idea_comments_stream` | `GET /ideas/{idea_id}/idea_comments` | Read once for each idea in `ideas_stream`. |
+| `users_stream` | [List users](https://www.aha.io/api/resources/users/list_users) | |
+| `goals_stream` | [List goals](https://www.aha.io/api/resources/goals/list_goals) | |
 
-## Getting started
+## Limitations
 
-### Requirements
+- The connector requests 5 records per page for every stream. Large accounts require many API requests, and the per-product and per-idea substreams make one or more requests for each parent record, so syncs can take a long time.
+- Aha! allows up to 300 API requests per minute and 20 requests per second. See the [Aha! rate limiting documentation](https://www.aha.io/api#rate-limiting) for details.
 
-- Aha API Key.
+## IP allow list
 
-### Connect using `API Key`:
-
-1. Generate an API Key as described [here](https://www.aha.io/api#authentication).
-2. Use the generated `API Key` in the Airbyte connection.
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -42,13 +57,37 @@ Rate Limiting information is updated [here](https://www.aha.io/api#rate-limiting
 
 | Version | Date       | Pull Request                                             | Subject                                                                 |
 |:--------|:-----------| :------------------------------------------------------- |:------------------------------------------------------------------------|
-| 0.4.1   | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version   |
-| 0.4.0   | 2024-08-14 | [44042](https://github.com/airbytehq/airbyte/pull/44042) | Refactor connector to manifest-only format |
-| 0.3.14  | 2024-08-12 | [43748](https://github.com/airbytehq/airbyte/pull/43748) | Update dependencies |
-| 0.3.13  | 2024-08-10 | [43556](https://github.com/airbytehq/airbyte/pull/43556) | Update dependencies |
-| 0.3.12  | 2024-08-03 | [43186](https://github.com/airbytehq/airbyte/pull/43186) | Update dependencies |
-| 0.3.11  | 2024-07-27 | [42737](https://github.com/airbytehq/airbyte/pull/42737) | Update dependencies |
-| 0.3.10  | 2024-07-20 | [42306](https://github.com/airbytehq/airbyte/pull/42306) | Update dependencies |
+| 0.4.25 | 2026-11-10 | [91318](https://github.com/airbytehq/airbyte/pull/91318) | Update to source-declarative-manifest base image 7.47.0 (airbyte-cdk 7.x) |
+| 0.4.24 | 2025-05-10 | [59855](https://github.com/airbytehq/airbyte/pull/59855) | Update dependencies |
+| 0.4.23 | 2025-05-03 | [59356](https://github.com/airbytehq/airbyte/pull/59356) | Update dependencies |
+| 0.4.22 | 2025-04-26 | [58723](https://github.com/airbytehq/airbyte/pull/58723) | Update dependencies |
+| 0.4.21 | 2025-04-19 | [57608](https://github.com/airbytehq/airbyte/pull/57608) | Update dependencies |
+| 0.4.20 | 2025-04-05 | [57119](https://github.com/airbytehq/airbyte/pull/57119) | Update dependencies |
+| 0.4.19 | 2025-03-29 | [56597](https://github.com/airbytehq/airbyte/pull/56597) | Update dependencies |
+| 0.4.18 | 2025-03-22 | [56112](https://github.com/airbytehq/airbyte/pull/56112) | Update dependencies |
+| 0.4.17 | 2025-03-08 | [55406](https://github.com/airbytehq/airbyte/pull/55406) | Update dependencies |
+| 0.4.16 | 2025-03-01 | [54899](https://github.com/airbytehq/airbyte/pull/54899) | Update dependencies |
+| 0.4.15 | 2025-02-22 | [54214](https://github.com/airbytehq/airbyte/pull/54214) | Update dependencies |
+| 0.4.14 | 2025-02-15 | [53905](https://github.com/airbytehq/airbyte/pull/53905) | Update dependencies |
+| 0.4.13 | 2025-02-08 | [53439](https://github.com/airbytehq/airbyte/pull/53439) | Update dependencies |
+| 0.4.12 | 2025-02-01 | [52886](https://github.com/airbytehq/airbyte/pull/52886) | Update dependencies |
+| 0.4.11 | 2025-01-25 | [52192](https://github.com/airbytehq/airbyte/pull/52192) | Update dependencies |
+| 0.4.10 | 2025-01-18 | [51732](https://github.com/airbytehq/airbyte/pull/51732) | Update dependencies |
+| 0.4.9 | 2025-01-11 | [51234](https://github.com/airbytehq/airbyte/pull/51234) | Update dependencies |
+| 0.4.8 | 2024-12-28 | [50490](https://github.com/airbytehq/airbyte/pull/50490) | Update dependencies |
+| 0.4.7 | 2024-12-21 | [50158](https://github.com/airbytehq/airbyte/pull/50158) | Update dependencies |
+| 0.4.6 | 2024-12-14 | [49548](https://github.com/airbytehq/airbyte/pull/49548) | Update dependencies |
+| 0.4.5 | 2024-12-12 | [49298](https://github.com/airbytehq/airbyte/pull/49298) | Update dependencies |
+| 0.4.4 | 2024-12-11 | [48246](https://github.com/airbytehq/airbyte/pull/48246) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.4.3 | 2024-10-29 | [47904](https://github.com/airbytehq/airbyte/pull/47904) | Update dependencies |
+| 0.4.2 | 2024-10-28 | [47641](https://github.com/airbytehq/airbyte/pull/47641) | Update dependencies |
+| 0.4.1 | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version |
+| 0.4.0 | 2024-08-14 | [44042](https://github.com/airbytehq/airbyte/pull/44042) | Refactor connector to manifest-only format |
+| 0.3.14 | 2024-08-12 | [43748](https://github.com/airbytehq/airbyte/pull/43748) | Update dependencies |
+| 0.3.13 | 2024-08-10 | [43556](https://github.com/airbytehq/airbyte/pull/43556) | Update dependencies |
+| 0.3.12 | 2024-08-03 | [43186](https://github.com/airbytehq/airbyte/pull/43186) | Update dependencies |
+| 0.3.11 | 2024-07-27 | [42737](https://github.com/airbytehq/airbyte/pull/42737) | Update dependencies |
+| 0.3.10 | 2024-07-20 | [42306](https://github.com/airbytehq/airbyte/pull/42306) | Update dependencies |
 | 0.3.9 | 2024-07-13 | [41914](https://github.com/airbytehq/airbyte/pull/41914) | Update dependencies |
 | 0.3.8 | 2024-07-10 | [41568](https://github.com/airbytehq/airbyte/pull/41568) | Update dependencies |
 | 0.3.7 | 2024-07-09 | [41170](https://github.com/airbytehq/airbyte/pull/41170) | Update dependencies |
@@ -60,6 +99,6 @@ Rate Limiting information is updated [here](https://www.aha.io/api#rate-limiting
 | 0.3.1 | 2023-06-05 | [27002](https://github.com/airbytehq/airbyte/pull/27002) | Flag spec `api_key` field as `airbyte-secret` |
 | 0.3.0 | 2023-05-30 | [22642](https://github.com/airbytehq/airbyte/pull/22642) | Add `idea_comments`, `idea_endorsements`, and `idea_categories` streams |
 | 0.2.0 | 2023-05-26 | [26666](https://github.com/airbytehq/airbyte/pull/26666) | Fix integration test and schemas |
-| 0.1.0   | 2022-11-02 | [18883](https://github.com/airbytehq/airbyte/pull/18893) | 🎉 New Source: Aha                                                      |
+| 0.1.0   | 2022-11-02 | [18893](https://github.com/airbytehq/airbyte/pull/18893) | 🎉 New Source: Aha                                                      |
 
 </details>

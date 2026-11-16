@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.csv
@@ -163,7 +163,7 @@ class CsvSerializedBufferTest {
         minExpectedByte: Long,
         maxExpectedByte: Long,
         config: UploadCsvFormatConfig?,
-        expectedData: String
+        expectedData: String,
     ) {
         val outputFile = buffer.file
         val defaultNamespace = ""
@@ -213,7 +213,7 @@ class CsvSerializedBufferTest {
                         tmpData.append(
                             line // remove uuid
                                 .substring(
-                                    UUID.randomUUID().toString().length + 1
+                                    UUID.randomUUID().toString().length + 1,
                                 ) // remove timestamp
                                 .replace("\\A[0-9]+,".toRegex(), ""),
                         )

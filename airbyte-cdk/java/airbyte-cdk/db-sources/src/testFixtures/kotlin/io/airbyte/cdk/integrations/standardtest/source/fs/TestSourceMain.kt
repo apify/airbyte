@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.source.fs
 
@@ -59,7 +59,7 @@ object TestSourceMain {
                 Path.of(specFile),
                 Path.of(configFile),
                 Path.of(catalogFile),
-                if (stateFile != null) Path.of(stateFile) else null
+                if (stateFile != null) Path.of(stateFile) else null,
             )
 
         TestRunner.runTestClass(ExecutableTestSource::class.java)

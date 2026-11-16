@@ -1,5 +1,7 @@
 plugins {
     id 'airbyte-java-connector'
+    id "io.airbyte.gradle.docker"
+    id 'airbyte-connector-docker-convention'
 }
 
 airbyteJavaConnector {
@@ -17,5 +19,5 @@ dependencies {
 
     implementation group: 'com.ibm.db2', name: 'jcc', version: '11.5.5.0'
 
-    testImplementation 'org.testcontainers:db2:1.19.4'
+    testImplementation 'org.testcontainers:db2:1.21.4'
 }

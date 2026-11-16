@@ -1,72 +1,88 @@
 # SurveyMonkey
 
-This page guides you through the process of setting up the SurveyMonkey source connector.
+Set up a SurveyMonkey source connector to extract survey, question, response, and collector data from your SurveyMonkey account.
 
 :::note
 
-OAuth for Survey Monkey is officially supported only for the US. We are testing how to enable it in the EU at the moment. If you run into any issues, please [reach out to us](mailto:product@airbyte.io) so we can promptly assist you.
+Airbyte officially supports OAuth for SurveyMonkey only for the US. If you have any issues, [contact us](https://support.airbyte.com/).
 
 :::
 
-<!-- env:oss -->
-
 ## Prerequisites
 
-**For Airbyte Open Source:**
+Before you begin, have the following ready.
 
-- Access Token
+<!-- env:oss -->
+### For Airbyte Open Source
+
+- A [registered SurveyMonkey app](https://developer.surveymonkey.com/apps/)
+- A SurveyMonkey access token, found on the Settings page of your SurveyMonkey app
+- If your SurveyMonkey app is a Public app, you also need a Client ID and Client Secret, found on the Settings page of your SurveyMonkey app
 <!-- /env:oss -->
 
-## Setup guide
+<!-- env:cloud -->
+### For Airbyte Cloud
 
-### Step 1: Set up SurveyMonkey
+- A [registered SurveyMonkey application](https://developer.surveymonkey.com/apps/)
+- A [paid SurveyMonkey account](https://www.surveymonkey.com/pricing/)
+<!-- /env:cloud -->
 
-Please read this [docs](https://developer.surveymonkey.com/api/v3/#getting-started). Register your application [here](https://developer.surveymonkey.com/apps/) Then go to Settings and copy your access token
+You may want to review SurveyMonkey's [API docs](https://developer.surveymonkey.com/api/v3/#getting-started), but this isn't strictly necessary.
 
-### Step 2: Set up the source connector in Airbyte
+## Create the SurveyMonkey source
 
 <!-- env:cloud -->
+### Airbyte Cloud steps
 
-**For Airbyte Cloud:**
-
-1. [Log into your Airbyte Cloud](https://cloud.airbyte.com/workspaces) account.
-2. In the left navigation bar, click **Sources**. In the top-right corner, click **+ new source**.
-3. On the source setup page, select **SurveyMonkey** from the Source type dropdown and enter a name for this connector.
-4. lick `Authenticate your account`.
-5. Log in and Authorize to the SurveyMonkey account
-6. Choose required Start date
-7. click `Set up source`.
+1. In the left navigation bar, click **Sources**. 
+2. Click **New source**.
+3. Find and click **SurveyMonkey**.
+4. Click **Authenticate your SurveyMonkey account**. Log in and authorize Airbyte to access your SurveyMonkey account.
+5. Fill out the form.
+    - **Source name**: A short, descriptive name to help you identify this source in Airbyte.
+    - **Start Date**: Any data before this date will not be extracted.
+    - **Origin datacenter of the SurveyMonkey account**: Airbyte needs to know this because API access URLs may depend on the origin datacenter's location.
+    - **Survey Monkey survey IDs**: If you want to extract specific surveys, enter the IDs of those surveys. If you want to extract all survey data, leave this blank.
+6. Click **Set up source**. Wait a moment while Airbyte tests the connection.
 <!-- /env:cloud -->
 
 <!-- env:oss -->
+### Airbyte Open Source steps
 
-**For Airbyte Open Source:**
-
-1. Go to local Airbyte page.
-2. In the left navigation bar, click **Sources**. In the top-right corner, click **+ new source**.
-3. On the source setup page, select **SurveyMonkey** from the Source type dropdown and enter a name for this connector.
-4. Add **Access Token**
-5. Choose required Start date
-6. Click `Set up source`.
+1. In the left navigation bar, click **Sources**. 
+2. Click **New source**.
+3. Find and click **SurveyMonkey**.
+4. Fill out the form.
+    - **Source name**: A short, descriptive name to help you identify this source in Airbyte.
+    - **Access Token**: Your SurveyMonkey app's access token.
+    - **Client ID**: Your SurveyMonkey app's client id.
+    - **Client Secret**: Your SurveyMonkey app's client secret.
+    - **Start Date**: Any data before this date will not be extracted.
+    - **Origin datacenter of the SurveyMonkey account**: Airbyte needs to know this because API access URLs may depend on the origin datacenter's location.
+    - **Survey Monkey survey IDs**: If you want to extract specific surveys, enter the IDs of those surveys. If you want to extract all survey data, leave this blank.
+6. Click **Set up source**. Wait a moment while Airbyte tests the connection.
 <!-- /env:oss -->
 
 ## Supported streams and sync modes
 
-- [Surveys](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys) \(Incremental\)
-- [SurveyPages](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-survey_id-pages)
-- [SurveyQuestions](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-survey_id-pages-page_id-questions)
-- [SurveyResponses](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-id-responses-bulk) \(Incremental\)
-- [SurveyCollectors](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-survey_id-collectors)
-- [Collectors](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-collectors-collector_id-)
+You can stream the following data from SurveyMonkey using the [sync modes](/platform/using-airbyte/core-concepts/sync-modes/) indicated.
 
-### Performance considerations
+| Stream | Sync mode |
+| :------ | :--------- |
+| [Surveys](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys) | Full refresh, incremental | 
+| [SurveyPages](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-survey_id-pages) | Full refresh | 
+| [SurveyQuestions](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-survey_id-pages-page_id-questions) | Full refresh | 
+| [SurveyResponses](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-id-responses-bulk) | Full refresh, incremental | 
+| [SurveyCollectors](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-surveys-survey_id-collectors) | Full refresh |
+| [Collectors](https://api.surveymonkey.com/v3/docs?shell#api-endpoints-get-collectors-collector_id-) | Full refresh | 
 
-The SurveyMonkey API applies heavy API quotas for default private apps, which have the following limits:
+## Rate limits
 
-- 125 requests per minute
-- 500 requests per day
+SurveyMonkey's API has [default rate limits](https://developer.surveymonkey.com/api/v3/#request-and-response-limits) for draft and private apps. Airbyte uses caching to economize its usage of the API. However, if you need a higher quota, SurveyMonkey offers temporary and permanent options to increase your rate limits.
 
-To cover more data from this source we use caching.
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -75,6 +91,30 @@ To cover more data from this source we use caching.
 
 | Version | Date       | Pull Request                                             | Subject                                                                          |
 | :------ | :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------------- |
+| 0.3.48 | 2026-02-24 | [73720](https://github.com/airbytehq/airbyte/pull/73720) | fix(source-surveymonkey): use lowercase sort_order parameter to match SurveyMonkey API validation |
+| 0.3.47 | 2025-10-21 | [68542](https://github.com/airbytehq/airbyte/pull/68542) | Update dependencies |
+| 0.3.46 | 2025-10-14 | [67916](https://github.com/airbytehq/airbyte/pull/67916) | Update dependencies |
+| 0.3.45 | 2025-10-07 | [67476](https://github.com/airbytehq/airbyte/pull/67476) | Update dependencies |
+| 0.3.44 | 2025-09-30 | [66894](https://github.com/airbytehq/airbyte/pull/66894) | Update dependencies |
+| 0.3.43 | 2025-09-23 | [66372](https://github.com/airbytehq/airbyte/pull/66372) | Update dependencies |
+| 0.3.42 | 2025-09-09 | [65682](https://github.com/airbytehq/airbyte/pull/65682) | Update dependencies |
+| 0.3.41 | 2025-08-24 | [65476](https://github.com/airbytehq/airbyte/pull/65476) | Update dependencies |
+| 0.3.40 | 2025-08-16 | [65023](https://github.com/airbytehq/airbyte/pull/65023) | Update dependencies |
+| 0.3.39 | 2025-08-10 | [64849](https://github.com/airbytehq/airbyte/pull/64849) | Update dependencies |
+| 0.3.38 | 2025-08-02 | [54085](https://github.com/airbytehq/airbyte/pull/54085) | Update dependencies |
+| 0.3.37 | 2025-07-16 | [63345](https://github.com/airbytehq/airbyte/pull/63345) | Update CDK version to fix tests and allow for bumping version for metadata updates. |
+| 0.3.36 | 2025-02-01 | [53050](https://github.com/airbytehq/airbyte/pull/53050) | Update dependencies |
+| 0.3.35 | 2025-01-25 | [51993](https://github.com/airbytehq/airbyte/pull/51993) | Update dependencies |
+| 0.3.34 | 2025-01-11 | [51412](https://github.com/airbytehq/airbyte/pull/51412) | Update dependencies |
+| 0.3.33 | 2025-01-04 | [50936](https://github.com/airbytehq/airbyte/pull/50936) | Update dependencies |
+| 0.3.32 | 2024-12-28 | [50760](https://github.com/airbytehq/airbyte/pull/50760) | Update dependencies |
+| 0.3.31 | 2024-12-21 | [49774](https://github.com/airbytehq/airbyte/pull/49774) | Update dependencies |
+| 0.3.30 | 2024-12-12 | [49399](https://github.com/airbytehq/airbyte/pull/49399) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.3.29 | 2024-11-04 | [48168](https://github.com/airbytehq/airbyte/pull/48168) | Update dependencies |
+| 0.3.28 | 2024-10-29 | [47754](https://github.com/airbytehq/airbyte/pull/47754) | Update dependencies |
+| 0.3.27 | 2024-10-28 | [47073](https://github.com/airbytehq/airbyte/pull/47073) | Update dependencies |
+| 0.3.26 | 2024-10-12 | [46801](https://github.com/airbytehq/airbyte/pull/46801) | Update dependencies |
+| 0.3.25 | 2024-10-05 | [46448](https://github.com/airbytehq/airbyte/pull/46448) | Update dependencies |
 | 0.3.24 | 2024-09-28 | [46129](https://github.com/airbytehq/airbyte/pull/46129) | Update dependencies |
 | 0.3.23 | 2024-09-21 | [45770](https://github.com/airbytehq/airbyte/pull/45770) | Update dependencies |
 | 0.3.22 | 2024-09-14 | [45519](https://github.com/airbytehq/airbyte/pull/45519) | Update dependencies |
@@ -112,15 +152,15 @@ To cover more data from this source we use caching.
 | 0.1.12 | 2022-10-13 | [17964](https://github.com/airbytehq/airbyte/pull/17964) | Add OAuth for Eu and Ca |
 | 0.1.11 | 2022-09-28 | [17326](https://github.com/airbytehq/airbyte/pull/17326) | Migrate to per-stream states |
 | 0.1.10 | 2022-09-14 | [16706](https://github.com/airbytehq/airbyte/pull/16706) | Fix 404 error when handling nonexistent surveys |
-| 0.1.9   | 2022-07-28 | [13046](https://github.com/airbytehq/airbyte/pull/14998) | Fix state for response stream, fixed backoff behaviour, added unittest           |
-| 0.1.8   | 2022-05-20 | [13046](https://github.com/airbytehq/airbyte/pull/13046) | Fix incremental streams                                                          |
-| 0.1.7   | 2022-02-24 | [8768](https://github.com/airbytehq/airbyte/pull/8768)   | Add custom survey IDs to limit API calls                                         |
-| 0.1.6   | 2022-01-14 | [9508](https://github.com/airbytehq/airbyte/pull/9508)   | Scopes change                                                                    |
-| 0.1.5   | 2021-12-28 | [8628](https://github.com/airbytehq/airbyte/pull/8628)   | Update fields in source-connectors specifications                                |
-| 0.1.4   | 2021-11-11 | [7868](https://github.com/airbytehq/airbyte/pull/7868)   | Improve 'check' using '/users/me' API call                                       |
-| 0.1.3   | 2021-11-01 | [7433](https://github.com/airbytehq/airbyte/pull/7433)   | Remove unsused oAuth flow parameters                                             |
-| 0.1.2   | 2021-10-27 | [7433](https://github.com/airbytehq/airbyte/pull/7433)   | Add OAuth support                                                                |
-| 0.1.1   | 2021-09-10 | [5983](https://github.com/airbytehq/airbyte/pull/5983)   | Fix caching for gzip compressed http response                                    |
-| 0.1.0   | 2021-07-06 | [4097](https://github.com/airbytehq/airbyte/pull/4097)   | Initial Release                                                                  |
+| 0.1.9 | 2022-07-28 | [14998](https://github.com/airbytehq/airbyte/pull/14998) | Fix state for response stream, fixed backoff behaviour, added unittest |
+| 0.1.8 | 2022-05-20 | [13046](https://github.com/airbytehq/airbyte/pull/13046) | Fix incremental streams |
+| 0.1.7 | 2022-02-24 | [8768](https://github.com/airbytehq/airbyte/pull/8768) | Add custom survey IDs to limit API calls |
+| 0.1.6 | 2022-01-14 | [9508](https://github.com/airbytehq/airbyte/pull/9508) | Scopes change |
+| 0.1.5 | 2021-12-28 | [8628](https://github.com/airbytehq/airbyte/pull/8628) | Update fields in source-connectors specifications |
+| 0.1.4 | 2021-11-11 | [7868](https://github.com/airbytehq/airbyte/pull/7868) | Improve 'check' using '/users/me' API call |
+| 0.1.3 | 2021-11-01 | [7433](https://github.com/airbytehq/airbyte/pull/7433) | Remove unsused oAuth flow parameters |
+| 0.1.2 | 2021-10-27 | [7433](https://github.com/airbytehq/airbyte/pull/7433) | Add OAuth support |
+| 0.1.1 | 2021-09-10 | [5983](https://github.com/airbytehq/airbyte/pull/5983) | Fix caching for gzip compressed http response |
+| 0.1.0 | 2021-07-06 | [4097](https://github.com/airbytehq/airbyte/pull/4097) | Initial Release |
 
 </details>

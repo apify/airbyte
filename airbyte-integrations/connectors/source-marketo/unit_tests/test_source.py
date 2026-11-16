@@ -11,14 +11,46 @@ from unittest.mock import ANY, MagicMock, Mock, patch
 import pendulum
 import pytest
 import requests
+from source_marketo.source import Activities, IncrementalMarketoStream, Leads, MarketoExportCreate, MarketoStream, SourceMarketo
+
 from airbyte_cdk.models.airbyte_protocol import SyncMode
 from airbyte_cdk.sources.declarative.declarative_stream import DeclarativeStream
 from airbyte_cdk.utils import AirbyteTracedException
-from source_marketo.source import Activities, IncrementalMarketoStream, Leads, MarketoExportCreate, MarketoStream, SourceMarketo
+from airbyte_protocol.models import FailureType
 
 from .conftest import START_DATE, get_stream_by_name
 
+
 logger = logging.getLogger("airbyte")
+
+
+def test_spec_exposes_bounded_bulk_export_window():
+    spec = SourceMarketo().spec(logger).connectionSpecification
+
+    window_property = spec["properties"]["window_in_days"]
+
+    assert window_property["type"] == "integer"
+    assert window_property["default"] == 30
+    assert window_property["minimum"] == 1
+    assert window_property["maximum"] == 31
+
+
+@pytest.mark.parametrize(
+    "window_in_days",
+    [
+        pytest.param(0, id="below-minimum"),
+        pytest.param(32, id="above-maximum"),
+        pytest.param("7", id="not-integer"),
+    ],
+)
+def test_window_in_days_rejects_invalid_values(config, window_in_days):
+    config["window_in_days"] = window_in_days
+
+    with pytest.raises(AirbyteTracedException) as exc_info:
+        Leads(config)
+
+    assert exc_info.value.message == 'Field "window_in_days" must be an integer from 1 to 31.'
+    assert "Invalid window_in_days value" in exc_info.value.internal_message
 
 
 def test_create_export_job(mocker, send_email_stream, caplog):
@@ -38,12 +70,7 @@ def test_should_retry_quota_exceeded(config, requests_mock):
     response_json = {
         "requestId": "d2ca#18c0b9833bf",
         "success": False,
-        "errors": [
-            {
-                "code": "1029",
-                "message": "Export daily quota 500MB exceeded."
-            }
-        ]
+        "errors": [{"code": "1029", "message": "Export daily quota 500MB exceeded."}],
     }
     requests_mock.register_uri("GET", create_job_url, status_code=200, json=response_json)
 
@@ -132,8 +159,8 @@ def test_activities_schema(activity, expected_schema, config):
         (
             (
                 "Campaign Run ID,Choice Number,Has Predictive,Step ID,Test Variant,attributes\n"
-                "1,3,true,10,15,{\"spam\": \"true\"}\n"
-                "2,3,false,11,16,{\"spam\": \"false\"}"
+                '1,3,true,10,15,{"spam": "true"}\n'
+                '2,3,false,11,16,{"spam": "false"}'
             ),
             [
                 {
@@ -158,7 +185,7 @@ def test_activities_schema(activity, expected_schema, config):
 )
 def test_export_parse_response(send_email_stream, response_text, expected_records):
     def iter_lines(*args, **kwargs):
-        yield from response_text.splitlines()
+        yield from response_text.split("\n")
 
     assert list(send_email_stream.parse_response(Mock(iter_lines=iter_lines, request=Mock(url="/send_email/1")))) == expected_records
 
@@ -200,7 +227,18 @@ def test_memory_usage(send_email_stream, file_generator):
     assert abs(big_file_peak - small_file_peak) < 50 * 1024
 
 
-@pytest.mark.parametrize("job_statuses", ((("Created",), ("Completed",)), (("Created",), ("Cancelled",))))
+def test_export_request_kwargs_streams_response(send_email_stream):
+    assert send_email_stream.request_kwargs(stream_state={}) == {"stream": True, "timeout": (30, 300)}
+
+
+@pytest.mark.parametrize(
+    "job_statuses",
+    [
+        pytest.param((("Created",), ("Completed",)), id="completed"),
+        pytest.param((("Created",), ("Cancelled",)), id="cancelled"),
+        pytest.param((("Created",), ("Failed",)), id="failed"),
+    ],
+)
 def test_export_sleep(send_email_stream, job_statuses):
     def tuple_to_generator(tuple_):
         yield from tuple_
@@ -210,9 +248,13 @@ def test_export_sleep(send_email_stream, job_statuses):
     with patch("source_marketo.source.MarketoExportStart.read_records", return_value=iter([Mock()])) as export_start:
         with patch("source_marketo.source.MarketoExportStatus.read_records", side_effect=job_statuses_side_effect) as export_status:
             with patch("source_marketo.source.sleep") as sleep:
-                if job_statuses[-1] == ("Cancelled",):
-                    with pytest.raises(Exception):
+                terminal_status = job_statuses[-1][0]
+                if terminal_status in ("Cancelled", "Failed"):
+                    with pytest.raises(AirbyteTracedException) as exc_info:
                         send_email_stream.sleep_till_export_completed(stream_slice)
+                    assert exc_info.value.failure_type == FailureType.transient_error
+                    assert terminal_status.lower() in exc_info.value.message
+                    assert "Export job 1" in exc_info.value.internal_message
                 else:
                     assert send_email_stream.sleep_till_export_completed(stream_slice) is True
                 export_start.assert_called()
@@ -231,9 +273,7 @@ def test_parse_response_incremental(config, requests_mock):
     created_at_record_1 = START_DATE.add(days=1).strftime("%Y-%m-%dT%H:%M:%SZ")
     created_at_record_2 = START_DATE.add(days=3).strftime("%Y-%m-%dT%H:%M:%SZ")
     current_state = START_DATE.add(days=2).strftime("%Y-%m-%dT%H:%M:%SZ")
-    response = {
-        "result": [{"id": "1", "createdAt": created_at_record_1}, {"id": "2", "createdAt": created_at_record_2}]
-    }
+    response = {"result": [{"id": "1", "createdAt": created_at_record_1}, {"id": "2", "createdAt": created_at_record_2}]}
     requests_mock.get("/rest/v1/campaigns.json", json=response)
 
     stream = get_stream_by_name("campaigns", config)
@@ -250,10 +290,10 @@ def test_source_streams(config, activity, requests_mock):
     requests_mock.get("/rest/v1/activities/types.json", json={"result": [activity]})
     streams = source.streams(config)
 
-    # 5 declarative streams (activity_types, segmentations, campaigns, lists, programs),
+    # 7 declarative streams (activity_types, segmentations, campaigns, lists, programs, emails, program_tokens),
     # 1 python stream (leads)
     # 1 dynamically created (activities_send_email)
-    assert len(streams) == 7
+    assert len(streams) == 9
     assert all(isinstance(stream, (MarketoStream, DeclarativeStream)) for stream in streams)
 
 
@@ -322,16 +362,8 @@ def test_get_updated_state(config, latest_record, current_state, expected_state)
 def test_filter_null_bytes(config):
     stream = Leads(config)
 
-    test_lines = [
-        "Hello\x00World\n",
-        "Name,Email\n",
-        "John\x00Doe,john.doe@example.com\n"
-    ]
-    expected_lines = [
-        "HelloWorld\n",
-        "Name,Email\n",
-        "JohnDoe,john.doe@example.com\n"
-    ]
+    test_lines = ["Hello\x00World\n", "Name,Email\n", "John\x00Doe,john.doe@example.com\n"]
+    expected_lines = ["HelloWorld\n", "Name,Email\n", "JohnDoe,john.doe@example.com\n"]
     filtered_lines = stream.filter_null_bytes(test_lines)
     for expected_line, filtered_line in zip(expected_lines, filtered_lines):
         assert expected_line == filtered_line
@@ -340,23 +372,156 @@ def test_filter_null_bytes(config):
 def test_csv_rows(config):
     stream = Leads(config)
 
-    test_lines = [
-        "Name,Email\n",
-        "John Doe,john.doe@example.com\n",
-        "Jane Doe,jane.doe@example.com\n"
-    ]
-    expected_records = [
-        {"Name": "John Doe", "Email": "john.doe@example.com"},
-        {"Name": "Jane Doe", "Email": "jane.doe@example.com"}
-    ]
+    test_lines = ["Name,Email\n", "John Doe,john.doe@example.com\n", "Jane Doe,jane.doe@example.com\n"]
+    expected_records = [{"Name": "John Doe", "Email": "john.doe@example.com"}, {"Name": "Jane Doe", "Email": "jane.doe@example.com"}]
     records = stream.csv_rows(test_lines)
     for expected_record, record in zip(expected_records, records):
         assert expected_record == record
 
 
+def test_parse_response_with_unicode_line_separator(send_email_stream):
+    """Verify that Unicode line separators (\u2028, \u2029) in CJK field values
+    do not cause CSV column misalignment. This was the root cause of
+    https://github.com/airbytehq/oncall/issues/11468.
+    """
+    response_text = "Campaign Run ID,Choice Number,Has Predictive,Step ID,Test Variant\n" "1,\u2028test,true,10,15\n" "2,3,false,11,16"
+
+    def iter_lines(*args, **kwargs):
+        yield from response_text.split("\n")
+
+    records = list(send_email_stream.parse_response(Mock(iter_lines=iter_lines, request=Mock(url="/send_email/1"))))
+    assert len(records) == 2
+    assert records[0]["Campaign Run ID"] == "1"
+    assert records[0]["Choice Number"] == "\u2028test"
+    assert records[0]["Has Predictive"] == "true"
+    assert records[1]["Campaign Run ID"] == "2"
+
+
+def test_csv_rows_column_count_mismatch(config):
+    stream = Leads(config)
+    # Row has fewer columns than the header
+    test_lines = ["Name,Email,Phone", "John Doe,john@example.com"]
+    with pytest.raises(AirbyteTracedException) as exc_info:
+        list(stream.csv_rows(test_lines))
+    assert exc_info.value.message == "CSV row column count does not match header column count."
+    assert "expected 3 columns, got 2" in exc_info.value.internal_message
+
+    # Row has more columns than the header
+    test_lines_extra = ["Name,Email", "John Doe,john@example.com,extra"]
+    with pytest.raises(AirbyteTracedException) as exc_info:
+        list(stream.csv_rows(test_lines_extra))
+    assert exc_info.value.message == "CSV row column count does not match header column count."
+    assert "expected 2 columns, got 3" in exc_info.value.internal_message
+
+
 def test_availability_strategy(config):
     stream = Leads(config)
     assert stream.availability_strategy is None
+
+
+def test_leads_bulk_export_filters_on_updated_at(config, requests_mock, mocker):
+    """
+    The Leads bulk export must filter on `updatedAt` (matching the stream's
+    cursor field) so that updates to pre-existing leads are captured by
+    incremental syncs. Marketo's Bulk Lead Extract honors only a single filter
+    per export; filtering on `createdAt` silently drops any lead whose
+    `createdAt` is earlier than the cursor even when its `updatedAt` moves
+    into the sync window.
+    """
+    mocker.patch("time.sleep")
+
+    # Avoid the describe-endpoint call affecting field selection.
+    requests_mock.get(
+        f"{config['domain_url'].rstrip('/')}/rest/v1/leads/describe.json",
+        json={"result": []},
+    )
+    requests_mock.register_uri(
+        "POST",
+        f"{config['domain_url'].rstrip('/')}/bulk/v1/leads/export/create.json",
+        json={"result": [{"exportId": "lead-export-id", "status": "Created", "format": "CSV"}]},
+    )
+
+    leads_stream = Leads(config)
+    list(leads_stream.stream_slices(sync_mode=SyncMode.incremental, stream_state=None))
+
+    create_calls = [req for req in requests_mock.request_history if req.method == "POST" and req.path.endswith("/leads/export/create.json")]
+    assert create_calls, "Expected at least one Leads export/create POST"
+
+    for call in create_calls:
+        filter_ = call.json()["filter"]
+        assert "updatedAt" in filter_, (
+            "Leads bulk export must filter on `updatedAt` to match the cursor field; " f"got filter keys: {list(filter_.keys())}"
+        )
+        assert "createdAt" not in filter_, (
+            "Leads bulk export must not filter on `createdAt`; Marketo honors only "
+            "one filter per export and using `createdAt` silently drops lead updates."
+        )
+
+
+@pytest.mark.parametrize(
+    "window_in_days, expected_ranges",
+    [
+        pytest.param(
+            30,
+            [("2026-05-19T22:16:10Z", "2026-06-18T22:16:10Z")],
+            id="default-single-marketo-window",
+        ),
+        pytest.param(
+            7,
+            [
+                ("2026-05-19T22:16:10Z", "2026-05-26T22:16:10Z"),
+                ("2026-05-26T22:16:10Z", "2026-06-02T22:16:10Z"),
+                ("2026-06-02T22:16:10Z", "2026-06-09T22:16:10Z"),
+                ("2026-06-09T22:16:10Z", "2026-06-16T22:16:10Z"),
+                ("2026-06-16T22:16:10Z", "2026-06-18T22:16:10Z"),
+            ],
+            id="smaller-windows-create-more-exports",
+        ),
+        pytest.param(
+            1,
+            [
+                ("2026-05-19T22:16:10Z", "2026-05-20T22:16:10Z"),
+                ("2026-05-20T22:16:10Z", "2026-05-21T22:16:10Z"),
+                ("2026-05-21T22:16:10Z", "2026-05-22T22:16:10Z"),
+            ],
+            id="one-day-window",
+        ),
+    ],
+)
+def test_leads_bulk_export_window_controls_date_slices(config, mocker, window_in_days, expected_ranges):
+    config["start_date"] = "2026-05-19T22:16:10Z"
+    config["end_date"] = "2026-05-22T22:16:10Z" if window_in_days == 1 else "2026-06-18T22:16:10Z"
+    config["window_in_days"] = window_in_days
+    mocker.patch.object(Leads, "stream_fields", new_callable=lambda: property(lambda self: []))
+    mocker.patch.object(Leads, "create_export", return_value={"exportId": "lead-export-id"})
+
+    slices = Leads(config).stream_slices(
+        sync_mode=SyncMode.incremental,
+        stream_state={"updatedAt": "2026-05-19T22:16:10Z"},
+    )
+
+    assert [(slice_["startAt"], slice_["endAt"]) for slice_ in slices] == expected_ranges
+
+
+def test_activities_bulk_export_preserves_created_at_filter(send_email_stream, requests_mock, mocker):
+    """
+    Activities are immutable events, so filtering their bulk export on
+    `createdAt` matches vendor expectations. This test guards against
+    accidentally changing the activities filter alongside the Leads fix.
+    """
+    mocker.patch("time.sleep")
+
+    list(send_email_stream.stream_slices(sync_mode=SyncMode.incremental, stream_state=None))
+
+    create_calls = [
+        req for req in requests_mock.request_history if req.method == "POST" and req.path.endswith("/activities/export/create.json")
+    ]
+    assert create_calls, "Expected at least one activities export/create POST"
+
+    for call in create_calls:
+        filter_ = call.json()["filter"]
+        assert "createdAt" in filter_
+        assert "updatedAt" not in filter_
 
 
 def test_path(config):
@@ -374,3 +539,163 @@ def test_set_state(config):
     expected_state = {"id": 1}
     stream.state = expected_state
     assert stream._state == expected_state
+
+
+def test_leads_stream_fields_returns_describe_fields(config, requests_mock):
+    """stream_fields should return only fields confirmed by the describe endpoint,
+    not all static schema fields — this avoids bulk export validation errors for
+    fields that exist in the static schema but not in a particular Marketo instance."""
+    describe_json = {
+        "requestId": "abc123",
+        "success": True,
+        "result": [
+            {
+                "id": 1,
+                "displayName": "Email",
+                "dataType": "email",
+                "rest": {"name": "email", "readOnly": False},
+            },
+            {
+                "id": 100,
+                "displayName": "Custom Score",
+                "dataType": "score",
+                "rest": {"name": "customScore__c", "readOnly": False},
+            },
+        ],
+    }
+
+    requests_mock.get(
+        f"{config['domain_url'].rstrip('/')}/rest/v1/leads/describe.json",
+        json=describe_json,
+    )
+
+    leads_stream = Leads(config)
+    fields = leads_stream.stream_fields
+
+    # stream_fields should contain only describe-confirmed fields
+    assert set(fields) == {"email", "customScore__c"}
+
+    # But the full schema should still include all static fields + custom fields
+    schema = leads_stream.get_json_schema()
+    assert "customScore__c" in schema["properties"]
+    # Static-only fields not in describe should still be in the schema
+    assert "firstName" in schema["properties"]
+
+
+def test_leads_stream_fields_uses_configured_json_schema(config, requests_mock):
+    """When the user selects specific fields via the configured catalog,
+    stream_fields should return the intersection of selected fields and
+    describe-confirmed fields — this prevents requesting fields that exist
+    in the static schema but not in this Marketo instance."""
+    describe_json = {
+        "requestId": "abc123",
+        "success": True,
+        "result": [
+            {"id": 1, "displayName": "Email", "dataType": "email", "rest": {"name": "email", "readOnly": False}},
+            {"id": 100, "displayName": "Custom Score", "dataType": "score", "rest": {"name": "customScore__c", "readOnly": False}},
+        ],
+    }
+
+    requests_mock.get(
+        f"{config['domain_url'].rstrip('/')}/rest/v1/leads/describe.json",
+        json=describe_json,
+    )
+
+    leads_stream = Leads(config)
+    # Simulate the platform passing user-selected fields via configured catalog.
+    # "firstName" is a static schema field NOT in the describe endpoint for this instance.
+    leads_stream.configured_json_schema = {
+        "properties": {
+            "email": {"type": ["string", "null"]},
+            "firstName": {"type": ["string", "null"]},
+        }
+    }
+    fields = leads_stream.stream_fields
+
+    # Only fields that are BOTH user-selected AND describe-confirmed should be returned.
+    # "firstName" is excluded because it's not in the describe endpoint.
+    assert fields == ["email"]
+    assert "firstName" not in fields
+    assert "customScore__c" not in fields
+
+
+def test_leads_describe_http_error_falls_back_to_static_schema(config, requests_mock, caplog):
+    """If the describe endpoint returns an HTTP error, fall back to static schema gracefully."""
+    requests_mock.get(
+        f"{config['domain_url'].rstrip('/')}/rest/v1/leads/describe.json",
+        status_code=500,
+    )
+
+    caplog.set_level("WARNING")
+    leads_stream = Leads(config)
+    fields = leads_stream.stream_fields
+
+    # Should fall back to static schema field names
+    assert len(fields) > 0
+    assert "leads/describe.json request failed" in caplog.text
+
+    # Schema should also fall back to static schema (no custom fields added)
+    schema = leads_stream.get_json_schema()
+    assert "email" in schema["properties"]
+
+
+def test_leads_describe_connection_error_falls_back_to_static_schema(config, requests_mock, caplog):
+    """If the describe endpoint is unreachable, fall back to static schema gracefully."""
+    requests_mock.get(
+        f"{config['domain_url'].rstrip('/')}/rest/v1/leads/describe.json",
+        exc=requests.ConnectionError("DNS resolution failed"),
+    )
+
+    caplog.set_level("WARNING")
+    leads_stream = Leads(config)
+    fields = leads_stream.stream_fields
+
+    # Should fall back to static schema field names
+    assert len(fields) > 0
+    assert "leads/describe.json request failed" in caplog.text
+
+
+def test_leads_dynamic_schema_includes_custom_fields(config, requests_mock):
+    """get_json_schema() should dynamically add custom fields from describe endpoint."""
+    describe_json = {
+        "requestId": "abc123",
+        "success": True,
+        "result": [
+            {
+                "id": 1,
+                "displayName": "Email",
+                "dataType": "email",
+                "rest": {"name": "email", "readOnly": False},
+            },
+            {
+                "id": 100,
+                "displayName": "Custom Score",
+                "dataType": "score",
+                "rest": {"name": "customScore__c", "readOnly": False},
+            },
+            {
+                "id": 101,
+                "displayName": "Custom Date",
+                "dataType": "date",
+                "rest": {"name": "customDate__c", "readOnly": False},
+            },
+        ],
+    }
+
+    requests_mock.get(
+        f"{config['domain_url'].rstrip('/')}/rest/v1/leads/describe.json",
+        json=describe_json,
+    )
+
+    leads_stream = Leads(config)
+    schema = leads_stream.get_json_schema()
+
+    # Custom fields should appear in the schema
+    assert "customScore__c" in schema["properties"]
+    assert schema["properties"]["customScore__c"]["type"] == ["integer", "null"]
+    assert "customDate__c" in schema["properties"]
+    assert schema["properties"]["customDate__c"]["type"] == ["string", "null"]
+    assert schema["properties"]["customDate__c"]["format"] == "date"
+
+    # Standard fields from static schema should still be present
+    assert "email" in schema["properties"]

@@ -1,10 +1,12 @@
-/* Copyright (c) 2024 Airbyte, Inc., all rights reserved. */
+/* Copyright (c) 2026 Airbyte, Inc., all rights reserved. */
 package io.airbyte.cdk.read
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.airbyte.cdk.StreamIdentifier
 import io.airbyte.cdk.command.InputState
 import io.airbyte.cdk.command.SourceConfiguration
+import io.airbyte.cdk.data.ArrayAirbyteSchemaType
+import io.airbyte.cdk.data.LeafAirbyteSchemaType
 import io.airbyte.cdk.output.BufferingCatalogValidationFailureHandler
 import io.airbyte.cdk.output.CatalogValidationFailure
 import io.airbyte.cdk.output.StreamHasNoFields
@@ -24,6 +26,8 @@ import org.junit.jupiter.api.Test
 @Property(name = "airbyte.connector.config.database", value = "testdb")
 @Property(name = "airbyte.connector.config.cursor.cursor_method", value = "user_defined")
 @Property(name = "metadata.resource", value = "discover/metadata-valid.json")
+@Property(name = "airbyte.connector.data-channel.medium", value = "STDIO")
+@Property(name = "airbyte.connector.data-channel.format", value = "JSONL")
 class StateManagerStreamStatesTest {
     @Inject lateinit var config: SourceConfiguration
 
@@ -111,18 +115,25 @@ class StateManagerStreamStatesTest {
         // update state manager with fake work result
         stateManager
             .scoped(stream)
-            .set(Jsons.readTree("{\"cursor_incremental\":\"initial_sync_ongoing\"}"), 123L)
+            .set(
+                Jsons.readTree("{\"cursor_incremental\":\"initial_sync_ongoing\"}"),
+                123L,
+                null,
+                null,
+            )
         // test checkpoint messages
         val checkpoint: List<AirbyteStateMessage> = stateManager.checkpoint()
         Assertions.assertEquals(
             listOf(
-                    """{
+                    """
+                    |{
                     |"type":"STREAM",
                     |"stream":{"stream_descriptor":{"name":"EVENTS","namespace":"PUBLIC"},
                     |"stream_state":{"cursor_incremental":"initial_sync_ongoing"}},
                     |"sourceStats":{"recordCount":123.0}
                     |}
-                """.trimMargin(),
+                    """
+                        .trimMargin(),
                 )
                 .map { Jsons.readTree(it) },
             checkpoint.map { Jsons.valueToTree<JsonNode>(it) },
@@ -159,21 +170,28 @@ class StateManagerStreamStatesTest {
             stateManager.scoped(stream).current(),
         )
         Assertions.assertEquals(listOf<CatalogValidationFailure>(), handler.get())
+
+        val emptyCheckpoint: List<AirbyteStateMessage> = stateManager.checkpoint()
+        // check if state manager hasn't set for this stream, state would be null and thus skipped.
+        Assertions.assertTrue(emptyCheckpoint.isEmpty())
+
         // update state manager with fake work result
         stateManager
             .scoped(stream)
-            .set(Jsons.readTree("{\"cursor_incremental\":\"cursor_checkpoint\"}"), 456)
+            .set(Jsons.readTree("{\"cursor_incremental\":\"cursor_checkpoint\"}"), 456, null, null)
         // test checkpoint messages
         val checkpoint: List<AirbyteStateMessage> = stateManager.checkpoint()
         Assertions.assertEquals(
             listOf(
-                    """{
+                    """
+                    |{
                     |"type":"STREAM",
                     |"stream":{"stream_descriptor":{"name":"EVENTS","namespace":"PUBLIC"},
                     |"stream_state":{"cursor_incremental":"cursor_checkpoint"}},
                     |"sourceStats":{"recordCount":456.0}
                     |}
-                """.trimMargin(),
+                    """
+                        .trimMargin(),
                 )
                 .map { Jsons.readTree(it) },
             checkpoint.map { Jsons.valueToTree<JsonNode>(it) },
@@ -198,6 +216,42 @@ class StateManagerStreamStatesTest {
         )
         Assertions.assertEquals(expectedCursor, eventsStream.configuredCursor?.id)
         return eventsStream
+    }
+
+    @Test
+    @Property(name = "metadata.resource", value = "discover/metadata-array-field.json")
+    @Property(
+        name = "airbyte.connector.catalog.json",
+        value =
+            """
+{"streams": [{
+    "stream": {
+        "name": "DOCS",
+        "json_schema": {
+            "type": "object",
+            "properties": {
+                "ID": {"type": "string"},
+                "TAGS": {"type": "array"}
+            }
+        },
+        "supported_sync_modes": ["full_refresh", "incremental"],
+        "source_defined_primary_key": [["ID"]],
+        "namespace": "PUBLIC"
+    },
+    "sync_mode": "full_refresh",
+    "primary_key": [["ID"]],
+    "destination_sync_mode": "overwrite"
+}]}""",
+    )
+    @Property(name = "airbyte.connector.state.json", value = "[]")
+    fun testArrayFieldWithoutItems() {
+        val stream: Stream = stateManager.feeds.filterIsInstance<Stream>().single()
+        Assertions.assertEquals(listOf<CatalogValidationFailure>(), handler.get())
+        Assertions.assertEquals(listOf("ID", "TAGS"), stream.fields.map { it.id })
+        Assertions.assertEquals(
+            ArrayAirbyteSchemaType(LeafAirbyteSchemaType.JSONB),
+            stream.fields.single { it.id == "TAGS" }.type.airbyteSchemaType,
+        )
     }
 
     private fun streamID(name: String): StreamIdentifier =

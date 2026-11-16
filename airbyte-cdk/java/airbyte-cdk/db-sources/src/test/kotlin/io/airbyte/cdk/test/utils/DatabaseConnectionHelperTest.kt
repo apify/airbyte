@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.testutils
 
@@ -21,7 +21,7 @@ internal class DatabaseConnectionHelperTest {
         Assertions.assertEquals(HikariDataSource::class.java, dataSource.javaClass)
         Assertions.assertEquals(
             10,
-            (dataSource as HikariDataSource?)!!.hikariConfigMXBean.maximumPoolSize
+            (dataSource as HikariDataSource?)!!.hikariConfigMXBean.maximumPoolSize,
         )
     }
 

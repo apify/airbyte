@@ -1,11 +1,12 @@
 #
-# Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+# Copyright (c) 2024 Airbyte, Inc., all rights reserved.
 #
 
 
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 import traceback
@@ -24,9 +25,6 @@ import numpy as np
 import pandas as pd
 import smart_open
 import smart_open.ssh
-from airbyte_cdk.entrypoint import logger
-from airbyte_cdk.models import AirbyteStream, FailureType, SyncMode
-from airbyte_cdk.utils import AirbyteTracedException, is_cloud_environment
 from azure.storage.blob import BlobServiceClient
 from genson import SchemaBuilder
 from google.cloud.storage import Client as GCSClient
@@ -38,7 +36,12 @@ from paramiko import SSHException
 from urllib3.exceptions import ProtocolError
 from yaml import safe_load
 
+from airbyte_cdk.entrypoint import logger
+from airbyte_cdk.models import AirbyteStream, FailureType, SyncMode
+from airbyte_cdk.utils import AirbyteTracedException, is_cloud_environment
+
 from .utils import LOCAL_STORAGE_NAME, backoff_handler
+
 
 SSH_TIMEOUT = 60
 
@@ -222,16 +225,56 @@ class URLFile:
         aws_secret_access_key = self._provider.get("aws_secret_access_key")
         use_aws_account = aws_access_key_id and aws_secret_access_key
 
-        if use_aws_account:
-            aws_access_key_id = self._provider.get("aws_access_key_id", "")
-            aws_secret_access_key = self._provider.get("aws_secret_access_key", "")
-            url = f"{self.storage_scheme}{aws_access_key_id}:{aws_secret_access_key}@{self.url}"
-            result = smart_open.open(url, **self.args)
-        else:
+        try:
+            if use_aws_account:
+                aws_access_key_id = self._provider.get("aws_access_key_id", "")
+                aws_secret_access_key = self._provider.get("aws_secret_access_key", "")
+                url = f"{self.storage_scheme}{aws_access_key_id}:{aws_secret_access_key}@{self.url}"
+                return smart_open.open(url, **self.args)
+
             config = botocore.client.Config(signature_version=botocore.UNSIGNED)
             params = {"client": boto3.client("s3", config=config)}
-            result = smart_open.open(self.full_url, transport_params=params, **self.args)
-        return result
+            return smart_open.open(self.full_url, transport_params=params, **self.args)
+        except (botocore.exceptions.ClientError, OSError) as err:
+            if isinstance(err, botocore.exceptions.ClientError):
+                error_code = err.response.get("Error", {}).get("Code")
+                if error_code is None:
+                    status_code = err.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                    error_code = str(status_code) if status_code is not None else None
+            else:
+                error_message = str(err)
+                error_match = re.search(r"An error occurred \(([^)]+)\)", error_message)
+                error_code = error_match.group(1) if error_match else None
+
+            permanent_error_codes = {
+                "InvalidAccessKeyId",
+                "SignatureDoesNotMatch",
+                "AccessDenied",
+                "NoSuchBucket",
+                "NoSuchKey",
+                "ExpiredToken",
+                "InvalidToken",
+                "401",
+                "403",
+                "404",
+            }
+            if error_code not in permanent_error_codes:
+                raise
+
+            if error_code in {"NoSuchBucket", "NoSuchKey", "404"}:
+                error_msg = (
+                    f"S3 object 's3://{self.url}' was not found or is not accessible with the provided AWS credentials "
+                    f"(error code {error_code}). Verify the bucket name and file path, and confirm the credentials "
+                    "have s3:GetObject permission on that object."
+                )
+            else:
+                error_msg = (
+                    f"AWS rejected access to S3 object 's3://{self.url}' with error code {error_code}. "
+                    "Verify the AWS access key ID and secret access key in the source configuration and confirm "
+                    "the key has s3:GetObject permission on that object."
+                )
+            logger.error(f"{error_msg}\n{traceback.format_exc()}")
+            raise AirbyteTracedException(message=error_msg, internal_message=str(err), failure_type=FailureType.config_error) from err
 
     def _open_azblob_url(self):
         storage_account = self._provider.get("storage_account")
@@ -263,7 +306,7 @@ class Client:
         self._provider = provider
         self._reader_format = format or "csv"
         self._reader_options = reader_options or {}
-        self._is_zip = url.endswith(".zip")
+        self._is_zip = url.lower().endswith(".zip")
         self.binary_source = self._reader_format in self.binary_formats or self._is_zip
         self.encoding = self._reader_options.get("encoding")
 
@@ -366,11 +409,11 @@ class Client:
                 reader_options["engine"] = "fastparquet"
                 yield reader(fp, **reader_options)
             elif self._reader_format == "excel":
-                # Use openpyxl to read new-style Excel (xlsx) file; return to pandas for others
                 try:
-                    yield from self.openpyxl_chunk_reader(fp, **reader_options)
+                    for df_chunk in self.openpyxl_chunk_reader(fp, **reader_options):
+                        yield df_chunk
                 except (InvalidFileException, BadZipFile):
-                    yield reader(fp, **reader_options)
+                    yield pd.read_excel(fp, **reader_options)
             else:
                 yield reader(fp, **reader_options)
         except ParserError as err:
@@ -421,6 +464,7 @@ class Client:
                 elif self._reader_format == "yaml":
                     fields = set(fields) if fields else None
                     df = self.load_yaml(fp)
+                    df.columns = df.columns.astype(str)
                     columns = fields.intersection(set(df.columns)) if fields else df.columns
                     df = df.where(pd.notnull(df), None)
                     yield from df[list(columns)].to_dict(orient="records")
@@ -431,6 +475,7 @@ class Client:
                     if self._is_zip:
                         fp = self._unzip(fp)
                     for df in self.load_dataframes(fp):
+                        df.columns = df.columns.astype(str)
                         columns = fields.intersection(set(df.columns)) if fields else df.columns
                         df.replace({np.nan: None}, inplace=True)
                         yield from df[list(columns)].to_dict(orient="records")
@@ -505,27 +550,74 @@ class Client:
         yield AirbyteStream(name=self.stream_name, json_schema=json_schema, supported_sync_modes=[SyncMode.full_refresh])
 
     def openpyxl_chunk_reader(self, file, **kwargs):
-        """Use openpyxl lazy loading feature to read excel files (xlsx only) in chunks of 500 lines at a time"""
-        work_book = load_workbook(filename=file)
+        """
+        Use openpyxl's lazy loading feature to read Excel files (xlsx only) in chunks of 500 lines at a time.
+        """
+        # Retrieve reader options
+        header = kwargs.get("header", 0)
+        skiprows = kwargs.get("skiprows", 0)
         user_provided_column_names = kwargs.get("names")
+        chunk_size = 500
+
+        # Load workbook with data-only to avoid loading formulas
+        work_book = load_workbook(filename=file, data_only=True, read_only=True)
+
         for sheetname in work_book.sheetnames:
             work_sheet = work_book[sheetname]
-            data = work_sheet.values
-            end = work_sheet.max_row
-            if end == 1 and not user_provided_column_names:
-                message = "Please provide column names for table in reader options field"
-                logger.error(message)
+            data = list(work_sheet.iter_rows(values_only=True))
+
+            # Skip rows as specified
+            data = data[skiprows:]
+
+            if len(data) == 0:
                 raise AirbyteTracedException(
-                    message="Config validation error: " + message,
-                    internal_message=message,
+                    message="File does not contain enough rows to process.",
+                    internal_message=f"Sheet {sheetname} contains no data after applying header and skiprows.",
                     failure_type=FailureType.config_error,
                 )
-            cols, start = (next(data), 1) if not user_provided_column_names else (user_provided_column_names, 0)
-            step = 500
-            while start <= end:
-                df = pd.DataFrame(data=(next(data) for _ in range(start, min(start + step, end))), columns=cols)
-                yield df
-                start += step
+
+            # Determine column names
+            if user_provided_column_names:
+                column_names = user_provided_column_names
+            elif header is not None:
+                if len(data) <= header:
+                    raise AirbyteTracedException(
+                        message="File does not contain enough rows to extract headers.",
+                        internal_message=f"Sheet {sheetname} does not have enough rows for the specified header {header}.",
+                        failure_type=FailureType.config_error,
+                    )
+                column_names = data[header]  # Extract the header row
+                data = data[header + 1 :]  # Remove the header row and rows above it
+            else:
+                raise AirbyteTracedException(
+                    message="Unable to determine column names. Please provide valid reader options.",
+                    internal_message="No header or column names specified.",
+                    failure_type=FailureType.config_error,
+                )
+
+            if column_names is None or len(column_names) == 0:
+                raise AirbyteTracedException(
+                    message="Column names could not be determined.",
+                    internal_message="Column names are empty or invalid.",
+                    failure_type=FailureType.config_error,
+                )
+
+            if len(data) == 0:
+                raise AirbyteTracedException(
+                    message="File does not contain any data rows.",
+                    internal_message=f"Sheet {sheetname} contains no data rows after applying header and skiprows.",
+                    failure_type=FailureType.config_error,
+                )
+
+            chunk = []
+            for row in data:
+                chunk.append(dict(zip(column_names, row)))
+                if len(chunk) == chunk_size:
+                    yield pd.DataFrame(chunk)
+                    chunk = []
+
+            if chunk:
+                yield pd.DataFrame(chunk)
 
 
 class URLFileSecure(URLFile):

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.source.relationaldb.streamstatus
@@ -24,7 +24,7 @@ class TransientErrorTraceEmitterIterator(private val e: Throwable) :
         return makeErrorTraceAirbyteMessage(
             e,
             e.message,
-            AirbyteErrorTraceMessage.FailureType.TRANSIENT_ERROR
+            AirbyteErrorTraceMessage.FailureType.TRANSIENT_ERROR,
         )
     }
 

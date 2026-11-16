@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.jdbc.copy
 
@@ -16,7 +16,7 @@ interface StreamCopierFactory<T> {
         configuredStream: ConfiguredAirbyteStream?,
         nameTransformer: StandardNameTransformer?,
         db: JdbcDatabase?,
-        sqlOperations: SqlOperations?
+        sqlOperations: SqlOperations?,
     ): StreamCopier
 
     companion object {
@@ -24,7 +24,7 @@ interface StreamCopierFactory<T> {
         fun getSchema(
             namespace: String?,
             configuredSchema: String,
-            nameTransformer: StandardNameTransformer
+            nameTransformer: StandardNameTransformer,
         ): String {
             return if (namespace != null) {
                 nameTransformer.convertStreamName(namespace)

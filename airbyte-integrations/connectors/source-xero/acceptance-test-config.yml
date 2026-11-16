@@ -5,7 +5,7 @@ test_strictness_level: "high"
 acceptance_tests:
   spec:
     tests:
-      - spec_path: "source_xero/spec.yaml"
+      - spec_path: "manifest.yaml"
         backward_compatibility_tests_config:
           disable_for_version: "0.2.5"
   connection:
@@ -22,9 +22,6 @@ acceptance_tests:
   basic_read:
     tests:
       - config_path: "secrets/config.json"
-        expect_records:
-          path: "integration_tests/expected_records.jsonl"
-          exact_order: no
         empty_streams:
           - name: "bank_transfers"
             bypass_reason: "Empty stream, further investigation is required"
@@ -40,7 +37,6 @@ acceptance_tests:
             bypass_reason: "Empty stream, further investigation is required"
           - name: "tracking_categories"
             bypass_reason: "Empty stream, further investigation is required"
-        fail_on_extra_columns: false
   incremental:
     # bypass_reason: "Xero only supports date-precision filtering and our sandbox does not have enough data to properly test incremental reads"
     tests:

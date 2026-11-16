@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.jdbc.streaming
 
@@ -25,17 +25,17 @@ internal class TwoStageSizeEstimatorTest {
     fun testGetTargetBufferByteSize() {
         Assertions.assertEquals(
             FetchSizeConstants.MIN_BUFFER_BYTE_SIZE,
-            TwoStageSizeEstimator.getTargetBufferByteSize(null)
+            TwoStageSizeEstimator.getTargetBufferByteSize(null),
         )
         Assertions.assertEquals(
             FetchSizeConstants.MIN_BUFFER_BYTE_SIZE,
-            TwoStageSizeEstimator.getTargetBufferByteSize(Long.MAX_VALUE)
+            TwoStageSizeEstimator.getTargetBufferByteSize(Long.MAX_VALUE),
         )
         Assertions.assertEquals(
             FetchSizeConstants.MIN_BUFFER_BYTE_SIZE,
             TwoStageSizeEstimator.getTargetBufferByteSize(
-                FetchSizeConstants.MIN_BUFFER_BYTE_SIZE - 10L
-            )
+                FetchSizeConstants.MIN_BUFFER_BYTE_SIZE - 10L,
+            ),
         )
     }
 }

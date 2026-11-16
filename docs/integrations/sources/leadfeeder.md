@@ -1,5 +1,20 @@
 # Leadfeeder
 
+This page contains the setup guide and reference information for the Leadfeeder source connector. The connector uses the [Leadfeeder legacy API](https://docs.leadfeeder.com/api/) to sync the accounts you can access, along with the leads and website visits for each account.
+
+## Prerequisites
+
+- A Leadfeeder legacy API token. Leadfeeder no longer issues new tokens for the legacy API, so you need a token from an existing integration. If you have one, find it in Leadfeeder under **Settings** > **Personal** > **API Keys**.
+- A Leadfeeder Premium subscription for each account you want to sync leads and visits from. See [Limitations](#limitations).
+
+## Set up the Leadfeeder connector in Airbyte
+
+1. In Airbyte, go to **Sources** and select **Leadfeeder**.
+2. Enter a **Source name**.
+3. In **Api Token**, enter your Leadfeeder legacy API token.
+4. In **Start date**, enter the date and time in UTC from which to start syncing leads and visits, in the format `YYYY-MM-DDTHH:MM:SSZ`. For example, `2024-01-01T00:00:00Z`.
+5. Click **Set up source**.
+
 ## Configuration
 
 | Input | Type | Description | Default Value |
@@ -8,12 +23,28 @@
 | `start_date` | `string` | Start date for incremental syncs. Records that were updated before that date will not be synced.  |  |
 
 ## Streams
+
 | Stream Name | Primary Key | Pagination | Supports Full Sync | Supports Incremental |
 |-------------|-------------|------------|---------------------|----------------------|
 | `accounts` | `id` | No pagination | ✅ |  ❌  |
 | `leads` | `id` | DefaultPaginator | ✅ |  ✅  |
 | `visits` | `id` | DefaultPaginator | ✅ |  ✅  |
 
+- `accounts`: All Leadfeeder accounts that the API token's user can access.
+- `leads`: Companies that visited your website, synced for each account. The incremental cursor is `last_visit_date`. The connector adds an `account_id` field to each record.
+- `visits`: Individual website visits, synced for each account. The incremental cursor is `started_at`. The connector adds an `account_id` field to each record.
+
+The connector requests leads and visits in one-month windows, starting from the configured start date.
+
+## Limitations
+
+- **Premium subscription required:** The Leadfeeder API returns `402 Premium required` for accounts without a Leadfeeder Premium subscription. The connector skips those responses without failing the sync, so leads and visits from those accounts are silently missing.
+- **Rate limits:** The Leadfeeder API allows 100 requests per minute, per API token for the `accounts` endpoint and per account for the `leads` and `visits` endpoints. When the connector receives a `429 Too Many Requests`, `408`, or `5xx` response, it waits 60 seconds and retries, up to five times.
+- **Lead result cap:** The Leadfeeder API returns at most the first 10,000 leads for each request time interval. Because the connector requests one month at a time, an account with more than 10,000 leads in a single month may not sync all of them.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -22,6 +53,80 @@
 
 | Version | Date | Pull Request | Subject |
 |---------|------|--------------|---------|
+| 0.0.75 | 2026-11-10 | [90335](https://github.com/airbytehq/airbyte/pull/90335) | Consolidate duplicated error handling into a single shared handler with no behavior change |
+| 0.0.74 | 2026-11-10 | [91630](https://github.com/airbytehq/airbyte/pull/91630) | Update dependencies |
+| 0.0.73 | 2026-11-03 | [90658](https://github.com/airbytehq/airbyte/pull/90658) | Update dependencies |
+| 0.0.72 | 2026-10-27 | [89994](https://github.com/airbytehq/airbyte/pull/89994) | Update dependencies |
+| 0.0.71 | 2026-10-20 | [89297](https://github.com/airbytehq/airbyte/pull/89297) | Update dependencies |
+| 0.0.70 | 2026-10-13 | [88700](https://github.com/airbytehq/airbyte/pull/88700) | Update dependencies |
+| 0.0.69 | 2026-10-06 | [87923](https://github.com/airbytehq/airbyte/pull/87923) | Update dependencies |
+| 0.0.68 | 2026-09-29 | [87256](https://github.com/airbytehq/airbyte/pull/87256) | Update dependencies |
+| 0.0.67 | 2026-09-22 | [86701](https://github.com/airbytehq/airbyte/pull/86701) | Update dependencies |
+| 0.0.66 | 2026-09-15 | [86136](https://github.com/airbytehq/airbyte/pull/86136) | Update dependencies |
+| 0.0.65 | 2026-09-08 | [85564](https://github.com/airbytehq/airbyte/pull/85564) | Update dependencies |
+| 0.0.64 | 2026-08-18 | [84672](https://github.com/airbytehq/airbyte/pull/84672) | Update dependencies |
+| 0.0.63 | 2026-08-11 | [84000](https://github.com/airbytehq/airbyte/pull/84000) | Update dependencies |
+| 0.0.62 | 2026-08-04 | [83530](https://github.com/airbytehq/airbyte/pull/83530) | Update dependencies |
+| 0.0.61 | 2026-07-28 | [82986](https://github.com/airbytehq/airbyte/pull/82986) | Update dependencies |
+| 0.0.60 | 2026-07-21 | [82477](https://github.com/airbytehq/airbyte/pull/82477) | Update dependencies |
+| 0.0.59 | 2026-07-14 | [81863](https://github.com/airbytehq/airbyte/pull/81863) | Update dependencies |
+| 0.0.58 | 2026-06-30 | [81104](https://github.com/airbytehq/airbyte/pull/81104) | Update dependencies |
+| 0.0.57 | 2026-06-23 | [80508](https://github.com/airbytehq/airbyte/pull/80508) | Update dependencies |
+| 0.0.56 | 2026-06-16 | [79892](https://github.com/airbytehq/airbyte/pull/79892) | Update dependencies |
+| 0.0.55 | 2026-06-09 | [79379](https://github.com/airbytehq/airbyte/pull/79379) | Update dependencies |
+| 0.0.54 | 2026-06-02 | [78791](https://github.com/airbytehq/airbyte/pull/78791) | Update dependencies |
+| 0.0.53 | 2026-04-28 | [77382](https://github.com/airbytehq/airbyte/pull/77382) | Update dependencies |
+| 0.0.52 | 2026-04-21 | [76650](https://github.com/airbytehq/airbyte/pull/76650) | Update dependencies |
+| 0.0.51 | 2026-03-24 | [75026](https://github.com/airbytehq/airbyte/pull/75026) | Update dependencies |
+| 0.0.50 | 2026-03-03 | [74233](https://github.com/airbytehq/airbyte/pull/74233) | Update dependencies |
+| 0.0.49 | 2026-02-10 | [73051](https://github.com/airbytehq/airbyte/pull/73051) | Update dependencies |
+| 0.0.48 | 2026-02-03 | [72742](https://github.com/airbytehq/airbyte/pull/72742) | Update dependencies |
+| 0.0.47 | 2026-01-20 | [72010](https://github.com/airbytehq/airbyte/pull/72010) | Update dependencies |
+| 0.0.46 | 2026-01-14 | [71474](https://github.com/airbytehq/airbyte/pull/71474) | Update dependencies |
+| 0.0.45 | 2025-12-18 | [70747](https://github.com/airbytehq/airbyte/pull/70747) | Update dependencies |
+| 0.0.44 | 2025-11-25 | [70011](https://github.com/airbytehq/airbyte/pull/70011) | Update dependencies |
+| 0.0.43 | 2025-11-18 | [69455](https://github.com/airbytehq/airbyte/pull/69455) | Update dependencies |
+| 0.0.42 | 2025-10-29 | [68969](https://github.com/airbytehq/airbyte/pull/68969) | Update dependencies |
+| 0.0.41 | 2025-10-21 | [68295](https://github.com/airbytehq/airbyte/pull/68295) | Update dependencies |
+| 0.0.40 | 2025-10-14 | [68021](https://github.com/airbytehq/airbyte/pull/68021) | Update dependencies |
+| 0.0.39 | 2025-10-07 | [67528](https://github.com/airbytehq/airbyte/pull/67528) | Update dependencies |
+| 0.0.38 | 2025-09-30 | [66810](https://github.com/airbytehq/airbyte/pull/66810) | Update dependencies |
+| 0.0.37 | 2025-09-24 | [66649](https://github.com/airbytehq/airbyte/pull/66649) | Update dependencies |
+| 0.0.36 | 2025-09-09 | [66102](https://github.com/airbytehq/airbyte/pull/66102) | Update dependencies |
+| 0.0.35 | 2025-08-23 | [65309](https://github.com/airbytehq/airbyte/pull/65309) | Update dependencies |
+| 0.0.34 | 2025-08-09 | [64601](https://github.com/airbytehq/airbyte/pull/64601) | Update dependencies |
+| 0.0.33 | 2025-08-02 | [64269](https://github.com/airbytehq/airbyte/pull/64269) | Update dependencies |
+| 0.0.32 | 2025-07-26 | [63836](https://github.com/airbytehq/airbyte/pull/63836) | Update dependencies |
+| 0.0.31 | 2025-07-19 | [63500](https://github.com/airbytehq/airbyte/pull/63500) | Update dependencies |
+| 0.0.30 | 2025-07-12 | [63103](https://github.com/airbytehq/airbyte/pull/63103) | Update dependencies |
+| 0.0.29 | 2025-07-05 | [62567](https://github.com/airbytehq/airbyte/pull/62567) | Update dependencies |
+| 0.0.28 | 2025-06-28 | [62170](https://github.com/airbytehq/airbyte/pull/62170) | Update dependencies |
+| 0.0.27 | 2025-06-21 | [61791](https://github.com/airbytehq/airbyte/pull/61791) | Update dependencies |
+| 0.0.26 | 2025-06-14 | [60714](https://github.com/airbytehq/airbyte/pull/60714) | Update dependencies |
+| 0.0.25 | 2025-05-10 | [59779](https://github.com/airbytehq/airbyte/pull/59779) | Update dependencies |
+| 0.0.24 | 2025-05-03 | [59282](https://github.com/airbytehq/airbyte/pull/59282) | Update dependencies |
+| 0.0.23 | 2025-04-26 | [58822](https://github.com/airbytehq/airbyte/pull/58822) | Update dependencies |
+| 0.0.22 | 2025-04-19 | [58216](https://github.com/airbytehq/airbyte/pull/58216) | Update dependencies |
+| 0.0.21 | 2025-04-12 | [57686](https://github.com/airbytehq/airbyte/pull/57686) | Update dependencies |
+| 0.0.20 | 2025-04-05 | [57052](https://github.com/airbytehq/airbyte/pull/57052) | Update dependencies |
+| 0.0.19 | 2025-03-29 | [56688](https://github.com/airbytehq/airbyte/pull/56688) | Update dependencies |
+| 0.0.18 | 2025-03-22 | [56080](https://github.com/airbytehq/airbyte/pull/56080) | Update dependencies |
+| 0.0.17 | 2025-03-08 | [55488](https://github.com/airbytehq/airbyte/pull/55488) | Update dependencies |
+| 0.0.16 | 2025-03-01 | [54820](https://github.com/airbytehq/airbyte/pull/54820) | Update dependencies |
+| 0.0.15 | 2025-02-22 | [54359](https://github.com/airbytehq/airbyte/pull/54359) | Update dependencies |
+| 0.0.14 | 2025-02-15 | [53795](https://github.com/airbytehq/airbyte/pull/53795) | Update dependencies |
+| 0.0.13 | 2025-02-08 | [53277](https://github.com/airbytehq/airbyte/pull/53277) | Update dependencies |
+| 0.0.12 | 2025-02-01 | [52733](https://github.com/airbytehq/airbyte/pull/52733) | Update dependencies |
+| 0.0.11 | 2025-01-25 | [52281](https://github.com/airbytehq/airbyte/pull/52281) | Update dependencies |
+| 0.0.10 | 2025-01-18 | [51811](https://github.com/airbytehq/airbyte/pull/51811) | Update dependencies |
+| 0.0.9 | 2025-01-11 | [51217](https://github.com/airbytehq/airbyte/pull/51217) | Update dependencies |
+| 0.0.8 | 2024-12-28 | [50144](https://github.com/airbytehq/airbyte/pull/50144) | Update dependencies |
+| 0.0.7 | 2024-12-14 | [49624](https://github.com/airbytehq/airbyte/pull/49624) | Update dependencies |
+| 0.0.6 | 2024-12-12 | [49244](https://github.com/airbytehq/airbyte/pull/49244) | Update dependencies |
+| 0.0.5 | 2024-12-11 | [48909](https://github.com/airbytehq/airbyte/pull/48909) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.0.4 | 2024-11-04 | [48292](https://github.com/airbytehq/airbyte/pull/48292) | Update dependencies |
+| 0.0.3 | 2024-10-29 | [47916](https://github.com/airbytehq/airbyte/pull/47916) | Update dependencies |
+| 0.0.2 | 2024-10-28 | [47617](https://github.com/airbytehq/airbyte/pull/47617) | Update dependencies |
 | 0.0.1 | 2024-08-21 | | Initial release by natikgadzhi via Connector Builder |
 
 </details>

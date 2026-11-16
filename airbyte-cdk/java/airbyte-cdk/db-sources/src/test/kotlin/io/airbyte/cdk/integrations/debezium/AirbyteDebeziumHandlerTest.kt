@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium
 
@@ -26,22 +26,22 @@ class AirbyteDebeziumHandlerTest {
                                 "MODELS_SCHEMA",
                                 Field.of("COL_ID", JsonSchemaType.NUMBER),
                                 Field.of("COL_MAKE_ID", JsonSchemaType.NUMBER),
-                                Field.of("COL_MODEL", JsonSchemaType.STRING)
+                                Field.of("COL_MODEL", JsonSchemaType.STRING),
                             )
                             .withSupportedSyncModes(
-                                Lists.newArrayList(SyncMode.FULL_REFRESH, SyncMode.INCREMENTAL)
+                                Lists.newArrayList(SyncMode.FULL_REFRESH, SyncMode.INCREMENTAL),
                             )
-                            .withSourceDefinedPrimaryKey(listOf(listOf("COL_ID")))
-                    )
+                            .withSourceDefinedPrimaryKey(listOf(listOf("COL_ID"))),
+                    ),
                 )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
         // set all streams to incremental.
         configuredCatalog.streams.forEach(
-            Consumer { s: ConfiguredAirbyteStream -> s.syncMode = SyncMode.INCREMENTAL }
+            Consumer { s: ConfiguredAirbyteStream -> s.syncMode = SyncMode.INCREMENTAL },
         )
 
         Assertions.assertTrue(
-            AirbyteDebeziumHandler.isAnyStreamIncrementalSyncMode(configuredCatalog)
+            AirbyteDebeziumHandler.isAnyStreamIncrementalSyncMode(configuredCatalog),
         )
     }
 
@@ -56,18 +56,18 @@ class AirbyteDebeziumHandlerTest {
                                 "MODELS_SCHEMA",
                                 Field.of("COL_ID", JsonSchemaType.NUMBER),
                                 Field.of("COL_MAKE_ID", JsonSchemaType.NUMBER),
-                                Field.of("COL_MODEL", JsonSchemaType.STRING)
+                                Field.of("COL_MODEL", JsonSchemaType.STRING),
                             )
                             .withSupportedSyncModes(
-                                Lists.newArrayList(SyncMode.FULL_REFRESH, SyncMode.INCREMENTAL)
+                                Lists.newArrayList(SyncMode.FULL_REFRESH, SyncMode.INCREMENTAL),
                             )
-                            .withSourceDefinedPrimaryKey(listOf(listOf("COL_ID")))
-                    )
+                            .withSourceDefinedPrimaryKey(listOf(listOf("COL_ID"))),
+                    ),
                 )
         val configuredCatalog = CatalogHelpers.toDefaultConfiguredCatalog(catalog)
 
         Assertions.assertFalse(
-            AirbyteDebeziumHandler.isAnyStreamIncrementalSyncMode(configuredCatalog)
+            AirbyteDebeziumHandler.isAnyStreamIncrementalSyncMode(configuredCatalog),
         )
     }
 }

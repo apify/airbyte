@@ -7,17 +7,18 @@ import logging
 from typing import Any, Iterable, List, Mapping, Optional
 
 import requests
-from airbyte_cdk.sources.streams.http import HttpClient
 from requests.exceptions import InvalidURL, JSONDecodeError
+
+from airbyte_cdk.sources.streams.http import HttpClient
 
 from .http_request import ShopifyErrorHandler
 from .utils import ShopifyAccessScopesError, ShopifyBadJsonError, ShopifyWrongShopNameError
+
 
 SCOPES_MAPPING: Mapping[str, set[str]] = {
     # SCOPE: read_customers
     "Customers": ("read_customers",),
     "MetafieldCustomers": ("read_customers",),
-    "CustomerSavedSearch": ("read_customers",),
     "CustomerAddress": ("read_customers",),
     # SCOPE: read_orders
     "OrderAgreements": ("read_orders",),
@@ -36,13 +37,14 @@ SCOPES_MAPPING: Mapping[str, set[str]] = {
     "MetafieldDraftOrders": ("read_draft_orders",),
     # SCOPE: read_products
     "Products": ("read_products",),
-    "ProductsGraphQl": ("read_products",),
+    "DeletedProducts": ("read_products",),
     "MetafieldProducts": ("read_products",),
     "ProductImages": ("read_products",),
     "MetafieldProductImages": ("read_products",),
     "MetafieldProductVariants": ("read_products",),
     "CustomCollections": ("read_products",),
     "Collects": ("read_products",),
+    "CollectionProducts": ("read_products",),
     "ProductVariants": ("read_products", "read_inventory"),
     "MetafieldCollections": ("read_products",),
     "SmartCollections": ("read_products",),
@@ -56,6 +58,7 @@ SCOPES_MAPPING: Mapping[str, set[str]] = {
     "PriceRules": ("read_price_rules",),
     # SCOPE: read_discounts
     "DiscountCodes": ("read_discounts",),
+    "DiscountCodesSync": ("read_discounts",),
     # SCOPE: read_locations
     "Locations": ("read_locations",),
     "MetafieldLocations": ("read_locations",),
@@ -72,17 +75,19 @@ SCOPES_MAPPING: Mapping[str, set[str]] = {
     "MetafieldArticles": ("read_online_store_pages",),
     "Blogs": ("read_online_store_pages",),
     "MetafieldBlogs": ("read_online_store_pages",),
+    # SCOPE: read_shipping
+    "Countries": ("read_shipping",),
+    # SCOPE: read_markets
+    "MarketCountries": ("read_markets",),
 }
 
 ALWAYS_PERMITTED_STREAMS: List[str] = [
     "MetafieldShops",
     "Shop",
-    "Countries",
 ]
 
 
 class ShopifyScopes:
-
     # define default logger
     logger = logging.getLogger("airbyte")
 

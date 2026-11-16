@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.text
 
@@ -21,7 +21,7 @@ object Names {
         return Normalizer.normalize(s, Normalizer.Form.NFKD)
             .replace(
                 "\\p{M}".toRegex(),
-                ""
+                "",
             ) // P{M} matches a code point that is not a combining mark (unicode)
             .replace("\\s+".toRegex(), "_")
             .replace(NON_ALPHANUMERIC_AND_UNDERSCORE_PATTERN.toRegex(), "_")

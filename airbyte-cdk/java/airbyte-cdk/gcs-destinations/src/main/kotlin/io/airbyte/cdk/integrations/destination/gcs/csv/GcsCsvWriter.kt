@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs.csv
 
@@ -34,7 +34,7 @@ class GcsCsvWriter(
     config: GcsDestinationConfig,
     s3Client: AmazonS3,
     configuredStream: ConfiguredAirbyteStream,
-    uploadTimestamp: Timestamp
+    uploadTimestamp: Timestamp,
 ) : BaseGcsWriter(config, s3Client, configuredStream), DestinationFileWriter {
     private val csvSheetGenerator: CsvSheetGenerator
     private val uploadManager: StreamTransferManager
@@ -68,7 +68,7 @@ class GcsCsvWriter(
                 PrintWriter(outputStream, true, StandardCharsets.UTF_8),
                 @Suppress("deprecation")
                 CSVFormat.DEFAULT.withQuoteMode(QuoteMode.ALL)
-                    .withHeader(*csvSheetGenerator.getHeaderRow().toTypedArray<String>())
+                    .withHeader(*csvSheetGenerator.getHeaderRow().toTypedArray<String>()),
             )
     }
 

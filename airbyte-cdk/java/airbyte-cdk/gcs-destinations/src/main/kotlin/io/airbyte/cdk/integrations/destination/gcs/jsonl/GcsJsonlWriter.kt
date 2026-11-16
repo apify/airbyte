@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs.jsonl
 
@@ -31,7 +31,7 @@ class GcsJsonlWriter(
     config: GcsDestinationConfig,
     s3Client: AmazonS3,
     configuredStream: ConfiguredAirbyteStream,
-    uploadTimestamp: Timestamp
+    uploadTimestamp: Timestamp,
 ) : BaseGcsWriter(config, s3Client, configuredStream), DestinationFileWriter {
     private val uploadManager: StreamTransferManager
     private val outputStream: MultiPartOutputStream

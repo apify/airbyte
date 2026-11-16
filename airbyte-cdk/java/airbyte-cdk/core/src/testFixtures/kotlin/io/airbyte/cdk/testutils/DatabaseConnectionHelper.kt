@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.testutils
 
@@ -26,7 +26,7 @@ object DatabaseConnectionHelper {
             container.username,
             container.password,
             container.driverClassName,
-            container.jdbcUrl
+            container.jdbcUrl,
         )
     }
 
@@ -44,7 +44,7 @@ object DatabaseConnectionHelper {
             container.password,
             container.driverClassName,
             container.jdbcUrl,
-            dialect
+            dialect,
         )
     }
 }

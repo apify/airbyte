@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3
 
@@ -28,7 +28,7 @@ interface BlobDecorator {
      */
     fun updateMetadata(
         metadata: MutableMap<String, String>,
-        metadataKeyMapping: Map<String, String>
+        metadataKeyMapping: Map<String, String>,
     )
 
     companion object {
@@ -41,7 +41,7 @@ interface BlobDecorator {
             metadata: MutableMap<String, String>,
             metadataKeyMapping: Map<String, String>,
             key: String,
-            value: String
+            value: String,
         ) {
             if (metadataKeyMapping.containsKey(key)) {
                 metadata[metadataKeyMapping.getValue(key)] = value

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.read
@@ -13,6 +13,7 @@ import io.airbyte.cdk.output.ResetStream
 import io.airbyte.cdk.read.TestFixtures.assertFailures
 import io.airbyte.cdk.read.TestFixtures.assertJsonEquals
 import io.airbyte.cdk.read.TestFixtures.assertQueryEquals
+import io.airbyte.cdk.read.TestFixtures.bootstrap
 import io.airbyte.cdk.read.TestFixtures.factory
 import io.airbyte.cdk.read.TestFixtures.id
 import io.airbyte.cdk.read.TestFixtures.msg
@@ -21,6 +22,7 @@ import io.airbyte.cdk.read.TestFixtures.record
 import io.airbyte.cdk.read.TestFixtures.sharedState
 import io.airbyte.cdk.read.TestFixtures.stream
 import io.airbyte.cdk.read.TestFixtures.ts
+import io.airbyte.cdk.util.Jsons
 import java.time.LocalDate
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -33,7 +35,7 @@ class DefaultJdbcPartitionFactoryTest {
     fun testColdStartUnsplittableSnapshot() {
         val stream = stream(withPK = false, withCursor = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue = null)
+        val result = factory.create(stream.bootstrap(opaqueStateValue = null))
         factory.assertFailures()
         Assertions.assertTrue(result is DefaultJdbcUnsplittableSnapshotPartition)
         val partition = result as DefaultJdbcUnsplittableSnapshotPartition
@@ -41,7 +43,7 @@ class DefaultJdbcPartitionFactoryTest {
         sanityCheck(stream, factory, partition)
         // Check query generation
         partition.nonResumableQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace)),
         )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
@@ -54,7 +56,7 @@ class DefaultJdbcPartitionFactoryTest {
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
                     ),
-                )
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue())
@@ -64,7 +66,7 @@ class DefaultJdbcPartitionFactoryTest {
     fun testColdStartUnsplittableSnapshotWithCursor() {
         val stream = stream(withPK = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, null)
+        val result = factory.create(stream.bootstrap(opaqueStateValue = null))
         factory.assertFailures()
         Assertions.assertTrue(result is DefaultJdbcUnsplittableSnapshotWithCursorPartition)
         val partition = result as DefaultJdbcUnsplittableSnapshotWithCursorPartition
@@ -74,10 +76,10 @@ class DefaultJdbcPartitionFactoryTest {
         Assertions.assertEquals(ts, partition.cursor)
         // Check query generation
         partition.cursorUpperBoundQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumnMaxValue(ts), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumnMaxValue(ts), From(stream.name, stream.namespace)),
         )
         partition.nonResumableQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace)),
         )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
@@ -90,7 +92,7 @@ class DefaultJdbcPartitionFactoryTest {
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
                     ),
-                )
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue(cursor = cursorValue))
@@ -100,7 +102,7 @@ class DefaultJdbcPartitionFactoryTest {
     fun testColdStartSplittableSnapshot() {
         val stream = stream(withCursor = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue = null)
+        val result = factory.create(stream.bootstrap(opaqueStateValue = null))
         factory.assertFailures()
         Assertions.assertTrue(result is DefaultJdbcSplittableSnapshotPartition)
         val partition = result as DefaultJdbcSplittableSnapshotPartition
@@ -111,7 +113,7 @@ class DefaultJdbcPartitionFactoryTest {
         Assertions.assertNull(partition.upperBound)
         // Check query generation
         partition.nonResumableQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace)),
         )
         partition
             .resumableQuery(limit = 10L)
@@ -121,8 +123,8 @@ class DefaultJdbcPartitionFactoryTest {
                     From(stream.name, stream.namespace),
                     NoWhere,
                     OrderBy(id),
-                    Limit(10L)
-                )
+                    Limit(10L),
+                ),
             )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
@@ -134,10 +136,11 @@ class DefaultJdbcPartitionFactoryTest {
                         stream.namespace,
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
+                        NoWhere,
                     ),
                     NoWhere,
                     OrderBy(id),
-                )
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue())
@@ -165,7 +168,7 @@ class DefaultJdbcPartitionFactoryTest {
     fun testColdStartSplittableSnapshotWithCursor() {
         val stream = stream()
         val factory = sharedState().factory()
-        val result = factory.create(stream, null)
+        val result = factory.create(stream.bootstrap(opaqueStateValue = null))
         factory.assertFailures()
         Assertions.assertTrue(result is DefaultJdbcSplittableSnapshotWithCursorPartition)
         val partition = result as DefaultJdbcSplittableSnapshotWithCursorPartition
@@ -178,10 +181,10 @@ class DefaultJdbcPartitionFactoryTest {
         Assertions.assertNull(partition.upperBound)
         // Check query generation
         partition.cursorUpperBoundQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumnMaxValue(ts), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumnMaxValue(ts), From(stream.name, stream.namespace)),
         )
         partition.nonResumableQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumns(id, ts, msg), From(stream.name, stream.namespace)),
         )
         partition
             .resumableQuery(limit = 10L)
@@ -191,8 +194,8 @@ class DefaultJdbcPartitionFactoryTest {
                     From(stream.name, stream.namespace),
                     NoWhere,
                     OrderBy(id),
-                    Limit(10L)
-                )
+                    Limit(10L),
+                ),
             )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
@@ -204,10 +207,11 @@ class DefaultJdbcPartitionFactoryTest {
                         stream.namespace,
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
+                        NoWhere,
                     ),
                     NoWhere,
-                    OrderBy(id)
-                )
+                    OrderBy(id),
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue(cursor = cursorValue))
@@ -236,10 +240,72 @@ class DefaultJdbcPartitionFactoryTest {
     }
 
     @Test
+    fun testEmptyStateUnsplittableSnapshot() {
+        val stream = stream(withPK = false, withCursor = false)
+        val factory = sharedState().factory()
+        val result = factory.create(stream.bootstrap(Jsons.objectNode()))
+        factory.assertFailures()
+        Assertions.assertTrue(result is DefaultJdbcUnsplittableSnapshotPartition)
+        val partition = result as DefaultJdbcUnsplittableSnapshotPartition
+        // Check partition properties
+        sanityCheck(stream, factory, partition)
+    }
+
+    @Test
+    fun testEmptyStateSplittableSnapshot() {
+        val stream = stream(withCursor = false)
+        val factory = sharedState().factory()
+        val result = factory.create(stream.bootstrap(Jsons.objectNode()))
+        factory.assertFailures()
+        Assertions.assertTrue(result is DefaultJdbcSplittableSnapshotPartition)
+        val partition = result as DefaultJdbcSplittableSnapshotPartition
+        // Check partition properties
+        sanityCheck(stream, factory, partition)
+        Assertions.assertEquals(listOf(id), partition.checkpointColumns)
+        Assertions.assertNull(partition.lowerBound)
+        Assertions.assertNull(partition.upperBound)
+    }
+
+    @Test
+    fun testEmptyStateSplittableSnapshotWithCursor() {
+        val stream = stream()
+        val factory = sharedState().factory()
+        val result = factory.create(stream.bootstrap(Jsons.objectNode()))
+        factory.assertFailures()
+        Assertions.assertTrue(result is DefaultJdbcSplittableSnapshotWithCursorPartition)
+        val partition = result as DefaultJdbcSplittableSnapshotWithCursorPartition
+        // Check partition properties
+        sanityCheck(stream, factory, partition)
+        Assertions.assertEquals(listOf(id), partition.checkpointColumns)
+        Assertions.assertEquals(ts, partition.cursor)
+        Assertions.assertNull(partition.lowerBound)
+        Assertions.assertNull(partition.upperBound)
+    }
+
+    @Test
+    fun testCompletedSnapshotStateYieldsNoPartition() {
+        val stream = stream(withCursor = false)
+        val factory = sharedState().factory()
+        val result = factory.create(stream.bootstrap(opaqueStateValue()))
+        factory.assertFailures()
+        Assertions.assertNull(result)
+    }
+
+    @Test
+    fun testNullSentinelStateYieldsNoPartition() {
+        val stream = stream(withCursor = false)
+        val factory = sharedState().factory()
+        // The isNull sentinel for completed empty-table streams still yields no partition.
+        val result = factory.create(stream.bootstrap(Jsons.nullNode()))
+        factory.assertFailures()
+        Assertions.assertNull(result)
+    }
+
+    @Test
     fun testInvalidPrimaryKey() {
         val stream = stream(withPK = false, withCursor = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue(pk = 22))
+        val result = factory.create(stream.bootstrap(opaqueStateValue(pk = 22)))
         factory.assertFailures(
             InvalidPrimaryKey(stream.id, listOf(id.id)),
             ResetStream(stream.id),
@@ -254,7 +320,7 @@ class DefaultJdbcPartitionFactoryTest {
     fun testInvalidCursor() {
         val stream = stream(withCursor = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue(cursor = cursorValue))
+        val result = factory.create(stream.bootstrap(opaqueStateValue(cursor = cursorValue)))
         factory.assertFailures(
             InvalidCursor(stream.id, ts.id),
             ResetStream(stream.id),
@@ -272,7 +338,7 @@ class DefaultJdbcPartitionFactoryTest {
     fun testWarmStartSnapshot() {
         val stream = stream(withCursor = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue(pk = 22))
+        val result = factory.create(stream.bootstrap(opaqueStateValue(pk = 22)))
         factory.assertFailures()
         Assertions.assertTrue(result is DefaultJdbcSplittableSnapshotPartition)
         val partition = result as DefaultJdbcSplittableSnapshotPartition
@@ -286,8 +352,8 @@ class DefaultJdbcPartitionFactoryTest {
             SelectQuerySpec(
                 SelectColumns(id, ts, msg),
                 From(stream.name, stream.namespace),
-                Where(Greater(id, IntCodec.encode(22)))
-            )
+                Where(Greater(id, IntCodec.encode(22))),
+            ),
         )
         partition
             .resumableQuery(limit = 10L)
@@ -297,8 +363,8 @@ class DefaultJdbcPartitionFactoryTest {
                     From(stream.name, stream.namespace),
                     Where(Greater(id, IntCodec.encode(22))),
                     OrderBy(id),
-                    Limit(10L)
-                )
+                    Limit(10L),
+                ),
             )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
@@ -310,16 +376,17 @@ class DefaultJdbcPartitionFactoryTest {
                         stream.namespace,
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
+                        Where(Greater(id, IntCodec.encode(22))),
                     ),
-                    Where(Greater(id, IntCodec.encode(22))),
+                    NoWhere,
                     OrderBy(id),
-                )
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue())
         partition.incompleteState(record(pk = 10)).assertJsonEquals(opaqueStateValue(pk = 10))
         // Check full refresh termination criteria
-        val finalResult = factory.create(stream, opaqueStateValue())
+        val finalResult = factory.create(stream.bootstrap(opaqueStateValue()))
         factory.assertFailures()
         Assertions.assertNull(finalResult)
     }
@@ -328,7 +395,8 @@ class DefaultJdbcPartitionFactoryTest {
     fun testWarmStartSnapshotWithCursor() {
         val stream = stream()
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue(pk = 22, cursor = cursorValue))
+        val result =
+            factory.create(stream.bootstrap(opaqueStateValue(pk = 22, cursor = cursorValue)))
         factory.assertFailures()
         Assertions.assertTrue(result is DefaultJdbcSplittableSnapshotWithCursorPartition)
         val partition = result as DefaultJdbcSplittableSnapshotWithCursorPartition
@@ -344,7 +412,7 @@ class DefaultJdbcPartitionFactoryTest {
                 SelectColumns(id, ts, msg),
                 From(stream.name, stream.namespace),
                 Where(Greater(id, IntCodec.encode(22))),
-            )
+            ),
         )
         partition
             .resumableQuery(limit = 10L)
@@ -354,8 +422,8 @@ class DefaultJdbcPartitionFactoryTest {
                     From(stream.name, stream.namespace),
                     Where(Greater(id, IntCodec.encode(22))),
                     OrderBy(id),
-                    Limit(10L)
-                )
+                    Limit(10L),
+                ),
             )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
@@ -367,10 +435,11 @@ class DefaultJdbcPartitionFactoryTest {
                         stream.namespace,
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
+                        Where(Greater(id, IntCodec.encode(22))),
                     ),
-                    Where(Greater(id, IntCodec.encode(22))),
-                    OrderBy(id)
-                )
+                    NoWhere,
+                    OrderBy(id),
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue(cursor = cursorValue))
@@ -378,10 +447,10 @@ class DefaultJdbcPartitionFactoryTest {
             .incompleteState(record(pk = 44))
             .assertJsonEquals(opaqueStateValue(pk = 44, cursor = cursorValue))
         // Check snapshot termination criteria and transition to cursor-based incremental
-        val finalResult = factory.create(stream, opaqueStateValue(cursor = cursorValue))
+        val finalResult = factory.create(stream.bootstrap(opaqueStateValue(cursor = cursorValue)))
         factory.assertFailures()
-        Assertions.assertTrue(finalResult is DefaultJdbcCursorIncrementalPartition)
-        val finalPartition = finalResult as DefaultJdbcCursorIncrementalPartition
+        Assertions.assertTrue(finalResult is DefaultUnsplittableJdbcCursorIncrementalPartition)
+        val finalPartition = finalResult as DefaultUnsplittableJdbcCursorIncrementalPartition
         sanityCheck(stream, factory, finalPartition)
         Assertions.assertEquals(ts, finalPartition.cursor)
         Assertions.assertEquals(LocalDateCodec.encode(cursorValue), finalPartition.cursorLowerBound)
@@ -391,10 +460,10 @@ class DefaultJdbcPartitionFactoryTest {
     fun testCursorIncremental() {
         val stream = stream(withPK = false)
         val factory = sharedState().factory()
-        val result = factory.create(stream, opaqueStateValue(cursor = cursorValue))
+        val result = factory.create(stream.bootstrap(opaqueStateValue(cursor = cursorValue)))
         factory.assertFailures()
-        Assertions.assertTrue(result is DefaultJdbcCursorIncrementalPartition)
-        val partition = result as DefaultJdbcCursorIncrementalPartition
+        Assertions.assertTrue(result is DefaultUnsplittableJdbcCursorIncrementalPartition)
+        val partition = result as DefaultUnsplittableJdbcCursorIncrementalPartition
         val cursorUpperBound = cursorValue.plusMonths(1)
         partition.streamState.cursorUpperBound = LocalDateCodec.encode(cursorUpperBound)
         // Check partition properties
@@ -408,7 +477,7 @@ class DefaultJdbcPartitionFactoryTest {
         Assertions.assertTrue(partition.isLowerBoundIncluded)
         // Check query generation
         partition.cursorUpperBoundQuery.assertQueryEquals(
-            SelectQuerySpec(SelectColumnMaxValue(ts), From(stream.name, stream.namespace))
+            SelectQuerySpec(SelectColumnMaxValue(ts), From(stream.name, stream.namespace)),
         )
         partition.nonResumableQuery.assertQueryEquals(
             SelectQuerySpec(
@@ -417,27 +486,11 @@ class DefaultJdbcPartitionFactoryTest {
                 Where(
                     And(
                         GreaterOrEqual(ts, LocalDateCodec.encode(cursorValue)),
-                        LesserOrEqual(ts, LocalDateCodec.encode(cursorUpperBound))
+                        LesserOrEqual(ts, LocalDateCodec.encode(cursorUpperBound)),
                     ),
                 ),
-            )
+            ),
         )
-        partition
-            .resumableQuery(limit = 10L)
-            .assertQueryEquals(
-                SelectQuerySpec(
-                    SelectColumns(id, ts, msg),
-                    From(stream.name, stream.namespace),
-                    Where(
-                        And(
-                            GreaterOrEqual(ts, LocalDateCodec.encode(cursorValue)),
-                            LesserOrEqual(ts, LocalDateCodec.encode(cursorUpperBound))
-                        ),
-                    ),
-                    OrderBy(ts),
-                    Limit(10L)
-                )
-            )
         partition
             .samplingQuery(sampleRateInvPow2 = 8)
             .assertQueryEquals(
@@ -448,30 +501,30 @@ class DefaultJdbcPartitionFactoryTest {
                         stream.namespace,
                         sampleRateInvPow2 = 8,
                         DefaultJdbcConstants.TABLE_SAMPLE_SIZE,
-                    ),
-                    Where(
-                        And(
-                            GreaterOrEqual(ts, LocalDateCodec.encode(cursorValue)),
-                            LesserOrEqual(ts, LocalDateCodec.encode(cursorUpperBound))
+                        Where(
+                            And(
+                                GreaterOrEqual(ts, LocalDateCodec.encode(cursorValue)),
+                                LesserOrEqual(ts, LocalDateCodec.encode(cursorUpperBound)),
+                            ),
                         ),
                     ),
-                    OrderBy(ts)
-                )
+                    NoWhere,
+                    OrderBy(ts),
+                ),
             )
         // Check state generation
         partition.completeState.assertJsonEquals(opaqueStateValue(cursor = cursorUpperBound))
-        partition
-            .incompleteState(record(cursor = cursorValue.plusDays(1)))
-            .assertJsonEquals(opaqueStateValue(cursor = cursorValue.plusDays(1)))
         // Check that subsequent non-terminal partition includes the lower bound
-        val nextResult = factory.create(stream, opaqueStateValue(cursor = cursorValue.plusDays(1)))
+        val nextResult =
+            factory.create(stream.bootstrap(opaqueStateValue(cursor = cursorValue.plusDays(1))))
         factory.assertFailures()
-        Assertions.assertTrue(nextResult is DefaultJdbcCursorIncrementalPartition)
-        val nextPartition = nextResult as DefaultJdbcCursorIncrementalPartition
+        Assertions.assertTrue(nextResult is DefaultUnsplittableJdbcCursorIncrementalPartition)
+        val nextPartition = nextResult as DefaultUnsplittableJdbcCursorIncrementalPartition
         sanityCheck(stream, factory, nextPartition)
         Assertions.assertTrue(nextPartition.isLowerBoundIncluded)
         // Check termination criteria
-        val finalResult = factory.create(stream, opaqueStateValue(cursor = cursorUpperBound))
+        val finalResult =
+            factory.create(stream.bootstrap(opaqueStateValue(cursor = cursorUpperBound)))
         factory.assertFailures()
         Assertions.assertNull(finalResult)
         // Check split output
@@ -482,23 +535,13 @@ class DefaultJdbcPartitionFactoryTest {
                 partition,
                 listOf(opaqueStateValue(cursor = boundary1), opaqueStateValue(cursor = boundary2)),
             )
-        val splits: List<DefaultJdbcCursorIncrementalPartition> =
-            rawSplits.filterIsInstance<DefaultJdbcCursorIncrementalPartition>()
-        Assertions.assertIterableEquals(rawSplits, splits)
-        splits.forEach {
-            sanityCheck(stream, factory, it)
-            Assertions.assertEquals(ts, it.cursor)
-        }
-        Assertions.assertEquals(3, splits.size)
-        Assertions.assertEquals(LocalDateCodec.encode(cursorValue), splits[0].cursorLowerBound)
-        Assertions.assertTrue(splits[0].isLowerBoundIncluded)
-        Assertions.assertEquals(LocalDateCodec.encode(boundary1), splits[0].cursorUpperBound)
-        Assertions.assertEquals(LocalDateCodec.encode(boundary1), splits[1].cursorLowerBound)
-        Assertions.assertFalse(splits[1].isLowerBoundIncluded)
-        Assertions.assertEquals(LocalDateCodec.encode(boundary2), splits[1].cursorUpperBound)
-        Assertions.assertEquals(LocalDateCodec.encode(boundary2), splits[2].cursorLowerBound)
-        Assertions.assertFalse(splits[2].isLowerBoundIncluded)
-        Assertions.assertEquals(LocalDateCodec.encode(cursorUpperBound), splits[2].cursorUpperBound)
+        Assertions.assertEquals(1, rawSplits.size)
+        val split = rawSplits[0] as DefaultUnsplittableJdbcCursorIncrementalPartition
+        sanityCheck(stream, factory, split)
+        Assertions.assertEquals(ts, split.cursor)
+        Assertions.assertEquals(LocalDateCodec.encode(cursorValue), split.cursorLowerBound)
+        Assertions.assertTrue(split.isLowerBoundIncluded)
+        Assertions.assertEquals(LocalDateCodec.encode(cursorUpperBound), split.cursorUpperBound)
     }
 
     fun sanityCheck(

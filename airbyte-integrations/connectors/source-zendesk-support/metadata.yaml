@@ -7,11 +7,11 @@ data:
       - ${subdomain}.zendesk.com
       - zendesk.com
   connectorBuildOptions:
-    baseImage: docker.io/airbyte/python-connector-base:2.0.0@sha256:c44839ba84406116e8ba68722a0f30e8f6e7056c726f447681bb9e9ece8bd916
+    baseImage: docker.io/airbyte/source-declarative-manifest:7.35.0@sha256:0557872c74928d6b338b208a97fe52e9e8aed8d9674d85d5b5b540bf91c8110c
   connectorSubtype: api
   connectorType: source
   definitionId: 79c1aa37-dae3-42ae-b333-d1c105477715
-  dockerImageTag: 4.2.2
+  dockerImageTag: 5.7.0
   dockerRepository: airbyte/source-zendesk-support
   documentationUrl: https://docs.airbyte.com/integrations/sources/zendesk-support
   githubIssueLabel: source-zendesk-support
@@ -21,7 +21,7 @@ data:
   name: Zendesk Support
   remoteRegistries:
     pypi:
-      enabled: true
+      enabled: false
       packageName: airbyte-source-zendesk-support
   registryOverrides:
     cloud:
@@ -30,6 +30,13 @@ data:
       enabled: true
   releaseStage: generally_available
   releases:
+    rolloutConfiguration:
+      enableProgressiveRollout: true
+      defaultRolloutMode: autopilot
+      autopilotConfig:
+        autoStart: true
+        autoPromoteStages: true
+        strategy: fast
     breakingChanges:
       1.0.0:
         message: "`cursor_field` for `Tickets` stream is changed to `generated_timestamp`"
@@ -38,7 +45,7 @@ data:
         message: The `Deleted Tickets` stream was removed. Deleted tickets are still available from the Tickets stream.
         upgradeDeadline: "2023-10-04"
       3.0.0:
-        message: "This version includes breaking changes to the `TicketsMetric` stream.  The cursor field has been updated to `generated_timestamp`.  It is necessary to refresh the data and schema for the affected stream. Please see the migration guide for additional details."
+        message: "This version includes breaking changes to the `TicketsMetric` stream.  The cursor field has been updated to `generated_timestamp`. It is necessary to refresh the data and schema for the affected stream. Please see the migration guide for additional details."
         upgradeDeadline: "2024-09-09"
         scopedImpact:
           - scopeType: stream
@@ -51,9 +58,13 @@ data:
           - scopeType: stream
             impactedScopes:
               - "tags"
+      5.0.0:
+        message: "This version adds OAuth2.0 with refresh token support. Users who authenticate via OAuth must re-authenticate to use the new flow with rotating refresh tokens."
+        upgradeDeadline: "2026-01-30"
   suggestedStreams:
     streams:
       - brands
+      - deleted_tickets
       - groups
       - organizations
       - satisfaction_ratings
@@ -62,14 +73,16 @@ data:
       - ticket_comments
       - ticket_fields
       - ticket_forms
+      - ticket_events
       - ticket_metric_events
       - ticket_metrics
       - tickets
       - users
   supportLevel: certified
+  supportsFileTransfer: true
   tags:
-    - language:python
     - cdk:low-code
+    - language:manifest-only
   connectorTestSuitesOptions:
     - suite: liveTests
       testConnections:
@@ -92,9 +105,26 @@ data:
           secretStore:
             type: GSM
             alias: airbyte-connector-testing-secret-store
-        - name: SECRET_ZENDESK_SUPPORT_OAUTH_CREDS
-          fileName: config_oauth.json
-          secretStore:
-            type: GSM
-            alias: airbyte-connector-testing-secret-store
+  externalDocumentationUrls:
+    - title: Zendesk Support API
+      url: https://developer.zendesk.com/api-reference/ticketing/introduction/
+      type: api_reference
+    - title: API Changelog
+      url: https://developer.zendesk.com/api-reference/changelog/changelog/
+      type: api_release_history
+    - title: Zendesk API changelog
+      url: https://developer.zendesk.com/api-reference/ticketing/introduction/#changes
+      type: api_release_history
+    - title: Zendesk authentication
+      url: https://developer.zendesk.com/api-reference/ticketing/introduction/#security-and-authentication
+      type: authentication_guide
+    - title: Zendesk rate limits
+      url: https://developer.zendesk.com/api-reference/ticketing/account-configuration/usage_limits/
+      type: rate_limits
+    - title: Zendesk Status
+      url: https://status.zendesk.com/
+      type: status_page
+    - title: Zendesk feature removal announcements
+      url: https://support.zendesk.com/hc/en-us/articles/4408843026714-What-is-being-removed-updated-April-2026
+      type: api_deprecations
 metadataSpecVersion: "1.0"

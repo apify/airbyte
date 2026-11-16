@@ -1,16 +1,20 @@
-# Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+#
+# Copyright (c) 2025 Airbyte, Inc., all rights reserved.
+#
 
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import Dict, List, Union
 from unittest import TestCase
 from unittest.mock import patch
 
 import freezegun
-from airbyte_cdk.models import AirbyteStateBlob, AirbyteStreamStatus, FailureType, StreamDescriptor, SyncMode
+from unit_tests.conftest import get_source
+
+from airbyte_cdk.models import AirbyteStreamStatus, FailureType, StreamDescriptor, SyncMode
 from airbyte_cdk.sources.streams.http.error_handlers.http_status_error_handler import HttpStatusErrorHandler
 from airbyte_cdk.test.catalog_builder import CatalogBuilder
 from airbyte_cdk.test.entrypoint_wrapper import read
-from airbyte_cdk.test.mock_http import HttpMocker
+from airbyte_cdk.test.mock_http import HttpMocker, HttpRequest, HttpResponse
 from airbyte_cdk.test.mock_http.response_builder import (
     FieldPath,
     HttpResponseBuilder,
@@ -21,21 +25,22 @@ from airbyte_cdk.test.mock_http.response_builder import (
     find_template,
 )
 from airbyte_cdk.test.state_builder import StateBuilder
+from integration.accounts_windows import NOW_2010, WINDOW_COUNT, created_inside_window, window_request
 from integration.config import ConfigBuilder
 from integration.helpers import assert_stream_did_not_run
 from integration.pagination import StripePaginationStrategy
 from integration.request_builder import StripeRequestBuilder
 from integration.response_builder import a_response_with_status
-from source_stripe import SourceStripe
+
 
 _STREAM_NAME = "persons"
 _ACCOUNT_ID = "acct_1G9HZLIEn49ers"
 _CLIENT_SECRET = "ConfigBuilder default client secret"
 _NOW = datetime.now(timezone.utc)
-_CONFIG = {
-    "client_secret": _CLIENT_SECRET,
-    "account_id": _ACCOUNT_ID,
-}
+_NOW_2010 = NOW_2010
+_CONFIG = {"client_secret": _CLIENT_SECRET, "account_id": _ACCOUNT_ID}
+# Persons' own cursor starts at config start_date, which must not be after the 2010 clock.
+_CONFIG_2010 = {**_CONFIG, "start_date": "2010-01-01T00:00:00Z"}
 _NO_STATE = StateBuilder().build()
 _AVOIDING_INCLUSIVE_BOUNDARIES = timedelta(seconds=1)
 
@@ -50,6 +55,10 @@ def _create_catalog(sync_mode: SyncMode = SyncMode.full_refresh):
 
 def _create_accounts_request() -> StripeRequestBuilder:
     return StripeRequestBuilder.accounts_endpoint(_ACCOUNT_ID, _CLIENT_SECRET)
+
+
+def _window_request(index: int) -> StripeRequestBuilder:
+    return window_request(_create_accounts_request(), index)
 
 
 def _create_persons_request(parent_account_id: str = _ACCOUNT_ID) -> StripeRequestBuilder:
@@ -72,6 +81,25 @@ def _create_record(resource: str) -> RecordBuilder:
     return create_record_builder(
         find_template(resource, __file__), FieldPath("data"), record_id_path=FieldPath("id"), record_cursor_path=FieldPath("created")
     )
+
+
+def _an_account(window_index: int = 0, account_id: str = _ACCOUNT_ID) -> RecordBuilder:
+    return _create_record("accounts").with_id(account_id).with_cursor(created_inside_window(window_index))
+
+
+def _an_accounts_page(*records: RecordBuilder) -> HttpResponse:
+    response = _create_response()
+    for record in records:
+        response = response.with_record(record=record)
+    return response.build()
+
+
+def _mock_parent_windows(http_mocker: HttpMocker, responses: Dict[int, Union[HttpResponse, List[HttpResponse]]]) -> List[HttpRequest]:
+    """Registers the three parent windows the 2010 clock produces; windows without a response return an empty page."""
+    requests = [_window_request(index).build() for index in range(WINDOW_COUNT)]
+    for index, request in enumerate(requests):
+        http_mocker.get(request, responses.get(index, _an_accounts_page()))
+    return requests
 
 
 def _create_persons_event_record(event_type: str) -> RecordBuilder:
@@ -100,57 +128,59 @@ def emits_successful_sync_status_messages(status_messages: List[AirbyteStreamSta
 
 @freezegun.freeze_time(_NOW.isoformat())
 class PersonsTest(TestCase):
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_full_refresh(self, http_mocker):
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         http_mocker.get(
             _create_persons_request().with_limit(100).build(),
             _create_response().with_record(record=_create_record("persons")).with_record(record=_create_record("persons")).build(),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 2
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_parent_pagination(self, http_mocker):
         # First parent stream accounts first page request
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts").with_id("last_page_record_id")).with_pagination().build(),
+        _mock_parent_windows(
+            http_mocker,
+            {0: _create_response().with_record(record=_an_account(account_id="page_record_id")).with_pagination().build()},
         )
 
-        # Second parent stream accounts second page request
+        # Second parent stream accounts second page request, same window
         http_mocker.get(
-            _create_accounts_request().with_limit(100).with_starting_after("last_page_record_id").build(),
-            _create_response().with_record(record=_create_record("accounts").with_id("last_page_record_id")).build(),
+            _window_request(0).with_starting_after("page_record_id").build(),
+            _an_accounts_page(_an_account(account_id="last_page_record_id")),
         )
 
-        # Persons stream first page request
+        # Persons stream first page request for first parent
+        http_mocker.get(
+            _create_persons_request(parent_account_id="page_record_id").with_limit(100).build(),
+            _create_response().with_record(record=_create_record("persons")).with_record(record=_create_record("persons")).build(),
+        )
+        # Persons stream first page request for second parent
         http_mocker.get(
             _create_persons_request(parent_account_id="last_page_record_id").with_limit(100).build(),
             _create_response().with_record(record=_create_record("persons")).with_record(record=_create_record("persons")).build(),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 4
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_substream_pagination(self, http_mocker):
         # First parent stream accounts first page request
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         # Persons stream first page request
         http_mocker.get(
@@ -168,30 +198,51 @@ class PersonsTest(TestCase):
             _create_response().with_record(record=_create_record("persons")).with_record(record=_create_record("persons")).build(),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 4
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
+    @HttpMocker()
+    def test_persons_parent_reads_every_account_once(self, http_mocker: HttpMocker):
+        _mock_parent_windows(
+            http_mocker,
+            {
+                0: _an_accounts_page(_an_account(window_index=0, account_id="acct_in_first_window")),
+                2: _an_accounts_page(_an_account(window_index=2, account_id="acct_in_last_window")),
+            },
+        )
+        persons_requests = [
+            _create_persons_request(parent_account_id="acct_in_first_window").with_limit(100).build(),
+            _create_persons_request(parent_account_id="acct_in_last_window").with_limit(100).build(),
+        ]
+        for persons_request in persons_requests:
+            http_mocker.get(persons_request, _create_response().with_record(record=_create_record("persons")).build())
+
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
+
+        assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
+        assert len(actual_messages.records) == 2
+        for persons_request in persons_requests:
+            http_mocker.assert_number_of_calls(persons_request, 1)
+
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_accounts_400_error(self, http_mocker: HttpMocker):
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            a_response_with_status(400),
-        )
+        _mock_parent_windows(http_mocker, {index: a_response_with_status(400) for index in range(WINDOW_COUNT)})
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
         # For Stripe, streams that get back a 400 or 403 response code are skipped over silently
         assert_stream_did_not_run(actual_messages, _STREAM_NAME, "Your account is not set up to use Issuing")
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_persons_400_error(self, http_mocker: HttpMocker):
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         # Persons stream first page request
         http_mocker.get(
@@ -199,30 +250,26 @@ class PersonsTest(TestCase):
             a_response_with_status(400),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         # For Stripe, streams that get back a 400 or 403 response code are skipped over silently
         assert_stream_did_not_run(actual_messages, _STREAM_NAME, "Your account is not set up to use Issuing")
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_accounts_401_error(self, http_mocker: HttpMocker):
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            a_response_with_status(401),
-        )
+        http_mocker.get(_window_request(0).build(), a_response_with_status(401))
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog(), expecting_exception=True)
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog(), expecting_exception=True)
 
         assert actual_messages.errors[-1].trace.error.failure_type == FailureType.config_error
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_persons_401_error(self, http_mocker: HttpMocker):
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         # Persons stream first page request
         http_mocker.get(
@@ -230,17 +277,15 @@ class PersonsTest(TestCase):
             a_response_with_status(401),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog(), expecting_exception=True)
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog(), expecting_exception=True)
 
         assert actual_messages.errors[-1].trace.error.failure_type == FailureType.config_error
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_persons_403_error(self, http_mocker: HttpMocker):
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         # Persons stream first page request
         http_mocker.get(
@@ -248,8 +293,8 @@ class PersonsTest(TestCase):
             a_response_with_status(403),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog(), expecting_exception=True)
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog(), expecting_exception=True)
 
         # For Stripe, streams that get back a 400 or 403 response code are skipped over silently
         assert_stream_did_not_run(actual_messages, _STREAM_NAME, "This application does not have the required permissions")
@@ -257,7 +302,7 @@ class PersonsTest(TestCase):
     @HttpMocker()
     def test_incremental_with_recent_state(self, http_mocker: HttpMocker):
         state_datetime = _NOW - timedelta(days=5)
-        cursor_datetime = state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES
+        cursor_datetime = state_datetime
 
         http_mocker.get(
             _create_events_request()
@@ -270,7 +315,7 @@ class PersonsTest(TestCase):
         )
 
         state = StateBuilder().with_stream_state(_STREAM_NAME, {"updated": int(state_datetime.timestamp())}).build()
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(sync_mode=SyncMode.incremental), state=state)
+        source = get_source(config=_CONFIG, state=state)
         actual_messages = read(
             source,
             config=_CONFIG,
@@ -281,13 +326,13 @@ class PersonsTest(TestCase):
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         most_recent_state = actual_messages.most_recent_state
         assert most_recent_state.stream_descriptor == StreamDescriptor(name=_STREAM_NAME)
-        assert most_recent_state.stream_state == AirbyteStateBlob(updated=int(state_datetime.timestamp()))
+        assert int(most_recent_state.stream_state.updated) == int(state_datetime.timestamp())
         assert len(actual_messages.records) == 1
 
     @HttpMocker()
     def test_incremental_with_deleted_event(self, http_mocker: HttpMocker):
         state_datetime = _NOW - timedelta(days=5)
-        cursor_datetime = state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES
+        cursor_datetime = state_datetime
 
         http_mocker.get(
             _create_events_request()
@@ -300,7 +345,7 @@ class PersonsTest(TestCase):
         )
 
         state = StateBuilder().with_stream_state(_STREAM_NAME, {"updated": int(state_datetime.timestamp())}).build()
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(sync_mode=SyncMode.incremental), state=state)
+        source = get_source(config=_CONFIG, state=state)
         actual_messages = read(
             source,
             config=_CONFIG,
@@ -311,7 +356,7 @@ class PersonsTest(TestCase):
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         most_recent_state = actual_messages.most_recent_state
         assert most_recent_state.stream_descriptor == StreamDescriptor(name=_STREAM_NAME)
-        assert most_recent_state.stream_state == AirbyteStateBlob(updated=int(state_datetime.timestamp()))
+        assert int(most_recent_state.stream_state.updated) == int(state_datetime.timestamp())
         assert len(actual_messages.records) == 1
         assert actual_messages.records[0].record.data.get("is_deleted")
 
@@ -332,7 +377,7 @@ class PersonsTest(TestCase):
         )
 
         state = StateBuilder().with_stream_state(_STREAM_NAME, {"updated": int(state_datetime.timestamp())}).build()
-        source = SourceStripe(config=config, catalog=_create_catalog(sync_mode=SyncMode.incremental), state=state)
+        source = get_source(config=config, state=state)
         actual_messages = read(
             source,
             config=config,
@@ -343,36 +388,29 @@ class PersonsTest(TestCase):
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         most_recent_state = actual_messages.most_recent_state
         assert most_recent_state.stream_descriptor == StreamDescriptor(name=_STREAM_NAME)
-        assert most_recent_state.stream_state == AirbyteStateBlob(updated=int(state_datetime.timestamp()))
+        assert int(most_recent_state.stream_state.updated) == int(start_datetime.timestamp())
         assert len(actual_messages.records) == 1
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_rate_limited_parent_stream_accounts(self, http_mocker: HttpMocker) -> None:
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            [
-                a_response_with_status(429),
-                _create_response().with_record(record=_create_record("accounts")).build(),
-            ],
-        )
+        _mock_parent_windows(http_mocker, {0: [a_response_with_status(429), _an_accounts_page(_an_account())]})
 
         http_mocker.get(
             _create_persons_request().with_limit(100).build(),
             _create_response().with_record(record=_create_record("persons")).with_record(record=_create_record("persons")).build(),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 2
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_rate_limited_substream_persons(self, http_mocker: HttpMocker) -> None:
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         http_mocker.get(
             _create_persons_request().with_limit(100).build(),
@@ -382,8 +420,8 @@ class PersonsTest(TestCase):
             ],
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 2
@@ -391,7 +429,7 @@ class PersonsTest(TestCase):
     @HttpMocker()
     def test_rate_limited_incremental_events(self, http_mocker: HttpMocker) -> None:
         state_datetime = _NOW - timedelta(days=5)
-        cursor_datetime = state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES
+        cursor_datetime = state_datetime
 
         http_mocker.get(
             _create_events_request()
@@ -407,7 +445,7 @@ class PersonsTest(TestCase):
         )
 
         state = StateBuilder().with_stream_state(_STREAM_NAME, {"updated": int(state_datetime.timestamp())}).build()
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(sync_mode=SyncMode.incremental), state=state)
+        source = get_source(config=_CONFIG, state=state)
         actual_messages = read(
             source,
             config=_CONFIG,
@@ -418,15 +456,13 @@ class PersonsTest(TestCase):
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         most_recent_state = actual_messages.most_recent_state
         assert most_recent_state.stream_descriptor == StreamDescriptor(name="persons")
-        assert most_recent_state.stream_state == AirbyteStateBlob(updated=int(state_datetime.timestamp()))
+        assert int(most_recent_state.stream_state.updated) == int(state_datetime.timestamp())
         assert len(actual_messages.records) == 1
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_rate_limit_max_attempts_exceeded(self, http_mocker: HttpMocker) -> None:
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         http_mocker.get(
             _create_persons_request().with_limit(100).build(),
@@ -434,20 +470,20 @@ class PersonsTest(TestCase):
         )
 
         with patch.object(HttpStatusErrorHandler, "max_retries", new=0):
-            source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-            actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+            source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+            actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
             # first error is the actual error, second is to break the Python app with code != 0
             assert list(map(lambda message: message.trace.error.failure_type, actual_messages.errors)) == [
-                FailureType.system_error,
+                FailureType.transient_error,
                 FailureType.config_error,
             ]
-            assert "Request rate limit exceeded" in actual_messages.errors[0].trace.error.internal_message
+            assert "Too many requests" in actual_messages.errors[0].trace.error.internal_message
 
     @HttpMocker()
     def test_incremental_rate_limit_max_attempts_exceeded(self, http_mocker: HttpMocker) -> None:
         state_datetime = _NOW - timedelta(days=5)
-        cursor_datetime = state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES
+        cursor_datetime = state_datetime
 
         http_mocker.get(
             _create_events_request()
@@ -460,7 +496,7 @@ class PersonsTest(TestCase):
         )
 
         state = StateBuilder().with_stream_state(_STREAM_NAME, {"updated": int(state_datetime.timestamp())}).build()
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(sync_mode=SyncMode.incremental), state=state)
+        source = get_source(config=_CONFIG, state=state)
         with patch.object(HttpStatusErrorHandler, "max_retries", new=0):
             actual_messages = read(
                 source,
@@ -470,35 +506,28 @@ class PersonsTest(TestCase):
             )
 
             assert len(actual_messages.errors) == 2
-            assert "Request rate limit exceeded" in actual_messages.errors[0].trace.error.message
+            assert "Too many requests" in actual_messages.errors[0].trace.error.internal_message
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_server_error_parent_stream_accounts(self, http_mocker: HttpMocker) -> None:
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            [
-                a_response_with_status(500),
-                _create_response().with_record(record=_create_record("accounts")).build(),
-            ],
-        )
+        _mock_parent_windows(http_mocker, {0: [a_response_with_status(500), _an_accounts_page(_an_account())]})
 
         http_mocker.get(
             _create_persons_request().with_limit(100).build(),
             _create_response().with_record(record=_create_record("persons")).with_record(record=_create_record("persons")).build(),
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 2
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_server_error_substream_persons(self, http_mocker: HttpMocker) -> None:
-        http_mocker.get(
-            _create_accounts_request().with_limit(100).build(),
-            _create_response().with_record(record=_create_record("accounts")).build(),
-        )
+        _mock_parent_windows(http_mocker, {0: _an_accounts_page(_an_account())})
 
         http_mocker.get(
             _create_persons_request().with_limit(100).build(),
@@ -508,22 +537,23 @@ class PersonsTest(TestCase):
             ],
         )
 
-        source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-        actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+        source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+        actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         assert emits_successful_sync_status_messages(actual_messages.get_stream_statuses(_STREAM_NAME))
         assert len(actual_messages.records) == 2
 
+    @freezegun.freeze_time(_NOW_2010.isoformat())
     @HttpMocker()
     def test_server_error_max_attempts_exceeded(self, http_mocker: HttpMocker) -> None:
-        http_mocker.get(_create_accounts_request().with_limit(100).build(), a_response_with_status(500))
+        http_mocker.get(_window_request(0).build(), a_response_with_status(500))
 
         with patch.object(HttpStatusErrorHandler, "max_retries", new=0):
-            source = SourceStripe(config=_CONFIG, catalog=_create_catalog(), state=_NO_STATE)
-            actual_messages = read(source, config=_CONFIG, catalog=_create_catalog())
+            source = get_source(config=_CONFIG_2010, state=_NO_STATE)
+            actual_messages = read(source, config=_CONFIG_2010, catalog=_create_catalog())
 
         # first error is the actual error, second is to break the Python app with code != 0
         assert list(map(lambda message: message.trace.error.failure_type, actual_messages.errors)) == [
-            FailureType.system_error,
+            FailureType.transient_error,
             FailureType.config_error,
         ]

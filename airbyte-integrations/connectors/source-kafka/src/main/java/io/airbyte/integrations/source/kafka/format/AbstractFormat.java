@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.source.kafka.format;
@@ -16,8 +16,11 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.config.SaslConfigs;
+import org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginCallbackHandler;
+import org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
 
 public abstract class AbstractFormat implements KafkaFormat {
 
@@ -46,7 +49,8 @@ public abstract class AbstractFormat implements KafkaFormat {
     props.putAll(propertiesByProtocol(config));
     props.put(ConsumerConfig.CLIENT_ID_CONFIG,
         config.has("client_id") ? config.get("client_id").asText() : null);
-    props.put(ConsumerConfig.CLIENT_DNS_LOOKUP_CONFIG, config.get("client_dns_lookup").asText());
+    final String dnsLookup = config.get("client_dns_lookup").asText();
+    props.put(ConsumerConfig.CLIENT_DNS_LOOKUP_CONFIG, "default".equals(dnsLookup) ? "use_all_dns_ips" : dnsLookup);
     props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, config.get("enable_auto_commit").booleanValue());
     props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG,
         config.has("auto_commit_interval_ms") ? config.get("auto_commit_interval_ms").intValue() : null);
@@ -69,8 +73,8 @@ public abstract class AbstractFormat implements KafkaFormat {
 
   private Map<String, Object> propertiesByProtocol(final JsonNode config) {
     final JsonNode protocolConfig = config.get("protocol");
-    LOGGER.info("Kafka protocol config: {}", protocolConfig.toString());
     final KafkaProtocol protocol = KafkaProtocol.valueOf(protocolConfig.get("security_protocol").asText().toUpperCase());
+    LOGGER.info("Kafka protocol: {}", protocol);
     final ImmutableMap.Builder<String, Object> builder = ImmutableMap.<String, Object>builder()
         .put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, protocol.toString());
 
@@ -78,7 +82,15 @@ public abstract class AbstractFormat implements KafkaFormat {
       case PLAINTEXT -> {}
       case SASL_SSL, SASL_PLAINTEXT -> {
         builder.put(SaslConfigs.SASL_JAAS_CONFIG, protocolConfig.get("sasl_jaas_config").asText());
-        builder.put(SaslConfigs.SASL_MECHANISM, protocolConfig.get("sasl_mechanism").asText());
+        String saslMechanism = protocolConfig.get("sasl_mechanism").asText();
+        builder.put(SaslConfigs.SASL_MECHANISM, saslMechanism);
+        if (saslMechanism.equals(OAuthBearerLoginModule.OAUTHBEARER_MECHANISM)) {
+          builder.put(SaslConfigs.SASL_OAUTHBEARER_TOKEN_ENDPOINT_URL, protocolConfig.get("oauthbearer_token_endpoint_url").asText());
+          builder.put(SaslConfigs.SASL_LOGIN_CALLBACK_HANDLER_CLASS, OAuthBearerLoginCallbackHandler.class.getName());
+        } else if (saslMechanism.equals("AWS_MSK_IAM")) {
+          // IAMClientCallbackHandler
+          builder.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, IAMClientCallbackHandler.class.getName());
+        }
       }
       default -> throw new RuntimeException("Unexpected Kafka protocol: " + Jsons.serialize(protocol));
     }

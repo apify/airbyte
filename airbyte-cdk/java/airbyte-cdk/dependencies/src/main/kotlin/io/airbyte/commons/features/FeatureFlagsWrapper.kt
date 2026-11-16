@@ -1,7 +1,9 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.features
+
+import java.nio.file.Path
 
 open class FeatureFlagsWrapper(private val wrapped: FeatureFlags) : FeatureFlags {
     override fun autoDetectSchema(): Boolean {
@@ -34,6 +36,14 @@ open class FeatureFlagsWrapper(private val wrapped: FeatureFlags) : FeatureFlags
 
     override fun deploymentMode(): String? {
         return wrapped.deploymentMode()
+    }
+
+    override fun airbyteStagingDirectory(): Path? {
+        return wrapped.airbyteStagingDirectory()
+    }
+
+    override fun useFileTransfer(): Boolean {
+        return wrapped.useFileTransfer()
     }
 
     companion object {

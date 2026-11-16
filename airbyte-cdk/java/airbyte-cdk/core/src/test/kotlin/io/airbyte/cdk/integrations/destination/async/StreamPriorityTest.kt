@@ -1,10 +1,9 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.async
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
 import io.airbyte.cdk.integrations.destination.async.buffers.BufferDequeue
 import io.airbyte.cdk.integrations.destination.async.function.DestinationFlushFunction
 import io.airbyte.commons.json.Jsons
@@ -16,7 +15,6 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 
-@SuppressFBWarnings(value = ["BC_IMPOSSIBLE_CAST"])
 class StreamPriorityTest {
     val NOW: Instant = Instant.now()
     val FIVE_MIN_AGO: Instant = NOW.minusSeconds((60 * 5).toLong())

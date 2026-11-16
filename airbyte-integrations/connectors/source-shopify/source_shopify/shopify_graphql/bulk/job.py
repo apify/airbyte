@@ -2,18 +2,19 @@
 # Copyright (c) 2023 Airbyte, Inc., all rights reserved.
 #
 
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from time import sleep, time
-from typing import Any, Final, Iterable, List, Mapping, Optional
+from typing import Any, Final, Iterable, List, Mapping, Optional, Tuple
 
 import pendulum as pdm
 import requests
-from airbyte_cdk.sources.streams.http import HttpClient
 from requests.exceptions import JSONDecodeError
-from source_shopify.utils import ApiTypeEnum
+from source_shopify.utils import LOGGER, ApiTypeEnum
 from source_shopify.utils import ShopifyRateLimiter as limiter
+
+from airbyte_cdk.sources.streams.http import HttpClient
 
 from .exceptions import AirbyteTracedException, ShopifyBulkExceptions
 from .query import ShopifyBulkQuery, ShopifyBulkTemplates
@@ -21,6 +22,16 @@ from .record import ShopifyBulkRecord
 from .retry import bulk_retry_on_exception
 from .status import ShopifyBulkJobStatus
 from .tools import END_OF_FILE, BulkTools
+
+
+class BulkOperationUserErrorCode(Enum):
+    """
+    Possible error codes that can be returned by BulkOperationUserError.
+    https://shopify.dev/docs/api/admin-graphql/latest/enums/BulkOperationUserErrorCode
+    """
+
+    INVALID = "INVALID"
+    OPERATION_IN_PROGRESS = "OPERATION_IN_PROGRESS"
 
 
 @dataclass
@@ -32,8 +43,11 @@ class ShopifyBulkManager:
     job_size: float
     job_checkpoint_interval: int
 
-    # default logger
-    logger: Final[logging.Logger] = logging.getLogger("airbyte")
+    parent_stream_name: Optional[str] = None
+    parent_stream_cursor: Optional[str] = None
+
+    # keywords (lowercased) that indicate an authentication/credential error from Shopify
+    _AUTH_ERROR_KEYWORDS: Final[Tuple[str, ...]] = ("invalid api key or access token",)
 
     # 10Mb chunk size to save the file
     _retrieve_chunk_size: Final[int] = 1024 * 1024 * 10
@@ -54,13 +68,15 @@ class ShopifyBulkManager:
 
     # currents: _job_id, _job_state, _job_created_at, _job_self_canceled
     _job_id: Optional[str] = field(init=False, default=None)
-    _job_state: str = field(init=False, default=None)  # this string is based on ShopifyBulkJobStatus
+    _job_state: str | None = field(init=False, default=None)  # this string is based on ShopifyBulkJobStatus
     # completed and saved Bulk Job result filename
     _job_result_filename: Optional[str] = field(init=False, default=None)
     # date-time when the Bulk Job was created on the server
     _job_created_at: Optional[str] = field(init=False, default=None)
     # indicated whether or not we manually force-cancel the current job
     _job_self_canceled: bool = field(init=False, default=False)
+    # indicates whether or not the current job was self-canceled to checkpoint (not because it was running too long)
+    _job_canceled_on_checkpoint: bool = field(init=False, default=False)
     # time between job status checks
     _job_check_interval: Final[int] = 3
 
@@ -71,6 +87,16 @@ class ShopifyBulkManager:
     _job_last_rec_count: int = field(init=False, default=0)
     # the flag to adjust the next slice from the checkpointed cursor vaue
     _job_adjust_slice_from_checkpoint: bool = field(init=False, default=False)
+    # keeps the last checkpointed cursor value for supported streams
+    _job_last_checkpoint_cursor_value: str | None = field(init=False, default=None)
+    # the flag to re-run the current slice, because the checkpointed job returned no data
+    _job_retry_slice_without_checkpoint: bool = field(init=False, default=False)
+    # the flag to disable the checkpointing for the rest of the sync, once the checkpointed job returned no data
+    _job_checkpoint_disabled: bool = field(init=False, default=False)
+    # indicates whether or not the checkpoint comes from the partial result of the FAILED job
+    _job_checkpoint_from_failed_job: bool = field(init=False, default=False)
+    # indicates whether or not the checkpoint comes from the result of the job self-canceled on checkpointing
+    _job_checkpoint_from_self_cancel: bool = field(init=False, default=False)
 
     # expand slice factor
     _job_size_expand_factor: int = field(init=False, default=2)
@@ -94,7 +120,7 @@ class ShopifyBulkManager:
         # how many records should be collected before we use the checkpoining
         self._job_checkpoint_interval = self.job_checkpoint_interval
         # define Record Producer instance
-        self.record_producer: ShopifyBulkRecord = ShopifyBulkRecord(self.query)
+        self.record_producer: ShopifyBulkRecord = ShopifyBulkRecord(self.query, self.parent_stream_name, self.parent_stream_cursor)
 
     @property
     def _tools(self) -> BulkTools:
@@ -111,6 +137,7 @@ class ShopifyBulkManager:
             ShopifyBulkJobStatus.TIMEOUT.value: self._on_timeout_job,
             ShopifyBulkJobStatus.FAILED.value: self._on_failed_job,
             ShopifyBulkJobStatus.ACCESS_DENIED.value: self._on_access_denied_job,
+            ShopifyBulkJobStatus.EXPIRED.value: self._on_expired_job,
         }
 
     @property
@@ -160,7 +187,9 @@ class ShopifyBulkManager:
 
     @property
     def _job_should_checkpoint(self) -> bool:
-        return self._supports_checkpointing and self._job_last_rec_count >= self._job_checkpoint_interval
+        return (
+            self._supports_checkpointing and not self._job_checkpoint_disabled and self._job_last_rec_count >= self._job_checkpoint_interval
+        )
 
     @property
     def _job_any_lines_collected(self) -> bool:
@@ -197,6 +226,7 @@ class ShopifyBulkManager:
         self._job_result_filename = None
         # setting self-cancelation to default
         self._job_self_canceled = False
+        self._job_canceled_on_checkpoint = False
         # set the running job message counter to default
         self._log_job_msg_count = 0
         # set the running job object count to default
@@ -209,6 +239,29 @@ class ShopifyBulkManager:
     def _reset_checkpointing(self) -> None:
         # reseting the checkpoint flag, if bulk job has completed normally
         self._job_adjust_slice_from_checkpoint = False
+        self._job_checkpoint_from_failed_job = False
+        self._job_checkpoint_from_self_cancel = False
+
+    def _set_last_checkpoint_cursor_value(self, checkpointed_cursor: str) -> None:
+        """
+        Sets the last checkpoint cursor value.
+
+        Args:
+            checkpointed_cursor (str): The cursor value to set as the last checkpoint. Defaults to None.
+        """
+        self._job_last_checkpoint_cursor_value = checkpointed_cursor
+
+    def _checkpoint_cursor_has_collision(self, checkpointed_cursor: str) -> bool:
+        """
+        Checks if the provided checkpointed cursor collides with the last checkpointed cursor value.
+
+        Args:
+            checkpointed_cursor (str): The cursor value to check for collision. Defaults to None.
+
+        Returns:
+            bool: True if the provided cursor collides with the last checkpointed cursor value, False otherwise.
+        """
+        return self._job_last_checkpoint_cursor_value == checkpointed_cursor
 
     def _job_completed(self) -> bool:
         return self._job_state == ShopifyBulkJobStatus.COMPLETED.value
@@ -223,8 +276,7 @@ class ShopifyBulkManager:
         _, canceled_response = self.http_client.send_request(
             http_method="POST",
             url=self.base_url,
-            data=ShopifyBulkTemplates.cancel(self._job_id),
-            headers={"Content-Type": "application/graphql"},
+            json={"query": ShopifyBulkTemplates.cancel(self._job_id)},
             request_kwargs={},
         )
         # mark the job was self-canceled
@@ -251,9 +303,9 @@ class ShopifyBulkManager:
     def _log_state(self, message: Optional[str] = None) -> None:
         pattern = f"Stream: `{self.http_client.name}`, the BULK Job: `{self._job_id}` is {self._job_state}"
         if message:
-            self.logger.info(f"{pattern}. {message}.")
+            LOGGER.info(f"{pattern}. {message}.")
         else:
-            self.logger.info(pattern)
+            LOGGER.info(pattern)
 
     def _job_get_result(self, response: Optional[requests.Response] = None) -> Optional[str]:
         parsed_response = response.json().get("data", {}).get("node", {}) if response else None
@@ -275,10 +327,28 @@ class ShopifyBulkManager:
 
     def _job_get_checkpointed_result(self, response: Optional[requests.Response]) -> None:
         if self._job_any_lines_collected or self._job_should_checkpoint:
-            # set the flag to adjust the next slice from the checkpointed cursor value
-            self._set_checkpointing()
             # fetch the collected records from CANCELED Job on checkpointing
             self._job_result_filename = self._job_get_result(response)
+            if self._job_result_filename:
+                # set the flag to adjust the next slice from the checkpointed cursor value
+                self._set_checkpointing()
+
+    def _on_checkpoint_without_result(self) -> None:
+        """
+        The job was self-canceled on checkpointing, but the API returned no `url` / `partialDataUrl`.
+        The slice must not be treated as consumed: it is re-run, and the checkpointing is disabled
+        for the rest of the sync, since the API is unlikely to return the partial data for the next jobs either.
+        """
+        self._job_retry_slice_without_checkpoint = True
+        self._disable_checkpointing(f"after `{self._job_last_rec_count}` rows collected, but no result was returned by the API")
+
+    def _disable_checkpointing(self, reason: str) -> None:
+        if not self._job_checkpoint_disabled:
+            self._job_checkpoint_disabled = True
+            LOGGER.warning(
+                f"Stream: `{self.http_client.name}`, the BULK Job: `{self._job_id}` was canceled on checkpointing {reason}. "
+                f"The slice will be re-run and the checkpointing is disabled for the rest of this sync. Consider increasing the `BULK Job checkpoint (rows collected)` value to avoid this."
+            )
 
     def _job_update_state(self, response: Optional[requests.Response] = None) -> None:
         if response:
@@ -304,19 +374,25 @@ class ShopifyBulkManager:
             )
         else:
             self._job_get_checkpointed_result(response)
+            if self._job_canceled_on_checkpoint:
+                if self._job_result_filename:
+                    # the next slice resumes from the checkpointed cursor, see `get_adjusted_job_end`
+                    self._job_checkpoint_from_self_cancel = True
+                else:
+                    self._on_checkpoint_without_result()
 
     def _on_canceling_job(self, **kwargs) -> None:
         sleep(self._job_check_interval)
 
     def _cancel_on_long_running_job(self) -> None:
-        self.logger.info(
+        LOGGER.info(
             f"Stream: `{self.http_client.name}` the BULK Job: {self._job_id} runs longer than expected ({self._job_max_elapsed_time} sec). Retry with the reduced `Slice Size` after self-cancelation."
         )
         self._job_cancel()
 
     def _cancel_on_checkpointing(self) -> None:
-        self.logger.info(f"Stream: `{self.http_client.name}`, checkpointing after >= `{self._job_checkpoint_interval}` rows collected.")
-        # set the flag to adjust the next slice from the checkpointed cursor value
+        LOGGER.info(f"Stream: `{self.http_client.name}`, checkpointing after >= `{self._job_checkpoint_interval}` rows collected.")
+        self._job_canceled_on_checkpoint = True
         self._job_cancel()
 
     def _on_running_job(self, **kwargs) -> None:
@@ -330,15 +406,28 @@ class ShopifyBulkManager:
     def _on_completed_job(self, response: Optional[requests.Response] = None) -> None:
         self._job_result_filename = self._job_get_result(response)
 
-    def _on_failed_job(self, response: requests.Response) -> AirbyteTracedException:
-        if not self._supports_checkpointing:
-            raise ShopifyBulkExceptions.BulkJobFailed(
-                f"The BULK Job: `{self._job_id}` exited with {self._job_state}, details: {response.text}",
-            )
-        else:
+    def _raise_job_without_result(self, details: str) -> None:
+        raise ShopifyBulkExceptions.BulkJobFailed(f"The BULK Job: `{self._job_id}` {details}.")
+
+    def _on_failed_job(self, response: requests.Response) -> AirbyteTracedException | None:
+        error_code = response.json().get("data", {}).get("node", {}).get("errorCode")
+        if error_code == "ACCESS_DENIED":
+            # the missing access scopes can only be granted by the user
+            self._on_access_denied_job()
+        if self._supports_checkpointing:
             # when the Bulk Job fails, usually there is a `partialDataUrl` available,
             # we leverage the checkpointing in this case.
             self._job_get_checkpointed_result(response)
+            if self._job_result_filename:
+                # the next slice resumes from the checkpointed cursor, see `get_adjusted_job_end`
+                self._job_checkpoint_from_failed_job = True
+                return None
+        self._raise_job_without_result(
+            f"exited with {self._job_state} and returned no partial result to resume from, errorCode: `{error_code}`, objectCount: `{self._job_last_rec_count}`"
+        )
+
+    def _on_expired_job(self, **kwargs) -> AirbyteTracedException:
+        self._raise_job_without_result(f"exited with {self._job_state}, the result URL has expired")
 
     def _on_timeout_job(self, **kwargs) -> AirbyteTracedException:
         raise ShopifyBulkExceptions.BulkJobTimout(
@@ -353,7 +442,24 @@ class ShopifyBulkManager:
     def _on_job_with_errors(self, errors: List[Mapping[str, Any]]) -> AirbyteTracedException:
         raise ShopifyBulkExceptions.BulkJobError(f"Could not validate the status of the BULK Job `{self._job_id}`. Errors: {errors}.")
 
+    def _is_auth_error(self, errors: List[Mapping[str, Any]]) -> bool:
+        for error in errors:
+            if isinstance(error, str):
+                error_text = error
+            elif isinstance(error, dict):
+                error_text = error.get("message", "")
+            else:
+                continue
+            if any(keyword in error_text.lower() for keyword in self._AUTH_ERROR_KEYWORDS):
+                return True
+        return False
+
     def _on_non_handable_job_error(self, errors: List[Mapping[str, Any]]) -> AirbyteTracedException:
+        if self._is_auth_error(errors):
+            raise ShopifyBulkExceptions.BulkJobAuthFailedError(
+                internal_message=f"The Stream: `{self.http_client.name}`, auth error: {errors}",
+                message="Shopify access token is invalid or has expired.",
+            )
         raise ShopifyBulkExceptions.BulkJobNonHandableError(f"The Stream: `{self.http_client.name}`, Non-handable error occured: {errors}")
 
     def _get_server_errors(self, response: requests.Response) -> List[Optional[Mapping[str, Any]]]:
@@ -382,8 +488,7 @@ class ShopifyBulkManager:
         _, response = self.http_client.send_request(
             http_method="POST",
             url=self.base_url,
-            data=ShopifyBulkTemplates.status(self._job_id),
-            headers={"Content-Type": "application/graphql"},
+            json={"query": ShopifyBulkTemplates.status(self._job_id)},
             request_kwargs={},
         )
         self._job_healthcheck(response)
@@ -396,18 +501,17 @@ class ShopifyBulkManager:
         Error example:
         [
             {
+                'code': 'OPERATION_IN_PROGRESS',
                 'field': None,
                 'message': 'A bulk query operation for this app and shop is already in progress: gid://shopify/BulkOperation/4039184154813.',
             }
         ]
         """
-
-        concurrent_job_pattern = "A bulk query operation for this app and shop is already in progress"
         # the errors are handled in `job_job_check_for_errors`
         if errors:
             for error in errors:
-                message = error.get("message", "") if isinstance(error, dict) else ""
-                if concurrent_job_pattern in message:
+                error_code = error.get("code", "") if isinstance(error, dict) else ""
+                if error_code == BulkOperationUserErrorCode.OPERATION_IN_PROGRESS.value:
                     return True
         return False
 
@@ -434,7 +538,7 @@ class ShopifyBulkManager:
             return True
         return False
 
-    @bulk_retry_on_exception(logger)
+    @bulk_retry_on_exception()
     def _job_check_state(self) -> None:
         while not self._job_completed():
             if self._job_canceled():
@@ -444,7 +548,7 @@ class ShopifyBulkManager:
             else:
                 self._job_track_running()
 
-    @bulk_retry_on_exception(logger)
+    @bulk_retry_on_exception()
     def create_job(self, stream_slice: Mapping[str, str], filter_field: str) -> None:
         if stream_slice:
             query = self.query.get(filter_field, stream_slice["start"], stream_slice["end"])
@@ -484,9 +588,9 @@ class ShopifyBulkManager:
             self._job_id = bulk_response.get("id")
             self._job_created_at = bulk_response.get("createdAt")
             self._job_state = ShopifyBulkJobStatus.CREATED.value
-            self.logger.info(f"Stream: `{self.http_client.name}`, the BULK Job: `{self._job_id}` is {ShopifyBulkJobStatus.CREATED.value}")
+            LOGGER.info(f"Stream: `{self.http_client.name}`, the BULK Job: `{self._job_id}` is {ShopifyBulkJobStatus.CREATED.value}")
 
-    def job_size_normalize(self, start: datetime, end: datetime) -> datetime:
+    def job_size_normalize(self, start: datetime, end: datetime) -> None:
         # adjust slice size when it's bigger than the loop point when it should end,
         # to preserve correct job size adjustments when this is the only job we need to run, based on STATE provided
         requested_slice_size = (end - start).total_days()
@@ -496,17 +600,79 @@ class ShopifyBulkManager:
         step = self._job_size if self._job_size else self._job_size_min
         return slice_start.add(days=step)
 
-    def _adjust_slice_end(self, slice_end: datetime, checkpointed_cursor: Optional[str] = None) -> datetime:
-        """
-        Choose between the existing `slice_end` value or `checkpointed_cursor` value, if provided.
-        """
-        return pdm.parse(checkpointed_cursor) if checkpointed_cursor else slice_end
+    def _checkpoint_cursor_within_slice(
+        self,
+        slice_start: datetime,
+        checkpointed_cursor: Optional[str | int],
+        filter_checkpointed_cursor: Optional[str],
+    ) -> bool:
+        if not checkpointed_cursor:
+            return False
+        if isinstance(checkpointed_cursor, str):
+            return pdm.parse(checkpointed_cursor) > slice_start
+        if isinstance(checkpointed_cursor, int):
+            return bool(filter_checkpointed_cursor) and pdm.parse(filter_checkpointed_cursor) > slice_start
+        return False
 
-    def get_adjusted_job_end(self, slice_start: datetime, slice_end: datetime, checkpointed_cursor: Optional[str] = None) -> datetime:
+    def _adjust_slice_end(
+        self, slice_end: datetime, checkpointed_cursor: Optional[str] = None, filter_checkpointed_cursor: Optional[str] = None
+    ) -> datetime:
+        """
+        Choose between the existing `slice_end` value or `checkpointed_cursor` value or `filter_checkpointed_cursor` value, if provided.
+
+        Optionally: raises the `transient` error if the checkpoint collision occurs.
+
+        Note: filter_checkpointed_cursor is only used when cursor field is ID for streams like Customer Address etc.
+        This method should return a datetime from last checkpointed value to adjust slice end, when cursor value is ID (int type)
+        method gets end datetime from filter_checkpointed_cursor, which is value from filter field from last record.
+        See https://github.com/airbytehq/oncall/issues/9052 for more details.
+        """
+
+        if checkpointed_cursor:
+            if self._checkpoint_cursor_has_collision(checkpointed_cursor):
+                raise ShopifyBulkExceptions.BulkJobCheckpointCollisionError(
+                    f"The stream: `{self.http_client.name}` checkpoint collision is detected. Try to increase the `BULK Job checkpoint (rows collected)` to the bigger value. The stream will be synced again during the next sync attempt."
+                )
+            # set the checkpointed cursor value
+            self._set_last_checkpoint_cursor_value(checkpointed_cursor)
+            if isinstance(checkpointed_cursor, str):
+                return pdm.parse(checkpointed_cursor)
+            if isinstance(checkpointed_cursor, int):
+                return pdm.parse(filter_checkpointed_cursor)
+
+        return slice_end
+
+    def get_adjusted_job_end(
+        self,
+        slice_start: datetime,
+        slice_end: datetime,
+        checkpointed_cursor: Optional[str] = None,
+        filter_checkpointed_cursor: Optional[str] = None,
+    ) -> datetime:
+        if self._job_retry_slice_without_checkpoint:
+            # re-run the same slice, the checkpointing stays disabled (see `_on_checkpoint_without_result`)
+            self._job_retry_slice_without_checkpoint = False
+            return slice_start
+
         if self._job_adjust_slice_from_checkpoint:
+            checkpoint_from_failed_job = self._job_checkpoint_from_failed_job
+            checkpoint_from_self_cancel = self._job_checkpoint_from_self_cancel
             # set the checkpointing to default, before the next slice is emitted, to avoid inf.loop
             self._reset_checkpointing()
-            return self._adjust_slice_end(slice_end, checkpointed_cursor)
+            if checkpoint_from_failed_job and not self._checkpoint_cursor_within_slice(
+                slice_start, checkpointed_cursor, filter_checkpointed_cursor
+            ):
+                # the partial result has no records within the current slice to resume from, the rest of the slice must not be skipped
+                self._raise_job_without_result(
+                    "exited with FAILED and its partial result has no records within the slice to checkpoint from"
+                )
+            if checkpoint_from_self_cancel and not self._checkpoint_cursor_within_slice(
+                slice_start, checkpointed_cursor, filter_checkpointed_cursor
+            ):
+                # the result has no records within the current slice to resume from, the slice is re-run with the checkpointing disabled
+                self._disable_checkpointing("but its result has no records within the slice to checkpoint from")
+                return slice_start
+            return self._adjust_slice_end(slice_end, checkpointed_cursor, filter_checkpointed_cursor)
 
         if self._is_long_running_job:
             self._job_size_reduce_next()
@@ -522,7 +688,7 @@ class ShopifyBulkManager:
             final_message = final_message + lines_collected_message
 
         # emit final Bulk job status message
-        self.logger.info(f"{final_message}")
+        LOGGER.info(f"{final_message}")
 
     def _process_bulk_results(self) -> Iterable[Mapping[str, Any]]:
         if self._job_result_filename:

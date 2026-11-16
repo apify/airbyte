@@ -1,10 +1,16 @@
 # Amplitude
 
-This page guides you through setting up the Amplitude source connector to sync data for the [Amplitude API](https://www.docs.developers.amplitude.com/analytics/apis/http-v2-api/).
+This page guides you through setting up the Amplitude source connector. This connector syncs data from several [Amplitude Analytics APIs](https://amplitude.com/docs/apis/analytics), including the Dashboard REST API, Export API, Chart Annotations API, and Behavioral Cohorts API.
 
-## Prerequisite
+## Prerequisites
 
-To set up the Amplitude source connector, you'll need your Amplitude [`API Key` and `Secret Key`](https://help.amplitude.com/hc/en-us/articles/360058073772-Create-and-manage-organizations-and-projects#view-and-edit-your-project-information).
+To set up the Amplitude source connector, you need an Amplitude API key and secret key. To find these credentials:
+
+1. In the Amplitude Analytics web app, select **Organization Settings** in the upper navigation.
+2. Select **Projects**, then select your target project.
+3. Copy the **API Key** and **Secret Key**.
+
+For more information, see [Manage your API keys and secret keys](https://amplitude.com/docs/admin/account-management/manage-your-api-keys-and-secret-keys) in the Amplitude documentation.
 
 ## Set up the Amplitude source connector
 
@@ -12,22 +18,26 @@ To set up the Amplitude source connector, you'll need your Amplitude [`API Key` 
 2. Click **Sources** and then click **+ New source**.
 3. On the Set up the source page, select **Amplitude** from the Source type dropdown.
 4. Enter a name for your source.
-5. For **API Key** and **Secret Key**, enter the Amplitude [API key and secret key](https://help.amplitude.com/hc/en-us/articles/360058073772-Create-and-manage-organizations-and-projects#view-and-edit-your-project-information).
-6. For **Replication Start Date**, enter the date in YYYY-MM-DDTHH:mm:ssZ format. The data added on and after this date will be replicated. If this field is blank, Airbyte will replicate all data.
-7. Click **Set up source**.
+5. For **API Key** and **Secret Key**, enter your Amplitude API key and secret key.
+6. For **Replication Start Date**, enter the date in `YYYY-MM-DDTHH:mm:ssZ` format. Data added on and after this date is replicated. If this field is blank, Airbyte replicates all data.
+7. Optionally, configure the following fields:
+   - **Data Region**: Select **EU Residency Server** if your Amplitude project is hosted in the EU data center. Defaults to **Standard Server**.
+   - **Request Time Range**: The time interval in hours for each Events stream request. Requests that Amplitude rejects as too large or that time out are split automatically. Defaults to 24 hours. See [Amplitude's Export API considerations](https://amplitude.com/docs/apis/analytics/export#considerations) for details.
+   - **Active Users Group by Country**: When enabled, the Active Users stream groups results by country. Disable this if you encounter errors fetching the Active Users stream. Enabled by default.
+8. Click **Set up source**.
 
-## Supported Streams
+## Supported streams
 
 The Amplitude source connector supports the following streams:
 
-- [Active Users Counts](https://www.docs.developers.amplitude.com/analytics/apis/dashboard-rest-api/#get-active-and-new-user-counts) \(Incremental sync\)
-- [Annotations](https://www.docs.developers.amplitude.com/analytics/apis/chart-annotations-api/#get-all-chart-annotations)
-- [Average Session Length](https://www.docs.developers.amplitude.com/analytics/apis/dashboard-rest-api/#get-average-session-length) \(Incremental sync\)
-- [Cohorts](https://www.docs.developers.amplitude.com/analytics/apis/behavioral-cohorts-api/#get-all-cohorts-response)
-- [Events](https://www.docs.developers.amplitude.com/analytics/apis/export-api/#response-schema) \(Incremental sync\)
+- [Active Users Counts](https://amplitude.com/docs/apis/analytics/dashboard-rest#get-active-and-new-user-counts) (Incremental sync)
+- [Annotations](https://amplitude.com/docs/apis/analytics/chart-annotations#get-all-chart-annotations)
+- [Average Session Length](https://amplitude.com/docs/apis/analytics/dashboard-rest#get-average-session-length) (Incremental sync)
+- [Cohorts](https://amplitude.com/docs/apis/analytics/behavioral-cohorts#get-all-cohorts)
+- [Events](https://amplitude.com/docs/apis/analytics/export#response-schema) (Incremental sync)
 - [Events List](https://amplitude.com/docs/apis/analytics/dashboard-rest#get-events-list)
 
-If there are more endpoints you'd like Airbyte to support, please [create an issue.](https://github.com/airbytehq/airbyte/issues/new/choose)
+If there are more endpoints you'd like Airbyte to support, [create an issue](https://github.com/airbytehq/airbyte/issues/new/choose).
 
 <!-- env:oss -->
 
@@ -38,26 +48,77 @@ The Amplitude source connector supports the following [sync modes](https://docs.
 - Full Refresh
 - Incremental
 
-## Connector-specific features
-
-There are two data region servers supported by Airbyte:
-
-- Standard Server
-- EU Residency Server
-
-The `Standard Server` will be the default option until you change it in the Optional fields.
-
 ## Performance considerations
 
-The Amplitude connector ideally should gracefully handle Amplitude API limitations under normal usage. [Create an issue](https://github.com/airbytehq/airbyte/issues/new/choose) if you see any rate limit issues that are not automatically retried successfully.
+The connector automatically handles Amplitude's [API rate limits](https://amplitude.com/docs/apis/analytics/dashboard-rest#rate-limits). The Dashboard REST API enforces cost-based rate limits with a budget of 108,000 cost per hour and 1,000 cost per 5-minute burst window, plus a maximum of 5 concurrent requests. The connector tracks per-request costs and throttles automatically to stay within these limits.
+
+The Export API (used by the Events stream) limits each export to 4 GB and returns an error when a request exceeds that limit. Large exports can also time out. In either case, the connector automatically splits the time window in half and retries each half. With a **Request Time Range** of up to 1024 hours, splitting can reach a one-hour window; above that, it stops at windows of 8-9 hours. A split that succeeds never duplicates records. If a window is still rejected, the sync fails with a transient error, and each retry re-reads the parts already read. The Append + Deduped sync mode removes these duplicates by `uuid`. An hour of data over 4 GB can only be exported with Amplitude's [Amazon S3 export](https://amplitude.com/docs/data/destination-catalog/amazon-s3). Splitting restarts for every window, so if most syncs need to split, lower the **Request Time Range** to avoid the extra failing requests.
+
+If you encounter rate limit issues that are not automatically retried, [create an issue](https://github.com/airbytehq/airbyte/issues/new/choose).
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
 <details>
   <summary>Expand to review</summary>
 
-| Version | Date       | Pull Request                                             | Subject                                                                                      |
-| :------ | :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------------- |
+| Version | Date | Pull Request | Subject |
+| :----------- | :----------- | :------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.7.40 | 2026-10-06 | [85384](https://github.com/airbytehq/airbyte/pull/85384) | Update dependencies |
+| 0.7.39 | 2026-10-05 | [87560](https://github.com/airbytehq/airbyte/pull/87560) | Automatically split Events export windows that exceed Amplitude's 4 GB or timeout limits instead of failing the sync; parse zero-microsecond `server_upload_time` cursor values; show Amplitude's error for Dashboard API 400s and retry their 504s; upgrade to CDK 7.32.0 |
+| 0.7.38 | 2026-08-18 | [84470](https://github.com/airbytehq/airbyte/pull/84470) | Update dependencies |
+| 0.7.37 | 2026-08-11 | [83823](https://github.com/airbytehq/airbyte/pull/83823) | Update dependencies |
+| 0.7.36 | 2026-07-28 | [82323](https://github.com/airbytehq/airbyte/pull/82323) | Update dependencies |
+| 0.7.35 | 2026-07-14 | [81744](https://github.com/airbytehq/airbyte/pull/81744) | Update dependencies |
+| 0.7.34 | 2026-07-07 | [80954](https://github.com/airbytehq/airbyte/pull/80954) | Update dependencies |
+| 0.7.33 | 2026-07-02 | [81393](https://github.com/airbytehq/airbyte/pull/81393) | Bump h11 0.14.0 to 0.16.0 to resolve GHSA-vqfr-h8mv-ghfj |
+| 0.7.32 | 2026-06-23 | [78601](https://github.com/airbytehq/airbyte/pull/78601) | Update dependencies |
+| 0.7.31 | 2026-04-28 | [72688](https://github.com/airbytehq/airbyte/pull/72688) | Update dependencies |
+| 0.7.30 | 2026-03-31 | [75406](https://github.com/airbytehq/airbyte/pull/75406) | Upgrade CDK to v7.14.0 and use weight-based rate limiting for Dashboard REST API streams |
+| 0.7.29 | 2026-03-03 | [70841](https://github.com/airbytehq/airbyte/pull/70841) | Add HTTPAPIBudget and concurrency_level |
+| 0.7.28 | 2026-01-20 | [71912](https://github.com/airbytehq/airbyte/pull/71912) | Update dependencies |
+| 0.7.27 | 2026-01-14 | [71434](https://github.com/airbytehq/airbyte/pull/71434) | Update dependencies |
+| 0.7.26 | 2025-12-18 | [70795](https://github.com/airbytehq/airbyte/pull/70795) | Update dependencies |
+| 0.7.25 | 2025-11-25 | [69522](https://github.com/airbytehq/airbyte/pull/69522) | Update dependencies |
+| 0.7.24 | 2025-10-29 | [68881](https://github.com/airbytehq/airbyte/pull/68881) | Update dependencies |
+| 0.7.23 | 2025-10-21 | [68361](https://github.com/airbytehq/airbyte/pull/68361) | Update dependencies |
+| 0.7.22 | 2025-10-14 | [67986](https://github.com/airbytehq/airbyte/pull/67986) | Update dependencies |
+| 0.7.21 | 2025-10-07 | [67159](https://github.com/airbytehq/airbyte/pull/67159) | Update dependencies |
+| 0.7.20 | 2025-09-30 | [62537](https://github.com/airbytehq/airbyte/pull/62537) | Update dependencies |
+| 0.7.19 | 2025-09-10 | [65994](https://github.com/airbytehq/airbyte/pull/65994) | Update to CDK v7 |
+| 0.7.18 | 2025-06-28 | [62135](https://github.com/airbytehq/airbyte/pull/62135) | Update dependencies |
+| 0.7.17 | 2025-06-21 | [61897](https://github.com/airbytehq/airbyte/pull/61897) | Update dependencies |
+| 0.7.16 | 2025-06-15 | [60600](https://github.com/airbytehq/airbyte/pull/60600) | Update dependencies |
+| 0.7.15 | 2025-05-23 | [60887](https://github.com/airbytehq/airbyte/pull/60887) | Fix cohorts extractor field_path |
+| 0.7.14 | 2025-05-10 | [59808](https://github.com/airbytehq/airbyte/pull/59808) | Update dependencies |
+| 0.7.13 | 2025-05-03 | [59369](https://github.com/airbytehq/airbyte/pull/59369) | Update dependencies |
+| 0.7.12 | 2025-04-26 | [58709](https://github.com/airbytehq/airbyte/pull/58709) | Update dependencies |
+| 0.7.11 | 2025-04-19 | [58264](https://github.com/airbytehq/airbyte/pull/58264) | Update dependencies |
+| 0.7.10 | 2025-04-12 | [57605](https://github.com/airbytehq/airbyte/pull/57605) | Update dependencies |
+| 0.7.9 | 2025-04-05 | [57173](https://github.com/airbytehq/airbyte/pull/57173) | Update dependencies |
+| 0.7.8 | 2025-03-29 | [56591](https://github.com/airbytehq/airbyte/pull/56591) | Update dependencies |
+| 0.7.7 | 2025-03-22 | [56132](https://github.com/airbytehq/airbyte/pull/56132) | Update dependencies |
+| 0.7.6 | 2025-03-08 | [55359](https://github.com/airbytehq/airbyte/pull/55359) | Update dependencies |
+| 0.7.5 | 2025-03-01 | [54883](https://github.com/airbytehq/airbyte/pull/54883) | Update dependencies |
+| 0.7.4 | 2025-02-22 | [54247](https://github.com/airbytehq/airbyte/pull/54247) | Update dependencies |
+| 0.7.3 | 2025-02-15 | [52939](https://github.com/airbytehq/airbyte/pull/52939) | Update dependencies |
+| 0.7.2 | 2025-02-13 | [53655](https://github.com/airbytehq/airbyte/pull/53655) | Fix CDK breaking change |
+| 0.7.1 | 2025-01-25 | [52213](https://github.com/airbytehq/airbyte/pull/52213) | Update dependencies |
+| 0.7.0 | 2025-01-24 | [52144](https://github.com/airbytehq/airbyte/pull/52144) | Promoting release candidate 0.7.0-rc.1 to a main version. |
+| 0.7.0-rc.1 | 2025-01-17 | [51601](https://github.com/airbytehq/airbyte/pull/51601) | Migrates to manifest-only |
+| 0.6.19 | 2025-01-18 | [51723](https://github.com/airbytehq/airbyte/pull/51723) | Update dependencies |
+| 0.6.18 | 2025-01-11 | [51288](https://github.com/airbytehq/airbyte/pull/51288) | Update dependencies |
+| 0.6.17 | 2025-01-04 | [50906](https://github.com/airbytehq/airbyte/pull/50906) | Update dependencies |
+| 0.6.16 | 2024-12-28 | [50486](https://github.com/airbytehq/airbyte/pull/50486) | Update dependencies |
+| 0.6.15 | 2024-12-21 | [50150](https://github.com/airbytehq/airbyte/pull/50150) | Update dependencies |
+| 0.6.14 | 2024-12-14 | [49017](https://github.com/airbytehq/airbyte/pull/49017) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.6.13 | 2024-10-29 | [47097](https://github.com/airbytehq/airbyte/pull/47097) | Update dependencies |
+| 0.6.12 | 2024-10-12 | [46771](https://github.com/airbytehq/airbyte/pull/46771) | Update dependencies |
+| 0.6.11 | 2024-10-11 | [46736](https://github.com/airbytehq/airbyte/pull/46736) | Added possibility to toggle groupping by `Country` for `Active Users` stream |
+| 0.6.10 | 2024-10-05 | [46489](https://github.com/airbytehq/airbyte/pull/46489) | Update dependencies |
 | 0.6.9 | 2024-09-28 | [46121](https://github.com/airbytehq/airbyte/pull/46121) | Update dependencies |
 | 0.6.8 | 2024-09-21 | [45732](https://github.com/airbytehq/airbyte/pull/45732) | Update dependencies |
 | 0.6.7 | 2024-09-14 | [45501](https://github.com/airbytehq/airbyte/pull/45501) | Update dependencies |

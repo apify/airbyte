@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.read
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.airbyte.cdk.jdbc.JdbcConnectionFactory
 
 /**
  * Encapsulates database-specific transient state for a particular [stream].
@@ -13,7 +14,15 @@ import com.fasterxml.jackson.databind.JsonNode
  */
 interface JdbcStreamState<A : JdbcSharedState> {
 
+    /**
+     * [StreamFeedBootstrap] instance passed to the [JdbcPartitionsCreatorFactory] instance which
+     * created this object.
+     */
+    val streamFeedBootstrap: StreamFeedBootstrap
+
+    /** Convenience getter for the current [Stream]. */
     val stream: Stream
+        get() = streamFeedBootstrap.feed
 
     /** The transient state shared by all partitions. Includes global resources. */
     val sharedState: A
@@ -35,4 +44,9 @@ interface JdbcStreamState<A : JdbcSharedState> {
 
     /** Resets the transient state to its initial setting. */
     fun reset()
+
+    fun validatePartition(
+        partition: JdbcPartition<*>,
+        jdbcConnectionFactory: JdbcConnectionFactory,
+    ) {}
 }

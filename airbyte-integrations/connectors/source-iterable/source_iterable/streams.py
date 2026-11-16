@@ -10,17 +10,20 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 
 import pendulum
 import requests
+from pendulum.datetime import DateTime
+from requests import HTTPError
+from requests.exceptions import ChunkedEncodingError
+
+from airbyte_cdk import AirbyteTracedException, FailureType
 from airbyte_cdk.models import SyncMode
 from airbyte_cdk.sources.streams.availability_strategy import AvailabilityStrategy
 from airbyte_cdk.sources.streams.core import CheckpointMixin, package_name_from_class
 from airbyte_cdk.sources.streams.http import HttpStream
 from airbyte_cdk.sources.streams.http.exceptions import DefaultBackoffException, UserDefinedBackoffException
 from airbyte_cdk.sources.utils.schema_helpers import ResourceSchemaLoader
-from pendulum.datetime import DateTime
-from requests import HTTPError
-from requests.exceptions import ChunkedEncodingError
 from source_iterable.slice_generators import AdjustableSliceGenerator, RangeSliceGenerator, StreamSlice
 from source_iterable.utils import dateutil_parse
+
 
 EVENT_ROWS_LIMIT = 200
 CAMPAIGNS_PER_REQUEST = 20
@@ -31,13 +34,19 @@ class IterableStream(HttpStream, ABC):
     # to prevent 429 error on other streams
     ignore_further_slices = False
 
-    url_base = "https://api.iterable.com/api/"
     primary_key = "id"
 
-    def __init__(self, authenticator):
+    def __init__(self, authenticator, region: str = "US"):
         self._cred = authenticator
         self._slice_retry = 0
+        self._region = region
         super().__init__(authenticator)
+
+    @property
+    def url_base(self) -> str:
+        if self._region == "EU":
+            return "https://api.eu.iterable.com/api/"
+        return "https://api.iterable.com/api/"
 
     @property
     def retry_factor(self) -> int:
@@ -61,7 +70,7 @@ class IterableStream(HttpStream, ABC):
 
     def next_page_token(self, response: requests.Response) -> Optional[Mapping[str, Any]]:
         """
-        Iterable API does not support pagination
+        Most Iterable endpoints do not support pagination; streams that do override this.
         """
         return None
 
@@ -151,10 +160,11 @@ class IterableExportStream(IterableStream, CheckpointMixin, ABC):
     def state(self, value: MutableMapping[str, Any]):
         self._state = value
 
-    def __init__(self, start_date=None, end_date=None, **kwargs):
+    def __init__(self, start_date=None, end_date=None, lookback_window: int = 5, **kwargs):
         super().__init__(**kwargs)
         self._start_date = pendulum.parse(start_date)
         self._end_date = end_date and pendulum.parse(end_date)
+        self._lookback_window = lookback_window
         self.stream_params = {"dataTypeName": self.data_field}
 
     def path(self, **kwargs) -> str:
@@ -171,8 +181,25 @@ class IterableExportStream(IterableStream, CheckpointMixin, ABC):
         return value
 
     def read_records(self, **kwargs) -> Iterable[Mapping[str, Any]]:
+        # On the first invocation within a sync, capture the cursor value
+        # from the loaded state.  Records at or before this cursor have
+        # already been synced and should be skipped to prevent duplicates.
+        # The Iterable export API uses an inclusive startDateTime boundary,
+        # so without this client-side filter the same records are returned
+        # across consecutive syncs.
+        #
+        # We must capture only once because self._state advances as
+        # records are processed, and this method is called per-slice by
+        # IterableExportStreamAdjustableRange.
+        if not hasattr(self, "_sync_start_cursor"):
+            initial_state = getattr(self, "_state", None) or {}
+            state_value = initial_state.get(self.cursor_field)
+            self._sync_start_cursor = self._field_to_datetime(state_value) if state_value else None
+
         for record in super().read_records(**kwargs):
             self.state = self._get_updated_state(self.state, record)
+            if self._sync_start_cursor is not None and record[self.cursor_field] <= self._sync_start_cursor:
+                continue
             yield record
 
     def _get_updated_state(
@@ -202,7 +229,6 @@ class IterableExportStream(IterableStream, CheckpointMixin, ABC):
         stream_slice: StreamSlice,
         next_page_token: Mapping[str, Any] = None,
     ) -> MutableMapping[str, Any]:
-
         params = super().request_params(stream_state=stream_state)
         params.update(
             {
@@ -244,15 +270,28 @@ class IterableExportStream(IterableStream, CheckpointMixin, ABC):
             start_datetime = pendulum.parse(stream_state[self.cursor_field])
         return start_datetime
 
+    def _get_effective_end_date(self) -> DateTime:
+        """Compute the effective end date for the sync window.
+
+        When no explicit end_date is configured (production usage), the end
+        of the sync window is ``now() - lookback_window``.  The
+        buffer accounts for Iterable Export API eventual consistency —
+        recently created events may not yet be indexed by the export
+        pipeline.  Without this buffer the cursor would advance past those
+        events and they would be permanently lost.
+        """
+        if self._end_date:
+            return self._end_date
+        return pendulum.now("UTC") - pendulum.Duration(minutes=self._lookback_window)
+
     def stream_slices(
         self,
         sync_mode: SyncMode,
         cursor_field: List[str] = None,
         stream_state: Mapping[str, Any] = None,
     ) -> Iterable[Optional[StreamSlice]]:
-
         start_datetime = self.get_start_date(stream_state)
-        return [StreamSlice(start_datetime, self._end_date or pendulum.now("UTC"))]
+        return [StreamSlice(start_datetime, self._get_effective_end_date())]
 
 
 class IterableExportStreamRanged(IterableExportStream, ABC):
@@ -268,10 +307,9 @@ class IterableExportStreamRanged(IterableExportStream, ABC):
         cursor_field: List[str] = None,
         stream_state: Mapping[str, Any] = None,
     ) -> Iterable[Optional[StreamSlice]]:
-
         start_datetime = self.get_start_date(stream_state)
 
-        return RangeSliceGenerator(start_datetime, self._end_date)
+        return RangeSliceGenerator(start_datetime, self._get_effective_end_date())
 
 
 class IterableExportStreamAdjustableRange(IterableExportStream, ABC):
@@ -303,9 +341,8 @@ class IterableExportStreamAdjustableRange(IterableExportStream, ABC):
         cursor_field: List[str] = None,
         stream_state: Mapping[str, Any] = None,
     ) -> Iterable[Optional[StreamSlice]]:
-
         start_datetime = self.get_start_date(stream_state)
-        self._adjustable_generator = AdjustableSliceGenerator(start_datetime, self._end_date)
+        self._adjustable_generator = AdjustableSliceGenerator(start_datetime, self._get_effective_end_date())
         return self._adjustable_generator
 
     def read_records(
@@ -318,7 +355,6 @@ class IterableExportStreamAdjustableRange(IterableExportStream, ABC):
         start_time = pendulum.now()
         for _ in range(self.CHUNKED_ENCODING_ERROR_RETRIES):
             try:
-
                 self.logger.info(
                     f"Processing slice of {(stream_slice.end_date - stream_slice.start_date).total_days()} days for stream {self.name}"
                 )
@@ -337,7 +373,11 @@ class IterableExportStreamAdjustableRange(IterableExportStream, ABC):
                 self.logger.warn("ChunkedEncodingError occurred, decrease days range and try again")
                 stream_slice = self._adjustable_generator.reduce_range()
         else:
-            raise Exception(f"ChunkedEncodingError: Reached maximum number of retires: {self.CHUNKED_ENCODING_ERROR_RETRIES}")
+            raise AirbyteTracedException(
+                message="Iterable Export API response repeatedly closed for the selected event window.",
+                internal_message=f"ChunkedEncodingError: Reached maximum number of retries: {self.CHUNKED_ENCODING_ERROR_RETRIES}",
+                failure_type=FailureType.system_error,
+            )
 
 
 class IterableExportEventsStreamAdjustableRange(IterableExportStreamAdjustableRange, ABC):
@@ -348,9 +388,26 @@ class IterableExportEventsStreamAdjustableRange(IterableExportStreamAdjustableRa
 
 class Campaigns(IterableStream):
     data_field = "campaigns"
+    page_size = 1000
+
+    def __init__(self, authenticator, region: str = "US"):
+        self._page = 1
+        super().__init__(authenticator, region)
 
     def path(self, **kwargs) -> str:
         return "campaigns"
+
+    def request_params(self, stream_slice: Optional[Mapping[str, Any]] = None, **kwargs) -> MutableMapping[str, Any]:
+        next_page_token = kwargs.get("next_page_token")
+        page = next_page_token["page"] if next_page_token else 1
+        self._page = page
+        return {"page": page, "pageSize": self.page_size}
+
+    def next_page_token(self, response: requests.Response) -> Optional[Mapping[str, Any]]:
+        response_json = response.json() or {}
+        if len(response_json.get(self.data_field, [])) < self.page_size:
+            return None
+        return {"page": self._page + 1}
 
 
 class CampaignsMetrics(IterableStream):
@@ -378,7 +435,7 @@ class CampaignsMetrics(IterableStream):
         return params
 
     def stream_slices(self, **kwargs) -> Iterable[Optional[Mapping[str, any]]]:
-        lists = Campaigns(authenticator=self._cred)
+        lists = Campaigns(authenticator=self._cred, region=self._region)
         campaign_ids = []
         for list_record in lists.read_records(sync_mode=kwargs.get("sync_mode", SyncMode.full_refresh)):
             campaign_ids.append(list_record["id"])

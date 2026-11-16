@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.util
 
@@ -50,7 +50,7 @@ object ApmTraceUtils {
             tags.entries.forEach(
                 Consumer { entry: Map.Entry<String, Any> ->
                     span.setTag(formatTag(entry.key, tagPrefix), entry.value.toString())
-                }
+                },
             )
         }
     }
@@ -90,7 +90,7 @@ object ApmTraceUtils {
             tags.entries.forEach(
                 Consumer { entry: Map.Entry<String, Any> ->
                     localRootSpan.setTag(formatTag(entry.key, TAG_PREFIX), entry.value.toString())
-                }
+                },
             )
         }
     }

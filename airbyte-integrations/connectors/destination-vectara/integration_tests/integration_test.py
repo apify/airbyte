@@ -7,6 +7,9 @@ import logging
 import unittest
 from typing import Any, Dict
 
+from destination_vectara.client import VectaraClient
+from destination_vectara.destination import DestinationVectara
+
 from airbyte_cdk.models import (
     AirbyteMessage,
     AirbyteRecordMessage,
@@ -19,8 +22,6 @@ from airbyte_cdk.models import (
     SyncMode,
     Type,
 )
-from destination_vectara.client import VectaraClient
-from destination_vectara.destination import DestinationVectara
 
 
 class VectaraIntegrationTest(unittest.TestCase):
@@ -45,6 +46,7 @@ class VectaraIntegrationTest(unittest.TestCase):
         return AirbyteMessage(
             type=Type.RECORD, record=AirbyteRecordMessage(stream=stream, data={"str_col": str_value, "int_col": int_value}, emitted_at=0)
         )
+
     def _clean(self):
         self._client.delete_doc_by_metadata(metadata_field_name="_ab_stream", metadata_field_values=["None_mystream"])
 
@@ -75,29 +77,18 @@ class VectaraIntegrationTest(unittest.TestCase):
         )
         assert outcome.status == Status.FAILED
 
+    def _list_documents(self):
+        return self._client._request(self._client._documents_endpoint(), http_method="GET", params={"limit": 1000})["documents"]
+
     def _query_index(self, query="Everything", num_results=100):
         return self._client._request(
-            "query",
-            data={
-                "query": [
-                    {
-                        "query": query,
-                        "numResults": num_results,
-                        "corpusKey": [
-                            {
-                                "customerId": self._client.customer_id,
-                                "corpusId": self._client.corpus_id,
-                            }
-                        ],
-                    }
-                ]
-            },
-        )["responseSet"][0]
+            f"corpora/{self._client.corpus_key}/query",
+            data={"query": query, "search": {"limit": num_results}},
+        )["search_results"]
 
     def test_write(self):
         # validate corpus starts empty
-        initial_result = self._query_index()["document"]
-        assert len(initial_result) == 0
+        assert len(self._list_documents()) == 0
 
         catalog = self._get_configured_catalog(DestinationSyncMode.overwrite)
         first_state_message = self._state({"state": "1"})
@@ -106,22 +97,17 @@ class VectaraIntegrationTest(unittest.TestCase):
         # initial sync
         destination = DestinationVectara()
         list(destination.write(self.config, catalog, [*first_record_chunk, first_state_message]))
-        assert len(self._query_index()["document"]) == 5
+        assert len(self._list_documents()) == 5
 
         # incrementalally update a doc
         incremental_catalog = self._get_configured_catalog(DestinationSyncMode.append_dedup)
         list(destination.write(self.config, incremental_catalog, [self._record("mystream", "Cats are nice", 2), first_state_message]))
-        assert len(self._query_index()["document"]) == 5
+        assert len(self._list_documents()) == 5
 
         # use semantic search
         result = self._query_index("Feline animals", 1)
-        assert result["document"] == [
-            {
-                "id": "Stream_None_mystream_Key_None_mystream_2",
-                "metadata": [
-                    {"name": "int_col", "value": "2"},
-                    {"name": "_ab_stream", "value": "None_mystream"},
-                    {"name": "title", "value": "Cats are nice"},
-                ],
-            }
-        ]
+        assert len(result) == 1
+        assert result[0]["document_id"] == "Stream_None_mystream_Key_None_mystream_2"
+        assert result[0]["document_metadata"]["int_col"] == 2
+        assert result[0]["document_metadata"]["_ab_stream"] == "None_mystream"
+        assert result[0]["document_metadata"]["title"] == "Cats are nice"

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.base.ssh
 
@@ -62,7 +62,7 @@ class SshWrappedSource : Source {
     override fun read(
         config: JsonNode,
         catalog: ConfiguredAirbyteCatalog,
-        state: JsonNode?
+        state: JsonNode?,
     ): AutoCloseableIterator<AirbyteMessage> {
         val tunnel: SshTunnel = SshTunnel.getInstance(config, hostKey, portKey)
         val delegateRead: AutoCloseableIterator<AirbyteMessage>
@@ -82,7 +82,7 @@ class SshWrappedSource : Source {
     override fun readStreams(
         config: JsonNode,
         catalog: ConfiguredAirbyteCatalog,
-        state: JsonNode?
+        state: JsonNode?,
     ): Collection<AutoCloseableIterator<AirbyteMessage>>? {
         val tunnel: SshTunnel = SshTunnel.getInstance(config, hostKey, portKey)
         try {

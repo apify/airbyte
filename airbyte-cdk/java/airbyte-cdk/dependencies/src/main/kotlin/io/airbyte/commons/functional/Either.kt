@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.functional
 
@@ -7,6 +7,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.*
 
 private val LOGGER = KotlinLogging.logger {}
+
 /**
  * A class that represents a value of one of two possible types (a disjoint union). An instance of
  * Either is an instance of Left or Right.

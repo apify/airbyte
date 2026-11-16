@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.stream
 
@@ -11,7 +11,7 @@ object MoreStreams {
     fun <T> toStream(iterator: Iterator<T>?): Stream<T> {
         return StreamSupport.stream(
             Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED),
-            false
+            false,
         )
     }
 

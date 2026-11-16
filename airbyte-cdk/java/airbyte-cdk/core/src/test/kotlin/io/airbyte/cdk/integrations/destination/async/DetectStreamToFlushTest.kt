@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.async
@@ -18,7 +18,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 
-@SuppressFBWarnings(value = ["BC_IMPOSSIBLE_CAST"])
 class DetectStreamToFlushTest {
     val NOW: Instant = Instant.now()
     val FIVE_MIN: Duration = Duration.ofMinutes(5)
@@ -30,6 +29,10 @@ class DetectStreamToFlushTest {
     private lateinit var flusher: DestinationFlushFunction
 
     @BeforeEach
+    @SuppressFBWarnings(
+        "RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE",
+        justification = "compiler-generated lateinit null check after the assignment",
+    )
     internal fun setup() {
         flusher = Mockito.mock(DestinationFlushFunction::class.java)
         Mockito.`when`(flusher.optimalBatchSizeBytes).thenReturn(SIZE_200MB)
@@ -49,7 +52,13 @@ class DetectStreamToFlushTest {
             )
 
         val detect =
-            DetectStreamToFlush(bufferDequeue, runningFlushWorkers, AtomicBoolean(false), flusher)
+            DetectStreamToFlush(
+                bufferDequeue,
+                runningFlushWorkers,
+                AtomicBoolean(false),
+                flusher,
+                flushOnEveryMessage = false,
+            )
         Assertions.assertEquals(Optional.empty<Any>(), detect.getNextStreamToFlush(0))
     }
 
@@ -66,7 +75,13 @@ class DetectStreamToFlushTest {
                 RunningFlushWorkers::class.java,
             )
         val detect =
-            DetectStreamToFlush(bufferDequeue, runningFlushWorkers, AtomicBoolean(false), flusher)
+            DetectStreamToFlush(
+                bufferDequeue,
+                runningFlushWorkers,
+                AtomicBoolean(false),
+                flusher,
+                flushOnEveryMessage = false,
+            )
         // if above threshold, triggers
         Assertions.assertEquals(Optional.of(DESC1), detect.getNextStreamToFlush(0))
         // if below threshold, no trigger
@@ -94,8 +109,39 @@ class DetectStreamToFlushTest {
                 ),
             )
         val detect =
-            DetectStreamToFlush(bufferDequeue, runningFlushWorkers, AtomicBoolean(false), flusher)
+            DetectStreamToFlush(
+                bufferDequeue,
+                runningFlushWorkers,
+                AtomicBoolean(false),
+                flusher,
+                flushOnEveryMessage = false,
+            )
         Assertions.assertEquals(Optional.empty<Any>(), detect.getNextStreamToFlush(0))
+    }
+
+    @Test
+    internal fun testFileTransfer() {
+        val bufferDequeue =
+            Mockito.mock(
+                BufferDequeue::class.java,
+            )
+        Mockito.`when`(bufferDequeue.bufferedStreams).thenReturn(setOf(DESC1))
+        Mockito.`when`(bufferDequeue.getQueueSizeBytes(DESC1)).thenReturn(Optional.of(0L))
+        val runningFlushWorkers =
+            Mockito.mock(
+                RunningFlushWorkers::class.java,
+            )
+
+        val detect =
+            DetectStreamToFlush(
+                bufferDequeue,
+                runningFlushWorkers,
+                AtomicBoolean(false),
+                flusher,
+                flushOnEveryMessage = true,
+            )
+        Assertions.assertEquals(0, detect.computeQueueThreshold())
+        Assertions.assertEquals(Optional.of(DESC1), detect.getNextStreamToFlush(0))
     }
 
     @Test
@@ -127,6 +173,7 @@ class DetectStreamToFlushTest {
                 AtomicBoolean(false),
                 flusher,
                 mockedNowProvider,
+                flushOnEveryMessage = false,
             )
 
         // initialize flush time

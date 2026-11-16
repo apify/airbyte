@@ -2,56 +2,43 @@
   {
     "type": "STREAM",
     "stream": {
-      "stream_state": {
-        "created": 7270247822
-      },
-      "stream_descriptor": {
-        "name": "global_suppressions"
-      }
+      "stream_descriptor": { "name": "global_suppressions" },
+      "stream_state": { "created": "4070908800" }
     }
   },
   {
     "type": "STREAM",
     "stream": {
-      "stream_state": {
-        "created": 7270247822
-      },
-      "stream_descriptor": {
-        "name": "blocks"
-      }
+      "stream_descriptor": { "name": "suppression_group_members" },
+      "stream_state": { "created_at": "4070908800" }
     }
   },
   {
     "type": "STREAM",
     "stream": {
-      "stream_state": {
-        "created": 7270247822
-      },
-      "stream_descriptor": {
-        "name": "bounces"
-      }
+      "stream_descriptor": { "name": "bounces" },
+      "stream_state": { "created": "4070908800" }
     }
   },
   {
     "type": "STREAM",
     "stream": {
-      "stream_state": {
-        "created": 7270247822
-      },
-      "stream_descriptor": {
-        "name": "invalid_emails"
-      }
+      "stream_descriptor": { "name": "spam_reports" },
+      "stream_state": { "created": "4070908800" }
     }
   },
   {
     "type": "STREAM",
     "stream": {
-      "stream_state": {
-        "created_at": 7270247822
-      },
-      "stream_descriptor": {
-        "name": "suppression_group_members"
-      }
+      "stream_descriptor": { "name": "invalid_emails" },
+      "stream_state": { "created": "4070908800" }
+    }
+  },
+  {
+    "type": "STREAM",
+    "stream": {
+      "stream_descriptor": { "name": "blocks" },
+      "stream_state": { "created": "4070908800" }
     }
   }
 ]

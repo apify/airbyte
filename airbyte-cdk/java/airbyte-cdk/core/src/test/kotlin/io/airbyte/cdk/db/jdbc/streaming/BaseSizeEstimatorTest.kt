@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.jdbc.streaming
 
@@ -16,7 +16,7 @@ internal class BaseSizeEstimatorTest {
         Assertions.assertEquals(21L, BaseSizeEstimator.getEstimatedByteSize("12345"))
         Assertions.assertEquals(
             45L,
-            BaseSizeEstimator.getEstimatedByteSize(Jsons.jsonNode(Map.of("key", "value")))
+            BaseSizeEstimator.getEstimatedByteSize(Jsons.jsonNode(Map.of("key", "value"))),
         )
     }
 
@@ -24,7 +24,7 @@ internal class BaseSizeEstimatorTest {
         bufferByteSize: Long,
         minFetchSize: Int,
         defaultFetchSize: Int,
-        maxFetchSize: Int
+        maxFetchSize: Int,
     ) : BaseSizeEstimator(bufferByteSize, minFetchSize, defaultFetchSize, maxFetchSize) {
         override val fetchSize: Optional<Int> = Optional.empty()
 

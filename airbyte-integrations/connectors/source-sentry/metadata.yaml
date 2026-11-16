@@ -6,16 +6,32 @@ data:
     hosts:
       - "*"
   connectorBuildOptions:
-    baseImage: docker.io/airbyte/python-connector-base:1.2.2@sha256:57703de3b4c4204bd68a7b13c9300f8e03c0189bffddaffc796f1da25d2dbea0
+    baseImage: docker.io/airbyte/source-declarative-manifest:7.47.0@sha256:b2ecb78040d4c4b42fa3537488d68a3b195f64b5fefcbc48ac0591479591a3f0
   connectorSubtype: api
   connectorType: source
   definitionId: cdaf146a-9b75-49fd-9dd2-9d64a0bb4781
-  dockerImageTag: 0.5.3
+  dockerImageTag: 1.1.2
   dockerRepository: airbyte/source-sentry
   documentationUrl: https://docs.airbyte.com/integrations/sources/sentry
+  externalDocumentationUrls:
+    - title: API Reference
+      url: https://docs.sentry.io/api/
+      type: api_reference
+    - title: Changelog
+      url: https://sentry.io/changelog/
+      type: api_release_history
+    - title: Sentry API OpenAPI specification
+      url: https://github.com/getsentry/sentry-api-schema
+      type: openapi_spec
+    - title: Sentry API Deprecation Policy
+      url: https://develop.sentry.dev/backend/api/deprecation-policy/
+      type: api_deprecations
+    - title: Sentry server source code (deprecation decorators)
+      url: https://github.com/getsentry/sentry
+      type: code_repository
   githubIssueLabel: source-sentry
   icon: sentry.svg
-  license: MIT
+  license: ELv2
   # Rate limit windows are returned in the response headers of the API requests.
   # Senty docs (https://docs.sentry.io/api/ratelimits/) state a per-second rate limit,
   # but the `x-rate-limit-reset` header has been observed to return a value of up to the next full minute from a request
@@ -24,7 +40,7 @@ data:
   name: Sentry
   remoteRegistries:
     pypi:
-      enabled: true
+      enabled: false
       packageName: airbyte-source-sentry
   registryOverrides:
     cloud:
@@ -32,10 +48,16 @@ data:
     oss:
       enabled: true
   releaseStage: generally_available
+  suggestedStreams:
+    streams:
+      - issues
+      - events
+      - projects
+      - releases
   supportLevel: certified
   tags:
-    - language:python
     - cdk:low-code
+    - language:manifest-only
   connectorTestSuitesOptions:
     - suite: liveTests
       testConnections:
@@ -56,4 +78,30 @@ data:
           secretStore:
             type: GSM
             alias: airbyte-connector-testing-secret-store
+  releases:
+    breakingChanges:
+      1.0.0:
+        message: >-
+          The `projects` stream now uses Sentry's organization-scoped projects
+          endpoint (`/api/0/organizations/{organization}/projects/`) because
+          Sentry deprecated the legacy `/api/0/projects/` endpoint. As a result,
+          the stream returns only the projects that belong to the organization
+          configured in the connector setup, instead of every project the token
+          could access across all organizations. The org-scoped endpoint does
+          not return the `avatar`, `color`, `isInternal`, `isPublic`,
+          `organization`, and `status` fields; these are now available in the
+          new `all_projects_detail` stream, which returns full project details
+          for every project in the organization.
+        upgradeDeadline: "2026-07-15"
+        deadlineAction: disable
+        scopedImpact:
+          - scopeType: stream
+            impactedScopes: ["projects"]
+    rolloutConfiguration:
+      enableProgressiveRollout: true
+      defaultRolloutMode: autopilot
+      autopilotConfig:
+        autoStart: true
+        autoPromoteStages: true
+        strategy: fast
 metadataSpecVersion: "1.0"

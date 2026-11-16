@@ -5,19 +5,7 @@
     "slug": "pa_color",
     "type": "select",
     "order_by": "menu_order",
-    "has_archives": true,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/attributes/6"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/attributes"
-        }
-      ]
-    }
+    "has_archives": false
   },
   {
     "id": 2,
@@ -25,18 +13,6 @@
     "slug": "pa_size",
     "type": "select",
     "order_by": "menu_order",
-    "has_archives": false,
-    "_links": {
-      "self": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/attributes/2"
-        }
-      ],
-      "collection": [
-        {
-          "href": "https://example.com/wp-json/wc/v3/products/attributes"
-        }
-      ]
-    }
+    "has_archives": false
   }
 ]

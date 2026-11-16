@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db.jdbc
 
@@ -24,6 +24,7 @@ import java.time.format.DateTimeParseException
 import java.util.*
 
 private val LOGGER = KotlinLogging.logger {}
+
 /** Source operation skeleton for JDBC compatible databases. */
 abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     JdbcCompatibleSourceOperations<Datatype> {
@@ -61,6 +62,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
 
         return AirbyteRecordData(jsonNode, AirbyteRecordMessageMeta().withChanges(metaChanges))
     }
+
     @Throws(SQLException::class)
     override fun rowToJson(queryResult: ResultSet): JsonNode {
         // the first call communicates with the database. after that the result is cached.
@@ -90,7 +92,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         val arrayNode = ObjectMapper().createArrayNode()
         val arrayResultSet = resultSet.getArray(index).resultSet
@@ -105,7 +107,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, resultSet.getBoolean(index))
     }
@@ -120,7 +122,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         try {
             node.put(columnName, resultSet.getShort(index))
@@ -139,7 +141,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         try {
             node.put(columnName, resultSet.getInt(index))
@@ -153,9 +155,22 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, DataTypeUtils.returnNullIfInvalid { resultSet.getLong(index) })
+    }
+
+    @Throws(SQLException::class)
+    protected fun putBigInteger(
+        node: ObjectNode,
+        columnName: String?,
+        resultSet: ResultSet,
+        index: Int,
+    ) {
+        node.put(
+            columnName,
+            DataTypeUtils.returnNullIfInvalid { resultSet.getBigDecimal(index).toBigInteger() },
+        )
     }
 
     @Throws(SQLException::class)
@@ -163,7 +178,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(
             columnName,
@@ -179,7 +194,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(
             columnName,
@@ -195,7 +210,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, DataTypeUtils.returnNullIfInvalid { resultSet.getBigDecimal(index) })
     }
@@ -205,7 +220,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, resultSet.getString(index))
     }
@@ -215,7 +230,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, resultSet.getString(index))
     }
@@ -225,7 +240,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(
             columnName,
@@ -238,7 +253,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         try {
             node.put(
@@ -259,7 +274,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, resultSet.getBytes(index))
     }
@@ -269,7 +284,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         node.put(columnName, resultSet.getString(index))
     }
@@ -278,7 +293,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setTime(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String?
+        value: String?,
     ) {
         try {
             preparedStatement.setObject(parameterIndex, LocalTime.parse(value))
@@ -291,7 +306,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected open fun setTimestamp(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String?
+        value: String?,
     ) {
         try {
             preparedStatement.setObject(parameterIndex, LocalDateTime.parse(value))
@@ -304,7 +319,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected open fun setDate(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         try {
             preparedStatement.setObject(parameterIndex, LocalDate.parse(value))
@@ -317,7 +332,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     private fun setDateAsTimestamp(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         try {
             val from = Timestamp.from(DataTypeUtils.dateFormat.parse(value).toInstant())
@@ -331,7 +346,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected open fun setBit(
         preparedStatement: PreparedStatement?,
         parameterIndex: Int,
-        value: String?
+        value: String?,
     ) {
         // todo (cgardens) - currently we do not support bit because it requires special handling in
         // the
@@ -345,7 +360,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setBoolean(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setBoolean(parameterIndex, value.toBoolean())
     }
@@ -354,7 +369,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setShortInt(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setShort(parameterIndex, value.toShort())
     }
@@ -363,7 +378,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setInteger(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setInt(parameterIndex, value.toInt())
     }
@@ -372,7 +387,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setBigInteger(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setLong(parameterIndex, BigDecimal(value).toBigInteger().toLong())
     }
@@ -381,7 +396,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setDouble(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setDouble(parameterIndex, value.toDouble())
     }
@@ -390,7 +405,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setReal(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setFloat(parameterIndex, value.toFloat())
     }
@@ -399,7 +414,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setDecimal(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String
+        value: String,
     ) {
         preparedStatement.setBigDecimal(parameterIndex, BigDecimal(value))
     }
@@ -408,7 +423,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setString(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String?
+        value: String?,
     ) {
         preparedStatement.setString(parameterIndex, value)
     }
@@ -417,7 +432,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun setBinary(
         preparedStatement: PreparedStatement,
         parameterIndex: Int,
-        value: String?
+        value: String?,
     ) {
         preparedStatement.setBytes(parameterIndex, Base64.getDecoder().decode(value))
     }
@@ -426,7 +441,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
     protected fun <ObjectType> getObject(
         resultSet: ResultSet,
         index: Int,
-        clazz: Class<ObjectType>?
+        clazz: Class<ObjectType>?,
     ): ObjectType {
         return resultSet.getObject(index, clazz)
     }
@@ -436,7 +451,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         val timetz = getObject(resultSet, index, OffsetTime::class.java)
         node.put(columnName, DateTimeConverter.convertToTimeWithTimezone(timetz))
@@ -447,7 +462,7 @@ abstract class AbstractJdbcCompatibleSourceOperations<Datatype> :
         node: ObjectNode,
         columnName: String?,
         resultSet: ResultSet,
-        index: Int
+        index: Int,
     ) {
         val timestamptz = getObject(resultSet, index, OffsetDateTime::class.java)
         val localDate = timestamptz.toLocalDate()

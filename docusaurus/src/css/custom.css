@@ -16,25 +16,41 @@
   --ifm-color-primary-lighter: #9492ff;
   --ifm-color-primary-lightest: #c8c7ff;
   --ifm-code-font-size: 95%;
-  --ifm-navbar-height: 82px;
+  --ifm-navbar-height: 70px;
   --ifm-alert-border-color: #615eff;
-  --ifm-navbar-link-color: #615eff;
+
   --ifm-font-family-base: "Inter";
   --ifm-alert-shadow: none;
   --ifm-menu-color: var(--ifm-color-emphasis-900);
   --ifm-hover-overlay: rgb(0 0 0 / 2%);
   --color-active-nav-item-background: #f4f4ff;
   --color-active-nav-item-text: var(--ifm-color-primary-darker);
-
+  --ifm-table-background: transparent;
+  --ifm-table-stripe-background: transparent;
+  --ifm-table-head-background: var(--color-blue-30);
+  --ifm-table-border-color: var(--ifm-color-primary-lightest);
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.2);
+  
   --color-white: hsl(0, 0%, 100%);
   --color-grey-40: hsl(240, 25%, 98%);
   --color-grey-100: hsl(240, 12%, 92%);
-  --color-grey-400: hsl(240, 10%, 59%);
+  --color-grey-400: hsl(239, 10%, 59%);
   --color-grey-500: hsl(240, 10%, 49%);
   --color-grey-900: hsl(240, 19%, 18%);
+  --color-green-40: hsl(185, 76%, 97%);
   --color-green-50: hsl(184, 67%, 92%);
+  --color-green-600: hsl(185, 100%, 35%);
+  --color-green-800: hsl(184, 100%, 26%);
   --color-blue-30: hsl(240, 100%, 98%);
+  --color-dark-blue-40: hsl(230, 23%, 95%);
   --color-dark-blue-700: hsl(236, 43%, 31%);
+  --color-red-400: hsl(0, 73%, 50%);
+  --color-orange-400: hsl(9, 100%, 60%);
+  --modal-overlay-background: hsla(241, 51%, 20%, 50%);
+  --icon-background: transparent;
+
+  /* Agents homepage section */
+  --color-ae-bg: hsl(240, 20%, 95%);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -49,6 +65,13 @@ html[data-theme="dark"] {
   --ifm-color-primary-lightest: #c8c7ff;
   --color-active-nav-item-background: #272729;
   --color-active-nav-item-text: var(--ifm-color-primary-lighter);
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.8);
+
+  --ifm-table-background: transparent;
+  --ifm-table-stripe-background: transparent;
+  --ifm-table-head-background: var(--color-blue-30);
+  --ifm-table-head-color: hsl(240, 100%, 98%);
+  --ifm-table-border-color: hsl(240, 100%, 98%);
 
   --color-grey-40: hsl(240, 14%, 14%);
   --color-grey-100: hsl(240, 15%, 15%);
@@ -59,17 +82,24 @@ html[data-theme="dark"] {
   --color-blue-30: hsl(252, 25%, 18%);
   --color-dark-blue-700: hsl(240, 100%, 98%);
   --color-white: hsl(0, 0%, 16%);
+  --color-red-400: hsl(0, 81%, 71%);
+  --color-orange-400: hsl(9, 100%, 60%);
+
+  --modal-overlay-background: hsla(236, 11%, 42%, 70%);
+  --icon-background: hsl(0, 0%, 100%);
+
+  /* Agents homepage section */
+  --color-ae-bg: hsl(240, 18%, 16%);
 }
 
-.docusaurus-highlight-code-line {
-  background-color: rgba(0, 0, 0, 0.1);
-  display: block;
-  margin: 0 calc(-1 * var(--ifm-pre-padding));
-  padding: 0 var(--ifm-pre-padding);
+/* Hide sidebar on the homepage */
+html.plugin-id-default aside.theme-doc-sidebar-container {
+  visibility: hidden !important;
 }
 
-html[data-theme="dark"] .docusaurus-highlight-code-line {
-  background-color: rgba(0, 0, 0, 0.3);
+/* Hide breadcrumbs on the homepage */
+html.plugin-id-default nav.theme-doc-breadcrumbs {
+  visibility: hidden;
 }
 
 .admonition-icon,
@@ -83,8 +113,28 @@ html[data-theme="dark"] .docusaurus-highlight-code-line {
   transform: translateY(-2px);
 }
 
+span.DocSearch-Button-Placeholder {
+  color: var(--ifm-menu-color);
+}
+
 .navbar__items--right {
   gap: 4px;
+}
+
+nav div.dropdown--right {
+  border: 1px solid var(--docusaurus-tag-list-border);
+  border-radius: var(--docsearch-border-radius);
+}
+
+nav ul.dropdown__menu {
+  border: 1px solid var(--docusaurus-tag-list-border);
+}
+
+/* Hide some less important navbar items at medium resolutions */
+@media (max-width:1250px) {
+  nav a.header-github-link, nav a.cloudStatusLink {
+    display: none;
+  }
 }
 
 .header-github-link:hover {
@@ -103,6 +153,11 @@ html[data-theme="dark"] .docusaurus-highlight-code-line {
 [data-theme="dark"] .header-github-link::before {
   background: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='white' d='M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12'/%3E%3C/svg%3E")
     no-repeat;
+}
+
+nav.navbar {
+  padding-top: 0px !important;
+  padding-bottom: 0px !important;
 }
 
 .navbar__item.header-button.navbar__link {
@@ -129,10 +184,19 @@ html[data-theme="dark"] .docusaurus-highlight-code-line {
   display: none;
 }
 
+@media (min-width:996px) {
+  .navbar__link {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+}
+
 .navbar__link--active {
   cursor: pointer;
   color: var(--ifm-navbar-link-color);
   text-decoration: none;
+  padding-top: 7px;
 }
 
 .navbar__link:hover {
@@ -143,7 +207,6 @@ html[data-theme="dark"] .docusaurus-highlight-code-line {
 
 .navbar__category {
   font-weight: 700;
-  font-size: 0.8em;
   padding: 0.4em 0 0.4em 0.4em;
   color: var(--docsearch-text-color);
   background-color: var(--ifm-hover-overlay);
@@ -153,9 +216,42 @@ html[data-theme="dark"] .docusaurus-highlight-code-line {
   margin-top: 1.1em;
 }
 
-/* Hide the breadcrumbs if they have only the house as an entry (i.e. on the start page) */
-.breadcrumbs:has(li:first-child:last-child) {
-  display: none;
+ul.table-of-contents {
+  padding-left: 0;
+  border: 0;
+}
+
+ul.table-of-contents li {
+  margin-left: 0;
+}
+
+nav.theme-doc-breadcrumbs {
+  margin-top: 8px !important;
+  margin-bottom: 0px !important;
+}
+
+ul.breadcrumbs > li.breadcrumbs__item > a.breadcrumbs__link {
+  color: var(--ifm-color-primary);
+}
+
+ul.breadcrumbs > li.breadcrumbs__item > span.breadcrumbs__link {
+  color: var(--ifm-font-color-base);
+  background: none;
+}
+
+article span.badge {
+  margin-bottom: 20px;
+  background-color: var(--color-green-40);
+  border: 1px solid var(--color-green-800);
+  color: var(--color-green-800);
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+html[data-theme="dark"] article span.badge {
+  background-color: var(--color-grey-40);
+  border: 1px solid var(--color-dark-blue-40);
+  color: var(--color-dark-blue-40);
 }
 
 .cloudStatusLink {
@@ -197,9 +293,9 @@ html[data-theme="dark"] .docusaurus-highlight-code-line {
   box-shadow: none !important;
 }
 
-img {
+main img {
   max-width: 100%;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .iconExternalLink_I5OW {
@@ -226,3 +322,109 @@ The variables for them have been added to :root at the top of this file */
   background: var(--color-active-nav-item-background);
   color: var(--color-active-nav-item-text);
 }
+
+table {
+  border-spacing: 0;
+  border-collapse: collapse;
+  overflow-x: auto;
+}
+
+table th code {
+  color: var(--ifm-color-content);
+}
+
+table td code {
+  background-color: var(--color-blue-30);
+  padding: 2px 8px;
+  border: none;
+  font-family: monospace;
+  border-radius: 4px;
+}
+
+table th, table td {
+  vertical-align: top;
+}
+
+table tr:hover {
+  background-color: var(--color-grey-40);
+  transition: background-color 0.2s ease;
+}
+table thead tr:hover {
+  background-color: transparent;
+}
+
+svg.inline-svg {
+  max-height: 1em;
+  max-width: 1em;
+}
+
+nav a.navbar__link--active {
+  color: var(--ifm-color-primary) !important;
+  border-bottom: 3px solid var(--ifm-color-primary);
+}
+
+/* Active-route indicator for the Data Replication dropdown.
+   The wrapper <div> must stretch to full navbar height so the
+   border-bottom aligns with the Agents link underline. */
+@media (min-width: 996px) {
+  .dropdown--active-route {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    border-bottom: 3px solid var(--ifm-color-primary);
+  }
+  .dropdown--active-route > .navbar__link {
+    color: var(--ifm-color-primary) !important;
+  }
+}
+
+/* Hide Ask AI button until DataGrail consent is granted */
+.kapa-ai-hidden {
+  display: none !important;
+}
+
+/* Header with button styling */
+.header-with-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-with-button h1 {
+  margin-bottom: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+html[class*="docs-doc-id-connector-development/config-based/understanding-the-yaml-file/reference/"] .header-with-button {
+  min-width: 0;
+  gap: 1rem;
+}
+
+html[class*="docs-doc-id-connector-development/config-based/understanding-the-yaml-file/reference/"] .header-with-button h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+html[class*="docs-doc-id-connector-development/config-based/understanding-the-yaml-file/reference/"] .header-with-button > :last-child {
+  flex-shrink: 0;
+}
+
+header h1 {
+  margin-bottom: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+article span.theme-doc-version-badge {
+  display: none;
+}
+
+article span.badge {
+  margin-bottom: 0;
+}
+
+li.theme-doc-sidebar-item-link.menu__list-item .menu__link {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+}
+

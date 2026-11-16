@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs.avro
 
@@ -38,7 +38,7 @@ constructor(
     configuredStream: ConfiguredAirbyteStream,
     uploadTimestamp: Timestamp,
     converter: JsonAvroConverter?,
-    jsonSchema: JsonNode? = null
+    jsonSchema: JsonNode? = null,
 ) : BaseGcsWriter(config, s3Client, configuredStream), DestinationFileWriter {
     private val avroRecordFactory: AvroRecordFactory
     private val uploadManager: StreamTransferManager
@@ -60,7 +60,7 @@ constructor(
                         true,
                         false,
                         false,
-                        true
+                        true,
                     )
         LOGGER.info {
             "Avro schema for stream ${stream.name}: ${@Suppress("DEPRECATION")schema!!.toString(false)}"

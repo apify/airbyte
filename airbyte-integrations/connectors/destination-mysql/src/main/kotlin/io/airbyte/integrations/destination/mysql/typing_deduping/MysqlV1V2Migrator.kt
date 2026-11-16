@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.destination.mysql.typing_deduping
@@ -19,14 +19,14 @@ class MysqlV1V2Migrator(database: JdbcDatabase) :
     @Throws(Exception::class)
     override fun getTableIfExists(
         namespace: String?,
-        tableName: String?
+        tableName: String?,
     ): Optional<TableDefinition> {
         return JdbcDestinationHandler.Companion.findExistingTable(
             database,
             // Mysql doesn't have schemas. Pass the namespace as the database name.
             namespace,
             null,
-            tableName
+            tableName,
         )
     }
 }

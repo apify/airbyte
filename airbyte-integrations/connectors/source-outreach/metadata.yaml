@@ -8,37 +8,56 @@ data:
     cloud:
       enabled: true
   releases:
+    rolloutConfiguration:
+      enableProgressiveRollout: true
+      defaultRolloutMode: autopilot
+      autopilotConfig:
+        autoStart: true
+        autoPromoteStages: true
+        strategy: fast
     breakingChanges:
       1.0.0:
         upgradeDeadline: "2024-06-30"
         message:
-          "The verison migrates the Outreach connector to the low-code framework for greater maintainability.
-          !! Important: The sequence_steps stream schema from API has a breaking change to creator field to an array contain integers other than strings"
+          "The verison migrates the Outreach connector to the low-code framework
+          for greater maintainability. !! Important: The sequence_steps stream schema
+          from API has a breaking change to creator field to an array contain integers
+          other than strings"
   remoteRegistries:
     pypi:
-      enabled: true
+      enabled: false
       packageName: airbyte-source-outreach
   connectorBuildOptions:
     # Please update to the latest version of the connector base image.
     # https://hub.docker.com/r/airbyte/python-connector-base
     # Please use the full address with sha256 hash to guarantee build reproducibility.
-    baseImage: docker.io/airbyte/python-connector-base:2.0.0@sha256:c44839ba84406116e8ba68722a0f30e8f6e7056c726f447681bb9e9ece8bd916
+    baseImage: docker.io/airbyte/source-declarative-manifest:7.48.0@sha256:cf202b16aef3395e0bdbaa1a2e66ff6aaf123f8836e6324743ded50c4b8d6586
   connectorSubtype: api
   connectorType: source
   definitionId: 3490c201-5d95-4783-b600-eaf07a4c7787
-  dockerImageTag: 1.0.19
+  dockerImageTag: 1.5.0
   dockerRepository: airbyte/source-outreach
   githubIssueLabel: source-outreach
   icon: outreach.svg
-  license: MIT
+  license: ELv2
   name: Outreach
   releaseDate: 2021-11-03
   releaseStage: alpha
   supportLevel: community
   documentationUrl: https://docs.airbyte.com/integrations/sources/outreach
+  maxSecondsBetweenMessages: 7200
+  suggestedStreams:
+    streams:
+      - prospects
+      - mailings
+      - sequence_states
+      - sequences
+      - tasks
+      - sequence_steps
+      - users
   tags:
-    - language:python
     - cdk:low-code
+    - language:manifest-only
   ab_internal:
     ql: 200
     sl: 100
@@ -55,4 +74,26 @@ data:
           secretStore:
             type: GSM
             alias: airbyte-connector-testing-secret-store
+  externalDocumentationUrls:
+    - title: Outreach API reference
+      url: https://api.outreach.io/api/v2/docs
+      type: api_reference
+    - title: Outreach authentication
+      url: https://api.outreach.io/api/v2/docs#authentication
+      type: authentication_guide
+    - title: Outreach rate limits
+      url: https://developers.outreach.io/api/getting-started/#rate-limiting
+      type: rate_limits
+    - title: Outreach deprecated features
+      url: https://developers.outreach.io/api/deprecated-features/
+      type: api_deprecations
+    - title: Outreach API access (OAuth)
+      url: https://developers.outreach.io/api/oauth/
+      type: authentication_guide
+    - title: Outreach OpenAPI spec
+      url: https://api.outreach.io/api/v2/schema/openapi.json
+      type: openapi_spec
+    - title: Outreach API schema release notes
+      url: https://developers.outreach.io/api/release-notes/
+      type: api_release_history
 metadataSpecVersion: "1.0"

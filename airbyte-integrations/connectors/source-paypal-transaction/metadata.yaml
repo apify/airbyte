@@ -7,21 +7,21 @@ data:
       - api-m.paypal.com
       - api-m.sandbox.paypal.com
   connectorBuildOptions:
-    baseImage: docker.io/airbyte/python-connector-base:1.2.2@sha256:57703de3b4c4204bd68a7b13c9300f8e03c0189bffddaffc796f1da25d2dbea0
+    baseImage: docker.io/airbyte/source-declarative-manifest:7.47.0@sha256:b2ecb78040d4c4b42fa3537488d68a3b195f64b5fefcbc48ac0591479591a3f0
   connectorSubtype: api
   connectorType: source
   definitionId: d913b0f2-cc51-4e55-a44c-8ba1697b9239
-  dockerImageTag: 2.5.7
+  dockerImageTag: 2.6.61
   dockerRepository: airbyte/source-paypal-transaction
   documentationUrl: https://docs.airbyte.com/integrations/sources/paypal-transaction
   githubIssueLabel: source-paypal-transaction
   icon: paypal.svg
-  license: MIT
+  license: ELv2
   maxSecondsBetweenMessages: 5400
   name: Paypal Transaction
   remoteRegistries:
     pypi:
-      enabled: true
+      enabled: false
       packageName: airbyte-source-paypal-transaction
   registryOverrides:
     cloud:
@@ -33,8 +33,20 @@ data:
   releases:
     breakingChanges:
       2.1.0:
-        message: 'Version 2.1.0 changes the format of the state. The format of the cursor changed from "2021-06-18T16:24:13+03:00" to "2021-06-18T16:24:13Z". The state key for the transactions stream changed to "transaction_updated_date" and the key for the balances stream change to "as_of_time". The upgrade is safe, but rolling back is not.'
+        message:
+          'Version 2.1.0 changes the format of the state. The format of the
+          cursor changed from "2021-06-18T16:24:13+03:00" to "2021-06-18T16:24:13Z".
+          The state key for the transactions stream changed to "transaction_updated_date"
+          and the key for the balances stream change to "as_of_time". The upgrade
+          is safe, but rolling back is not.'
         upgradeDeadline: "2023-09-18"
+    rolloutConfiguration:
+      enableProgressiveRollout: true
+      defaultRolloutMode: autopilot
+      autopilotConfig:
+        autoStart: true
+        autoPromoteStages: true
+        strategy: fast
   suggestedStreams:
     streams:
       - transactions
@@ -42,7 +54,7 @@ data:
       - list_payments
   supportLevel: certified
   tags:
-    - language:python
+    - language:manifest-only
     - cdk:low-code
   connectorTestSuitesOptions:
     - suite: liveTests
@@ -71,4 +83,20 @@ data:
           secretStore:
             type: GSM
             alias: airbyte-connector-testing-secret-store
+  externalDocumentationUrls:
+    - title: PayPal API reference
+      url: https://developer.paypal.com/api/rest/
+      type: api_reference
+    - title: PayPal authentication
+      url: https://developer.paypal.com/api/rest/authentication/
+      type: authentication_guide
+    - title: PayPal rate limits
+      url: https://developer.paypal.com/api/rest/rate-limiting/
+      type: rate_limits
+    - title: PayPal Status
+      url: https://www.paypal-status.com/
+      type: status_page
+    - title: PayPal REST API specifications
+      url: https://github.com/paypal/paypal-rest-api-specifications
+      type: openapi_spec
 metadataSpecVersion: "1.0"

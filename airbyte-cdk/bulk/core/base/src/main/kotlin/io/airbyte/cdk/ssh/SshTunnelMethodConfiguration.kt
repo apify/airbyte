@@ -1,4 +1,4 @@
-/* Copyright (c) 2024 Airbyte, Inc., all rights reserved. */
+/* Copyright (c) 2026 Airbyte, Inc., all rights reserved. */
 package io.airbyte.cdk.ssh
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -98,7 +98,7 @@ data class SshPasswordAuthTunnelMethod(
 ) : SshTunnelMethodConfiguration
 
 @ConfigurationProperties("$CONNECTOR_CONFIG_PREFIX.tunnel_method")
-class MicronautPropertiesFriendlySshTunnelMethodConfigurationJsonObject {
+class MicronautPropertiesFriendlySshTunnelMethodConfigurationSpecification {
     var tunnelMethod: String = "NO_TUNNEL"
     var tunnelHost: String? = null
     var tunnelPort: Int = 22

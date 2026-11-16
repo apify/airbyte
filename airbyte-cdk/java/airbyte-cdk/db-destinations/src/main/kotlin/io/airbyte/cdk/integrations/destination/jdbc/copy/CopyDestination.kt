@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.jdbc.copy
 
@@ -60,7 +60,8 @@ abstract class CopyDestination : BaseConnector, Destination {
                     """
     Could not connect to the staging persistence with the provided configuration. 
     ${e.message}
-    """.trimIndent()
+    """
+                        .trimIndent(),
                 )
         }
 
@@ -88,7 +89,8 @@ abstract class CopyDestination : BaseConnector, Destination {
                     """
     Could not connect to the warehouse with the provided configuration. 
     ${e.message}
-    """.trimIndent()
+    """
+                        .trimIndent(),
                 )
         } finally {
             try {
@@ -103,14 +105,14 @@ abstract class CopyDestination : BaseConnector, Destination {
     protected fun performCreateInsertTestOnDestination(
         outputSchema: String,
         database: JdbcDatabase,
-        nameTransformer: NamingConventionTransformer
+        nameTransformer: NamingConventionTransformer,
     ) {
         AbstractJdbcDestination.Companion.attemptTableOperations(
             outputSchema,
             database,
             nameTransformer,
             sqlOperations,
-            true
+            true,
         )
     }
 

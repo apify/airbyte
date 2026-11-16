@@ -1,5 +1,7 @@
 plugins {
     id 'airbyte-java-connector'
+    id "io.airbyte.gradle.docker"
+    id 'airbyte-connector-docker-convention'
 }
 
 airbyteJavaConnector {
@@ -16,5 +18,5 @@ application {
 dependencies {
     implementation 'com.clickhouse:clickhouse-jdbc:0.3.2-patch10:all'
 
-    testImplementation 'org.testcontainers:clickhouse:1.19.4'
+    testImplementation 'org.testcontainers:clickhouse:1.21.4'
 }

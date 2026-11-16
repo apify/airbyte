@@ -9,8 +9,9 @@ from datetime import datetime
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Union
 
 import requests
+
 from airbyte_cdk.sources.streams.http import HttpStream
-from airbyte_cdk.sources.streams.http.auth.core import HttpAuthenticator
+from airbyte_cdk.sources.streams.http.requests_native_auth.abstract_token import AbstractHeaderAuthenticator
 
 
 class CartStream(HttpStream, ABC):
@@ -20,7 +21,7 @@ class CartStream(HttpStream, ABC):
         self,
         start_date: str,
         end_date: str = None,
-        authenticator: HttpAuthenticator = None,
+        authenticator: AbstractHeaderAuthenticator = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -93,7 +94,6 @@ class CartStream(HttpStream, ABC):
 
 
 class IncrementalCartStream(CartStream, ABC):
-
     state_checkpoint_interval = 1000
     cursor_field = "updated_at"
 

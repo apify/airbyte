@@ -13,8 +13,11 @@ class ShopifyBulkExceptions:
 
         failure_type: FailureType = FailureType.config_error
 
-        def __init__(self, message: str, **kwargs) -> None:
-            super().__init__(internal_message=message, failure_type=self.failure_type, **kwargs)
+        def __init__(self, internal_message: str, message: str | None = None, **kwargs) -> None:
+            # show the internal message to the user, unless the dedicated one is provided
+            super().__init__(
+                message=message or internal_message, internal_message=internal_message, failure_type=self.failure_type, **kwargs
+            )
 
     class BulkJobError(BaseBulkException):
         """Raised when there are BULK Job Errors in response"""
@@ -36,6 +39,8 @@ class ShopifyBulkExceptions:
     class BulkJobFailed(BaseBulkException):
         """Raised when BULK Job has FAILED status"""
 
+        failure_type: FailureType = FailureType.system_error
+
     class BulkJobCanceled(BaseBulkException):
         """Raised when BULK Job has CANCELED status"""
 
@@ -52,6 +57,11 @@ class ShopifyBulkExceptions:
 
         failure_type: FailureType = FailureType.transient_error
 
+    class BulkJobCheckpointCollisionError(BaseBulkException):
+        """Raised when an attempt to create a job using the `checkpointed cursor` value goes into inf.loop."""
+
+        failure_type: FailureType = FailureType.transient_error
+
     class BulkJobRedirectToOtherShopError(BaseBulkException):
         """Raised when the response contains another shop name"""
 
@@ -61,3 +71,8 @@ class ShopifyBulkExceptions:
         """Raised when failing the job after hitting too many BulkJobCreationFailedConcurrentError."""
 
         failure_type: FailureType = FailureType.transient_error
+
+    class BulkJobAuthFailedError(BaseBulkException):
+        """Raised when bulk job creation fails due to an invalid or expired access token."""
+
+        failure_type: FailureType = FailureType.config_error

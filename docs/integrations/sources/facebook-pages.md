@@ -1,56 +1,61 @@
 # Facebook Pages
 
-:::danger
-The Facebook Pages API utilized by this connector has been deprecated. You will not be able to make a successful connection. If you would like to make a community contribution or track API upgrade status, visit: https://github.com/airbytehq/airbyte/issues/25515.
-:::
-
 This page contains the setup guide and reference information for the Facebook Pages source connector.
 
 ## Prerequisites
 
-To set up the Facebook Pages source connector with Airbyte, you'll need to create your Facebook Application and use both long-lived Page access token and Facebook Page ID.
+To set up the Facebook Pages source connector, you need a Facebook app, a long-lived Page access token, and the ID of the Page you want to sync.
 
 :::note
-The Facebook Pages souce connector is currently only compatible with v15 of the Facebook Graph API.
+This connector calls v26.0 of the Facebook Graph API.
 :::
+
+Meta only returns Page Insights data for Pages with 100 or more likes. The connector checks the connection by reading the `page_insights` stream, and an empty response still passes, so a Page with fewer than 100 likes can be set up and will sync its non-insights streams, such as `page` and `post`, but its insights streams return no records until it reaches 100 likes.
 
 ## Setup guide
 
 ### Step 1: Set up Facebook Pages
 
-1. Create Facebook Developer Account. Follow [instruction](https://developers.facebook.com/async/registration/) to create one.
-2. Create [Facebook App](https://developers.facebook.com/apps/). Choose "Company" as the purpose of the app. Fill out the remaining fields to create your app, then follow along the "Connect a User Page" section.
-3. Connect a User [Page](https://developers.facebook.com/tools/explorer/). Choose your app at `Meta App` field. Choose your Page at `User or Page` field. Add next permission:
+1. Create a Facebook Developer Account. Follow [these instructions](https://developers.facebook.com/async/registration/) to create one.
+2. Create a [Facebook App](https://developers.facebook.com/apps/). Choose "Company" as the purpose of the app. Fill out the remaining fields to create your app, then follow along the "Connect a User Page" section.
+3. Connect a User [Page](https://developers.facebook.com/tools/explorer/) using the Graph API Explorer. Choose your app in the `Meta App` field. Choose your Page in the `User or Page` field. Add the following permissions:
    - pages_read_engagement
    - pages_read_user_content
    - pages_show_list
    - read_insights
 4. Click Generate Access Token and follow instructions.
 
-After all the steps, it should look something like this
+After all the steps, it should look something like this:
 
-![](../../.gitbook/assets/facebook-pages-1.png)
+![](/.gitbook/assets/facebook-pages-1.png)
 
 5. [Generate](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived#get-a-long-lived-user-access-token) Long-Lived User Access Token.
 6. [Generate](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived#long-lived-page-token) Long-Lived Page Token.
 
 ### Step 2: Set up the Facebook Pages connector in Airbyte
 
-### For Airbyte Cloud:
+1. In the left navigation bar, click **Sources**. In the top-right corner, click **+ New source**.
+2. Select **Facebook Pages** and enter a name for the source.
+3. For **Page Access Token**, enter the long-lived Page token you generated in Step 1. The connector also accepts a long-lived User token, as long as that user can generate a Page token for the Page you configure.
+4. For **Page ID**, enter the Page's ID or username. If your Page URL is `https://www.facebook.com/Test-1111111111`, use `Test-1111111111`.
+5. (Optional) Set **Page Size** to control the number of records requested per API call for every paginated stream: `post`, `post_insights`, `video_insights`, `reel_insights`, `comment`, and `rating`. The default is 100, and valid values are 1 through 100. Decrease it if you see "Please reduce the amount of data you're asking for" errors.
+6. (Optional) Set **Page Insights Metrics**, **Post Insights Metrics**, **Video Insights Metrics**, or **Reel Insights Metrics** to choose which metrics each insights stream requests. See [Insights metrics and period](#insights-metrics-and-period).
+7. (Optional) Set **Page Insights Period** to request a single aggregation period, such as `day`, for the `page_insights` stream. Valid values are `day`, `week`, `days_28`, `month`, `lifetime`, and `total_over_range`.
+8. (Optional) Set **Start Date** to the earliest date the `page_insights` stream reads, in the format `YYYY-MM-DDTHH:MM:SSZ`, for example `2024-01-01T00:00:00Z`. Meta keeps about two years of Page Insights history. See [Supported sync modes](#supported-sync-modes).
+9. Click **Set up source**.
 
-1. [Log into your Airbyte Cloud](https://cloud.airbyte.com/workspaces) account.
-2. In the left navigation bar, click **Sources**. In the top-right corner, click **+ New source**.
-3. On the Set up the source page, enter the name for the Facebook Pages connector and select **Facebook Pages** from the Source type dropdown.
-4. Fill in Page Access Token with Long-Lived Page Token
-5. Fill in Page ID (if you have a page URL such as `https://www.facebook.com/Test-1111111111`, the ID would be`Test-1111111111`)
+### Creating your own OAuth App
 
-### For Airbyte OSS:
+Follow this [Facebook documentation](https://developers.facebook.com/docs/development/create-an-app/) to create an OAuth App.
 
-1. Navigate to the Airbyte Open Source dashboard.
-2. Set the name for your source.
-3. On the Set up the source page, enter the name for the Facebook Pages connector and select **Facebook Pages** from the Source type dropdown.
-4. Fill in Page Access Token with Long-Lived Page Token
-5. Fill in Page ID (if you have a page URL such as `https://www.facebook.com/Test-1111111111`, the ID would be`Test-1111111111`)
+Required permissions for your OAuth App to sync data using the Facebook Pages source connector:
+
+- `pages_read_engagement`
+- `pages_read_user_content`
+- `pages_show_list`
+- `read_insights`
+
+If you encounter permission errors for specific Page fields, see [Meta's Permissions Reference](https://developers.facebook.com/docs/permissions) for additional permissions you might need. As a rule it's best to request the lowest number of permissions you can to function normally.
 
 ## Supported sync modes
 
@@ -58,13 +63,133 @@ The Facebook Pages source connector supports the following [sync modes](https://
 
 - [Full Refresh - Overwrite](https://docs.airbyte.com/understanding-airbyte/connections/full-refresh-overwrite/)
 - [Full Refresh - Append](https://docs.airbyte.com/understanding-airbyte/connections/full-refresh-append)
+- [Incremental - Append](https://docs.airbyte.com/understanding-airbyte/connections/incremental-append) (`post` and `page_insights` streams only)
+
+The `post` stream is full refresh by default. If you switch it to Incremental, the connector keeps the newest `created_time` it has seen and asks Facebook only for posts created after it on the next sync, which cuts the amount of data read on every sync after the first. The first incremental sync reads the full post history, and a full refresh always does. Because the filter uses the post's creation time, edits, reactions and comment counts on posts the connector has already synced are not refreshed in incremental mode, so use full refresh if you need those to stay current.
+
+The `page_insights` stream is full refresh by default, which asks Facebook for its default trailing window only. If you switch it to Incremental, the connector keeps the newest `end_time` it has seen and asks Facebook only for the days after it on the next sync. Set **Start Date** to backfill history, which the connector reads in 90-day windows because Facebook returns at most 90 days per request and keeps about two years of history. **Start Date** applies in both modes, so a full refresh with it set also reads from that date in 90-day windows. The newest point Facebook returns belongs to a day that is usually still in progress, so each incremental sync re-reads the last two days before the saved `end_time`, and you can expect those days to appear again in your destination. Each record is one metric and period for one window, so if your destination deduplicates on the primary key, use Incremental - Append rather than a deduplicated mode, or windows overwrite each other. If you leave **Start Date** empty, the first incremental sync reads Facebook's default window and the next syncs continue from there, so a connection paused for more than 90 days may need a reset or a **Start Date** before it can catch up.
 
 ## Supported Streams
 
-- [Page](https://developers.facebook.com/docs/graph-api/reference/v19.0/page/#overview)
-- [Post](https://developers.facebook.com/docs/graph-api/reference/v19.0/page/feed)
-- [Page Insights](https://developers.facebook.com/docs/graph-api/reference/v19.0/page/insights)
-- [Post Insights](https://developers.facebook.com/docs/graph-api/reference/v19.0/insights)
+The `video_insights`, `reel_insights`, `comment`, and `rating` streams were added in version 3.1.0 and need permissions that older tokens might not have. If Facebook rejects one of their requests with a permission error (error code `10`, a code from `200` to `299`, or a message that mentions a permission), the connector logs the error and skips the request instead of failing the sync, so these streams can sync zero records without an error. If one of them is empty, check that your token has the permissions listed in [Step 1](#step-1-set-up-facebook-pages).
+
+| Stream | Graph API endpoint | Notes |
+| :--- | :--- | :--- |
+| `page` | [`/{page-id}`](https://developers.facebook.com/docs/graph-api/reference/v26.0/page/#overview) | One record describing the Page. Airbyte requests only the fields you select in the connection's **Schema** tab. |
+| `post` | [`/{page-id}/feed`](https://developers.facebook.com/docs/graph-api/reference/v26.0/page/feed) | One record per post. Paginated, so **Page Size** applies. Airbyte requests only the fields you select. Supports incremental sync on `created_time`. |
+| `page_insights` | [`/{page-id}/insights`](https://developers.facebook.com/docs/graph-api/reference/v26.0/page/insights) | One record per metric and period, not per day. Metrics and period are configurable. Supports incremental sync on `end_time`, with **Start Date** to backfill. |
+| `post_insights` | [`/{page-id}/feed`](https://developers.facebook.com/docs/graph-api/reference/v26.0/page/feed) with an `insights.metric(...)` field selection | Post-level [insights](https://developers.facebook.com/docs/graph-api/reference/v26.0/insights), one record per metric and period. Paginated, so **Page Size** applies. Metrics are configurable. |
+| `video_insights` | [`/{page-id}/videos`](https://developers.facebook.com/docs/graph-api/reference/page/videos/) with a `video_insights.metric(...)` field selection | Lifetime [video insights](https://developers.facebook.com/docs/graph-api/reference/video/video_insights/) per Page video, one record per metric. Paginated, so **Page Size** applies. Metrics are configurable. |
+| `reel_insights` | [`/{page-id}/video_reels`](https://developers.facebook.com/docs/video-api/guides/reels-publishing/) with a `video_insights.metric(...)` field selection | Lifetime [Reels insights](https://developers.facebook.com/docs/graph-api/reference/video/video_insights/#reels-metrics) per Page reel, such as `blue_reels_play_count`, one record per metric. Paginated, so **Page Size** applies. Metrics are configurable. |
+| `comment` | [`/{post-id}/comments`](https://developers.facebook.com/docs/graph-api/reference/post/comments/) for each post in `/{page-id}/feed` | One record per comment, including replies, with the parent `post_id` added. This makes one request per post, so a Page with many posts uses many API calls. Needs `pages_read_user_content`. |
+| `rating` | [`/{page-id}/ratings`](https://developers.facebook.com/docs/graph-api/reference/page/ratings/) | One record per recommendation or review. Recommendations have no ID of their own, so this stream has no primary key. Needs `pages_read_user_content`. |
+
+### Insights metrics and period
+
+You can choose which metrics each insights stream requests with the **Page Insights Metrics**, **Post Insights Metrics**, **Video Insights Metrics**, and **Reel Insights Metrics** settings. If you leave a setting empty, the connector requests these defaults:
+
+- `page_insights`: `page_total_actions`, `page_post_engagements`, `page_fan_adds_by_paid_non_paid_unique`, `page_media_view`, `page_total_media_view_unique`
+- `post_insights`: `post_media_view`, `post_total_media_view_unique`, `post_clicks`, `post_clicks_by_type`, `post_reactions_by_type_total`
+- `video_insights`: `total_video_views`, `total_video_complete_views`, `total_video_avg_time_watched`, `total_video_view_total_time`, `total_video_reactions_by_type_total`
+- `reel_insights`: `blue_reels_play_count`, `fb_reels_total_plays`, `fb_reels_replay_count`, `post_video_avg_time_watched`, `post_video_view_time`, `post_video_likes_by_reaction_type`, `post_video_social_actions`
+
+By default, Facebook returns every period it supports for each `page_insights` metric, usually `day`, `week` and `days_28`, so each metric produces about three records per request. If you only need one, set **Page Insights Period** to that period and the stream requests only it.
+
+A setting replaces the defaults instead of adding to them, so include every metric you want. Facebook rejects the whole request when any one metric is misspelled or deprecated, so if a sync fails with the "must be a valid insights metric" error after you change a setting, check that list first. Each extra metric also adds to the response size and to your Graph API usage.
+
+All insights streams inherit Meta's own limits on Page Insights: data is available only for Pages with 100 or more likes, most metrics refresh once every 24 hours, and Meta retains at most two years of history.
+
+## Reference
+
+This connector uses the [Meta Graph API](https://developers.facebook.com/docs/graph-api/) with the `https://graph.facebook.com/v26.0` endpoint.
+Airbyte requests the selected Page and Post fields from the connector catalog, and requests the insights metrics you configure, or the defaults listed in [Insights metrics and period](#insights-metrics-and-period).
+
+For programmatic configuration, use these parameter names:
+
+| Field | Required | Description |
+| :--- | :---: | :--- |
+| `access_token` | Yes | Long-lived Page access token for the Facebook Page. The connector also accepts a long-lived User access token that can generate a Page access token for the configured Page. |
+| `page_id` | Yes | Facebook Page ID. |
+| `page_size` | No | Number of records to request per page for the paginated streams: `post`, `post_insights`, `video_insights`, `reel_insights`, `comment`, and `rating`. Defaults to `100`. Valid values are `1` through `100`. |
+| `page_insights_metrics` | No | Array of metrics for the `page_insights` stream. Replaces the defaults. |
+| `post_insights_metrics` | No | Array of metrics for the `post_insights` stream. Replaces the defaults. |
+| `video_insights_metrics` | No | Array of lifetime metrics for the `video_insights` stream. Replaces the defaults. |
+| `reel_insights_metrics` | No | Array of lifetime metrics for the `reel_insights` stream. Replaces the defaults. |
+| `page_insights_period` | No | Aggregation period for the `page_insights` stream: `day`, `week`, `days_28`, `month`, `lifetime`, or `total_over_range`. If empty, Facebook returns every period it supports. |
+| `start_date` | No | Earliest date for the `page_insights` stream, in the format `YYYY-MM-DDTHH:MM:SSZ`. If empty, Facebook's default window is used. |
+
+## Limitations & Troubleshooting
+
+### "This application has not been approved to use this API" error
+
+This error means Meta rejected the API request because the app that generated the token isn't approved for the requested API, permission, or Page field.
+
+To resolve this error, use a token from an app that has access to the permissions required by the streams you sync:
+
+- `pages_read_engagement`
+- `pages_read_user_content`
+- `pages_show_list`
+- `read_insights`
+
+If you use your own Meta app, it might need [App Review](https://developers.facebook.com/docs/resp-plat-initiatives/appreview/tutorial/) and Advanced Access before it can use these permissions in production.
+The person who generates the token must also be able to perform the required task on the Page.
+For Page Insights, Meta requires access to a Page that you own or administer, or on which you can perform the `ANALYZE` task.
+
+### "Error while generating page access token" error
+
+Before it reads any stream, the connector exchanges the token you configured for a Page access token by calling [`/{page-id}?fields=access_token`](https://developers.facebook.com/docs/pages/access-tokens#get-a-page-access-token). If Meta rejects that call, the check or sync fails with `Error while generating page access token:` followed by Meta's response.
+
+To resolve this error:
+
+- Confirm that **Page ID** is the ID or username of the Page the token belongs to. A Page access token can only generate a token for its own Page.
+- Confirm that the user who generated the token can still perform a task on the Page, and that the token hasn't expired or been invalidated, for example by a password change. Generate a new long-lived token if needed.
+
+### "Please reduce the amount of data you're asking for" error
+
+The Graph API returns this error (error code 1, often with HTTP 500) when a response is too large to build in time. Because Meta returns it intermittently, the connector retries the request with backoff. If the retries are exhausted, the sync fails with a transient error and usually succeeds on a later attempt. Version 2.1.3 failed the sync immediately with a configuration error instead of retrying; upgrade to 2.1.4 or later to restore the retries.
+
+If the error keeps recurring, reduce the size of each response:
+
+- **Deselect fields in the Schema tab.** Open your connection's **Schema** tab and deselect fields you don't need for the affected stream. The connector requests only the selected fields. Applies to the `page` and `post` streams.
+- **Reduce the page size.** Set **Page Size** in the source settings to a lower value, such as 25 or 50. Applies to the `post`, `post_insights`, `video_insights`, `reel_insights`, `comment`, and `rating` streams.
+
+### `page` stream fails for New Pages Experience Pages
+
+Meta [deprecated](https://developers.facebook.com/docs/graph-api/changelog/version26.0) the legacy Page fields `current_location`, `genre`, `network`, `parking`, and `start_info` for Pages on the New Pages Experience. On Graph API v26.0 and later, which the connector calls starting from version 3.3.0, requesting these fields returns an error, and Meta plans to apply the deprecation to all API versions. Meta also doesn't make the `live_videos` edge available for New Pages Experience Pages.
+
+On versions earlier than 3.0.0, the connector requests these fields, so the entire `page` stream fails for a New Pages Experience Page. The sync fails with either the `Request contains invalid/deprecated field.` error or the [`Facebook API request contains invalid Page fields, metrics, or permissions`](#facebook-api-request-contains-invalid-page-fields-metrics-or-permissions-error) error followed by a Facebook message that starts with `(#10) To use live-video-api`. Upgrade to version 3.0.0 or later, which no longer requests these fields. Then refresh the source schema and update any downstream models that reference the removed columns. See the [migration guide](/integrations/sources/facebook-pages-migrations#upgrading-to-300) for the full list of removed columns.
+
+### "Facebook API request contains invalid Page fields, metrics, or permissions" error
+
+Starting from version 2.1.3, the connector fails a sync with this configuration error when the Graph API rejects a request with HTTP 400 for a reason it can't retry, and includes Facebook's own error message so you can see what was rejected. Earlier versions retried these requests several times before failing, which hid the message from Facebook.
+
+To resolve it, read the Facebook message that follows the error. It usually names a Page or Post field your token isn't allowed to read, or a field Meta no longer supports. Deselect that field in the connection's **Schema** tab, or use a token with the [required permissions](#creating-your-own-oauth-app).
+
+### Reach metrics missing from Page Insights and Post Insights
+
+Meta retired the `page_impressions_*_unique` and `post_impressions_*_unique` metrics. Because the Graph API
+rejects an entire Insights request when any single requested metric is invalid, requesting them returned
+`(#100) The value must be a valid insights metric` and broke both insights streams — and, since the connection
+check queries `page_insights`, source setup as well. See
+[Meta's deprecated metrics list](https://developers.facebook.com/docs/platforminsights/page/deprecated-metrics/).
+
+Starting from version 2.1.2 the connector no longer requests them. Only total reach has a replacement; the paid,
+viral, non-viral, fan and organic reach breakdowns were retired with no equivalent and are permanently
+unavailable from the API.
+
+| Stream | No longer emitted | Replacement |
+| :--- | :--- | :--- |
+| `page_insights` | `page_impressions_unique` | `page_total_media_view_unique` |
+| `page_insights` | `page_impressions_paid_unique`, `page_impressions_viral_unique`, `page_impressions_nonviral_unique` | none |
+| `post_insights` | `post_impressions_unique` | `post_total_media_view_unique` |
+| `post_insights` | `post_impressions_paid_unique`, `post_impressions_fan_unique`, `post_impressions_organic_unique`, `post_impressions_viral_unique`, `post_impressions_nonviral_unique` | none |
+
+The stream schemas are unchanged, so no schema refresh is needed. Rows for the removed metrics simply stop
+arriving; clear the affected streams if you prefer a consistent history in your destination.
+
+### Product catalogs field not available
+
+Starting from version 2.0.4, the `product_catalogs` field is no longer synced in the Page stream and will always be `null`. This is because the Facebook Graph API only returns product catalogs that are owned directly by the Page, not catalogs owned by a Business. Since most product catalogs are now created as Business-owned catalogs (Page-owned catalogs are a legacy feature), and this connector uses Page access tokens, the `product_catalogs` field would not return meaningful data for most users.
 
 ## Data type map
 
@@ -77,50 +202,94 @@ The Facebook Pages source connector supports the following [sync modes](https://
 
 ## Performance considerations
 
-Facebook heavily throttles API tokens generated from Facebook Apps by default, making it infeasible to use such a token for syncs with Airbyte. To be able to use this connector without your syncs taking days due to rate limiting follow the instructions in the Setup Guide below to access better rate limits.
+Facebook heavily throttles API tokens generated from Facebook Apps by default, making it infeasible to use such a token for syncs with Airbyte. To be able to use this connector without your syncs taking days due to rate limiting, follow the instructions in the Setup Guide above to generate a Long-Lived Page Token.
 
-See Facebook's [documentation on rate limiting](https://developers.facebook.com/docs/graph-api/overview/rate-limiting) for more information on requesting a quota upgrade.
+Starting from version 3.0.2, the connector exchanges your token for a Page access token once per sync instead of before every Graph API request, so syncs make fewer API calls.
+
+When Meta throttles a request, it reports how long until access returns in the `X-Business-Use-Case-Usage` response header, and the connector waits that long, up to 10 minutes, before retrying instead of retrying on a fixed schedule. Each extra stream and metric you enable adds to that usage, and the `comment` stream in particular makes one request per post.
+
+The Graph API can report rate limits with HTTP 400 and an error code such as `4`, `17`, `32`, `613`, or `80001`. Starting from version 2.1.3, the connector recognizes these codes, and any error Meta marks as transient, and retries the request with backoff instead of failing immediately. Retries are limited, so if your Page stays throttled long enough to exhaust them, the sync still fails with a transient error and succeeds on a later attempt once the quota resets.
+
+See Facebook's [documentation on rate limiting](https://developers.facebook.com/docs/graph-api/overview/rate-limiting) for the full list of codes and for information on requesting a quota upgrade.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
 <details>
   <summary>Expand to review</summary>
 
-| Version | Date       | Pull Request                                             | Subject                                                                   |
-| :------ | :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------ |
-| 1.0.19 | 2024-09-28 | [46133](https://github.com/airbytehq/airbyte/pull/46133) | Update dependencies |
-| 1.0.18 | 2024-09-21 | [45734](https://github.com/airbytehq/airbyte/pull/45734) | Update dependencies |
-| 1.0.17 | 2024-09-14 | [45563](https://github.com/airbytehq/airbyte/pull/45563) | Update dependencies |
-| 1.0.16 | 2024-09-07 | [45311](https://github.com/airbytehq/airbyte/pull/45311) | Update dependencies |
-| 1.0.15 | 2024-08-31 | [45052](https://github.com/airbytehq/airbyte/pull/45052) | Update dependencies |
-| 1.0.14 | 2024-08-24 | [44664](https://github.com/airbytehq/airbyte/pull/44664) | Update dependencies |
-| 1.0.13 | 2024-08-17 | [44234](https://github.com/airbytehq/airbyte/pull/44234) | Update dependencies |
-| 1.0.12 | 2024-08-12 | [43729](https://github.com/airbytehq/airbyte/pull/43729) | Update dependencies |
-| 1.0.11 | 2024-08-10 | [43477](https://github.com/airbytehq/airbyte/pull/43477) | Update dependencies |
-| 1.0.10 | 2024-08-03 | [43224](https://github.com/airbytehq/airbyte/pull/43224) | Update dependencies |
-| 1.0.9 | 2024-07-27 | [42787](https://github.com/airbytehq/airbyte/pull/42787) | Update dependencies |
-| 1.0.8 | 2024-07-20 | [42255](https://github.com/airbytehq/airbyte/pull/42255) | Update dependencies |
-| 1.0.7 | 2024-07-13 | [41685](https://github.com/airbytehq/airbyte/pull/41685) | Update dependencies |
-| 1.0.6 | 2024-07-10 | [41543](https://github.com/airbytehq/airbyte/pull/41543) | Update dependencies |
-| 1.0.5 | 2024-07-09 | [41126](https://github.com/airbytehq/airbyte/pull/41126) | Update dependencies |
-| 1.0.4 | 2024-07-06 | [40812](https://github.com/airbytehq/airbyte/pull/40812) | Update dependencies |
-| 1.0.3 | 2024-06-25 | [40500](https://github.com/airbytehq/airbyte/pull/40500) | Update dependencies |
-| 1.0.2 | 2024-06-22 | [40058](https://github.com/airbytehq/airbyte/pull/40058) | Update dependencies |
-| 1.0.1 | 2024-06-06 | [39243](https://github.com/airbytehq/airbyte/pull/39243) | [autopull] Upgrade base image to v1.2.2 |
-| 1.0.0 | 2024-03-14 | [36015](https://github.com/airbytehq/airbyte/pull/36015) | Upgrade Facebook API to v19.0 |
-| 0.3.0 | 2023-06-26 | [27728](https://github.com/airbytehq/airbyte/pull/27728) | License Update: Elv2 |
-| 0.2.5 | 2023-04-13 | [26939](https://github.com/airbytehq/airbyte/pull/26939) | Add advancedAuth to the connector spec |
-| 0.2.4 | 2023-04-13 | [25143](https://github.com/airbytehq/airbyte/pull/25143) | Update insight metrics request params |
-| 0.2.3 | 2023-02-23 | [23395](https://github.com/airbytehq/airbyte/pull/23395) | Parse datetime to rfc3339 |
-| 0.2.2 | 2023-02-10 | [22804](https://github.com/airbytehq/airbyte/pull/22804) | Retry 500 errors |
-| 0.2.1 | 2022-12-29 | [20925](https://github.com/airbytehq/airbyte/pull/20925) | Fix tests; modify expected records |
-| 0.2.0 | 2022-11-24 | [19788](https://github.com/airbytehq/airbyte/pull/19788) | Migrate lo low-code; Beta certification; Upgrade Facebook API to v.15 |
-| 0.1.6 | 2021-12-22 | [9032](https://github.com/airbytehq/airbyte/pull/9032) | Remove deprecated field `live_encoders` from Page stream |
-| 0.1.5 | 2021-11-26 | [8267](https://github.com/airbytehq/airbyte/pull/8267) | updated all empty objects in schemas for Page and Post streams |
-| 0.1.4   | 2021-11-26 | [](https://github.com/airbytehq/airbyte/pull/)           | Remove unsupported insights_export field from Pages request               |
-| 0.1.3   | 2021-10-28 | [7440](https://github.com/airbytehq/airbyte/pull/7440)   | Generate Page token from config access token                              |
-| 0.1.2   | 2021-10-18 | [7128](https://github.com/airbytehq/airbyte/pull/7128)   | Upgrade Facebook API to v.12                                              |
-| 0.1.1   | 2021-09-30 | [6438](https://github.com/airbytehq/airbyte/pull/6438)   | Annotate Oauth2 flow initialization parameters in connector specification |
-| 0.1.0   | 2021-09-01 | [5158](https://github.com/airbytehq/airbyte/pull/5158)   | Initial Release                                                           |
+| Version | Date       | Pull Request                                                   | Subject                                                                                                                                                                |
+|:--------|:-----------|:---------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 3.3.0   | 2026-11-10 | [90129](https://github.com/airbytehq/airbyte/pull/90129)       | Move from Graph API v24.0 to v26.0.                                                                                                                                    |
+| 3.2.0   | 2026-11-09 | [90124](https://github.com/airbytehq/airbyte/pull/90124)       | Add an optional incremental sync mode and a `start_date` setting to the `page_insights` stream, which reads a `since` and `until` date range in 90-day windows.        |
+| 3.1.0   | 2026-11-09 | [90123](https://github.com/airbytehq/airbyte/pull/90123)       | Configurable insights metrics and period, new video, Reels, comment and rating streams, incremental posts                                                              |
+| 3.0.2   | 2026-11-09 | [90130](https://github.com/airbytehq/airbyte/pull/90130)       | Exchange the Page access token once per sync instead of before every request, and resolve the schema's date-time paths once per stream instead of per record           |
+| 3.0.1   | 2026-11-04 | [90914](https://github.com/airbytehq/airbyte/pull/90914)       | Require Python 3.11 for future CDK compatibility.                                                                                                                      |
+| 3.0.0 | 2026-10-13 | [85780](https://github.com/airbytehq/airbyte/pull/85780) | Remove the Meta-deprecated legacy Page fields `current_location`, `genre`, `network`, `parking`, and `start_info`, and the `live_videos` edge, from the `page` stream. Remove `current_location`, `genre`, and `network` from nested page objects in the `page` and `post` streams. |
+| 2.1.4 | 2026-09-22 | [86489](https://github.com/airbytehq/airbyte/pull/86489) | Retry Facebook's "Please reduce the amount of data you're asking for" error again instead of failing the sync as a configuration error. |
+| 2.1.3 | 2026-09-08 | [78077](https://github.com/airbytehq/airbyte/pull/78077) | Fail fast on deterministic Facebook API bad request errors as config errors, surface the Facebook error message, and keep retrying rate-limit and transient errors. |
+| 2.1.2 | 2026-08-17 | [84408](https://github.com/airbytehq/airbyte/pull/84408) | Remove Page/Post Insights metrics deprecated by Meta and request `page_total_media_view_unique` / `post_total_media_view_unique` instead; fail fast with Meta's own message on invalid-metric errors. |
+| 2.1.1 | 2026-05-22 | [78342](https://github.com/airbytehq/airbyte/pull/78342) | Classify Facebook app-approval errors as configuration errors. |
+| 2.1.0 | 2026-03-02 | [72949](https://github.com/airbytehq/airbyte/pull/72949) | Use QueryProperties with JsonSchemaPropertySelector to limit API field requests to user-selected fields; add configurable page_size for post and post_insights streams |
+| 2.0.4 | 2026-01-29 | [72253](https://github.com/airbytehq/airbyte/pull/72253) | Remove product_catalogs from fields request parameter |
+| 2.0.3 | 2025-12-01 | [70248](https://github.com/airbytehq/airbyte/pull/70248) | Use correct pagination parameter name (`limit` instead of `page_size`) |
+| 2.0.2 | 2025-12-01 | [70258](https://github.com/airbytehq/airbyte/pull/70258) | Use Post stream for check, handle 400 error in Page stream |
+| 2.0.1 | 2025-11-27 | [70242](https://github.com/airbytehq/airbyte/pull/70242) | Refresh in-app documentation to reflect v24 API version |
+| 2.0.0 | 2025-11-19 | [69714](https://github.com/airbytehq/airbyte/pull/69714) | Upgrade Facebook API to v24.0 |
+| 1.1.4 | 2025-08-14 | [64141](https://github.com/airbytehq/airbyte/pull/64141) | Upgrade Facebook API to v23.0 |
+| 1.1.3 | 2025-07-12 | [60391](https://github.com/airbytehq/airbyte/pull/60391) | Update dependencies |
+| 1.1.2 | 2025-05-10 | [60043](https://github.com/airbytehq/airbyte/pull/60043) | Update dependencies |
+| 1.1.1 | 2025-05-03 | [53787](https://github.com/airbytehq/airbyte/pull/53787) | Update dependencies |
+| 1.1.0 | 2025-04-30 | [59126](https://github.com/airbytehq/airbyte/pull/59126) | Re-enable in cloud and update versions |
+| 1.0.32 | 2025-02-01 | [52793](https://github.com/airbytehq/airbyte/pull/52793) | Update dependencies |
+| 1.0.31  | 2025-01-27 | [52122](https://github.com/airbytehq/airbyte/pull/52122/files) | Upgrade Facebook API to v21.0                                                                                                                                          |
+| 1.0.30  | 2025-01-25 | [52373](https://github.com/airbytehq/airbyte/pull/52373)       | Update dependencies                                                                                                                                                    |
+| 1.0.29  | 2025-01-18 | [51637](https://github.com/airbytehq/airbyte/pull/51637)       | Update dependencies                                                                                                                                                    |
+| 1.0.28  | 2025-01-11 | [51056](https://github.com/airbytehq/airbyte/pull/51056)       | Update dependencies                                                                                                                                                    |
+| 1.0.27  | 2025-01-04 | [50923](https://github.com/airbytehq/airbyte/pull/50923)       | Update dependencies                                                                                                                                                    |
+| 1.0.26  | 2024-12-28 | [50530](https://github.com/airbytehq/airbyte/pull/50530)       | Update dependencies                                                                                                                                                    |
+| 1.0.25  | 2024-12-21 | [49997](https://github.com/airbytehq/airbyte/pull/49997)       | Update dependencies                                                                                                                                                    |
+| 1.0.24  | 2024-12-14 | [49154](https://github.com/airbytehq/airbyte/pull/49154)       | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 1.0.23  | 2024-10-29 | [47737](https://github.com/airbytehq/airbyte/pull/47737)       | Update dependencies                                                                                                                                                    |
+| 1.0.22  | 2024-10-21 | [47025](https://github.com/airbytehq/airbyte/pull/47025)       | Update dependencies                                                                                                                                                    |
+| 1.0.21  | 2024-10-12 | [46807](https://github.com/airbytehq/airbyte/pull/46807)       | Update dependencies                                                                                                                                                    |
+| 1.0.20  | 2024-10-05 | [46461](https://github.com/airbytehq/airbyte/pull/46461)       | Update dependencies                                                                                                                                                    |
+| 1.0.19  | 2024-09-28 | [46133](https://github.com/airbytehq/airbyte/pull/46133)       | Update dependencies                                                                                                                                                    |
+| 1.0.18  | 2024-09-21 | [45734](https://github.com/airbytehq/airbyte/pull/45734)       | Update dependencies                                                                                                                                                    |
+| 1.0.17  | 2024-09-14 | [45563](https://github.com/airbytehq/airbyte/pull/45563)       | Update dependencies                                                                                                                                                    |
+| 1.0.16  | 2024-09-07 | [45311](https://github.com/airbytehq/airbyte/pull/45311)       | Update dependencies                                                                                                                                                    |
+| 1.0.15  | 2024-08-31 | [45052](https://github.com/airbytehq/airbyte/pull/45052)       | Update dependencies                                                                                                                                                    |
+| 1.0.14  | 2024-08-24 | [44664](https://github.com/airbytehq/airbyte/pull/44664)       | Update dependencies                                                                                                                                                    |
+| 1.0.13  | 2024-08-17 | [44234](https://github.com/airbytehq/airbyte/pull/44234)       | Update dependencies                                                                                                                                                    |
+| 1.0.12  | 2024-08-12 | [43729](https://github.com/airbytehq/airbyte/pull/43729)       | Update dependencies                                                                                                                                                    |
+| 1.0.11  | 2024-08-10 | [43477](https://github.com/airbytehq/airbyte/pull/43477)       | Update dependencies                                                                                                                                                    |
+| 1.0.10  | 2024-08-03 | [43224](https://github.com/airbytehq/airbyte/pull/43224)       | Update dependencies                                                                                                                                                    |
+| 1.0.9   | 2024-07-27 | [42787](https://github.com/airbytehq/airbyte/pull/42787)       | Update dependencies                                                                                                                                                    |
+| 1.0.8   | 2024-07-20 | [42255](https://github.com/airbytehq/airbyte/pull/42255)       | Update dependencies                                                                                                                                                    |
+| 1.0.7   | 2024-07-13 | [41685](https://github.com/airbytehq/airbyte/pull/41685)       | Update dependencies                                                                                                                                                    |
+| 1.0.6   | 2024-07-10 | [41543](https://github.com/airbytehq/airbyte/pull/41543)       | Update dependencies                                                                                                                                                    |
+| 1.0.5   | 2024-07-09 | [41126](https://github.com/airbytehq/airbyte/pull/41126)       | Update dependencies                                                                                                                                                    |
+| 1.0.4   | 2024-07-06 | [40812](https://github.com/airbytehq/airbyte/pull/40812)       | Update dependencies                                                                                                                                                    |
+| 1.0.3   | 2024-06-25 | [40500](https://github.com/airbytehq/airbyte/pull/40500)       | Update dependencies                                                                                                                                                    |
+| 1.0.2   | 2024-06-22 | [40058](https://github.com/airbytehq/airbyte/pull/40058)       | Update dependencies                                                                                                                                                    |
+| 1.0.1   | 2024-06-06 | [39243](https://github.com/airbytehq/airbyte/pull/39243)       | [autopull] Upgrade base image to v1.2.2                                                                                                                                |
+| 1.0.0   | 2024-03-14 | [36015](https://github.com/airbytehq/airbyte/pull/36015)       | Upgrade Facebook API to v19.0                                                                                                                                          |
+| 0.3.0   | 2023-06-26 | [27728](https://github.com/airbytehq/airbyte/pull/27728)       | License Update: Elv2                                                                                                                                                   |
+| 0.2.5   | 2023-04-13 | [26939](https://github.com/airbytehq/airbyte/pull/26939)       | Add advancedAuth to the connector spec                                                                                                                                 |
+| 0.2.4   | 2023-04-13 | [25143](https://github.com/airbytehq/airbyte/pull/25143)       | Update insight metrics request params                                                                                                                                  |
+| 0.2.3   | 2023-02-23 | [23395](https://github.com/airbytehq/airbyte/pull/23395)       | Parse datetime to rfc3339                                                                                                                                              |
+| 0.2.2   | 2023-02-10 | [22804](https://github.com/airbytehq/airbyte/pull/22804)       | Retry 500 errors                                                                                                                                                       |
+| 0.2.1   | 2022-12-29 | [20925](https://github.com/airbytehq/airbyte/pull/20925)       | Fix tests; modify expected records                                                                                                                                     |
+| 0.2.0   | 2022-11-24 | [19788](https://github.com/airbytehq/airbyte/pull/19788)       | Migrate lo low-code; Beta certification; Upgrade Facebook API to v.15                                                                                                  |
+| 0.1.6   | 2021-12-22 | [9032](https://github.com/airbytehq/airbyte/pull/9032)         | Remove deprecated field `live_encoders` from Page stream                                                                                                               |
+| 0.1.5   | 2021-11-26 | [8267](https://github.com/airbytehq/airbyte/pull/8267)         | updated all empty objects in schemas for Page and Post streams                                                                                                         |
+| 0.1.4   | 2021-11-26 | [](https://github.com/airbytehq/airbyte/pull/)                 | Remove unsupported insights_export field from Pages request                                                                                                            |
+| 0.1.3   | 2021-10-28 | [7440](https://github.com/airbytehq/airbyte/pull/7440)         | Generate Page token from config access token                                                                                                                           |
+| 0.1.2   | 2021-10-18 | [7128](https://github.com/airbytehq/airbyte/pull/7128)         | Upgrade Facebook API to v.12                                                                                                                                           |
+| 0.1.1   | 2021-09-30 | [6438](https://github.com/airbytehq/airbyte/pull/6438)         | Annotate Oauth2 flow initialization parameters in connector specification                                                                                              |
+| 0.1.0   | 2021-09-01 | [5158](https://github.com/airbytehq/airbyte/pull/5158)         | Initial Release                                                                                                                                                        |
 
 </details>

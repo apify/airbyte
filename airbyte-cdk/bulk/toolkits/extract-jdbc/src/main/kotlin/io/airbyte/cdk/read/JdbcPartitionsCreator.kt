@@ -1,18 +1,20 @@
-/* Copyright (c) 2024 Airbyte, Inc., all rights reserved. */
+/* Copyright (c) 2026 Airbyte, Inc., all rights reserved. */
 package io.airbyte.cdk.read
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.airbyte.cdk.command.JdbcSourceConfiguration
 import io.airbyte.cdk.command.OpaqueStateValue
-import io.airbyte.cdk.output.OutputConsumer
+import io.airbyte.cdk.output.DataChannelMedium.SOCKET
+import io.airbyte.cdk.output.DataChannelMedium.STDIO
+import io.airbyte.cdk.output.sockets.toJson
 import io.airbyte.cdk.util.Jsons
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
 /** Base class for JDBC implementations of [PartitionsCreator]. */
-sealed class JdbcPartitionsCreator<
+abstract class JdbcPartitionsCreator<
     A : JdbcSharedState,
     S : JdbcStreamState<A>,
     P : JdbcPartition<S>,
@@ -26,10 +28,30 @@ sealed class JdbcPartitionsCreator<
     val stream: Stream = streamState.stream
     val sharedState: A = streamState.sharedState
     val configuration: JdbcSourceConfiguration = sharedState.configuration
-    val outputConsumer: OutputConsumer = sharedState.outputConsumer
     val selectQuerier: SelectQuerier = sharedState.selectQuerier
 
     private val acquiredResources = AtomicReference<AcquiredResources>()
+
+    // A reader that only checkpoints the complete state of a partition
+    // used for empty tables
+    inner class CheckpointOnlyPartitionReader() : PartitionReader {
+        override fun tryAcquireResources(): PartitionReader.TryAcquireResourcesStatus =
+            PartitionReader.TryAcquireResourcesStatus.READY_TO_RUN
+
+        override suspend fun run() {}
+
+        override fun checkpoint(): PartitionReadCheckpoint =
+            PartitionReadCheckpoint(
+                partition.completeState,
+                0,
+                when (streamState.streamFeedBootstrap.dataChannelMedium) {
+                    SOCKET -> generatePartitionId(4)
+                    STDIO -> null
+                },
+            )
+
+        override fun releaseResources() {}
+    }
 
     /** Calling [close] releases the resources acquired for the [JdbcPartitionsCreator]. */
     fun interface AcquiredResources : AutoCloseable
@@ -55,19 +77,22 @@ sealed class JdbcPartitionsCreator<
         log.info { "Querying maximum cursor column value." }
         val record: ObjectNode? =
             selectQuerier.executeQuery(cursorUpperBoundQuery).use {
-                if (it.hasNext()) it.next() else null
+                if (it.hasNext()) it.next().data.toJson() else null
             }
         if (record == null) {
+            log.warn { "Cursor upper bound query for '${stream.label}' returned no rows." }
             streamState.cursorUpperBound = Jsons.nullNode()
             return
         }
-        val cursorUpperBound: JsonNode? = record.fields().asSequence().firstOrNull()?.value
+        val cursorUpperBound: JsonNode? =
+            Jsons.valueToTree(record.properties().asSequence().firstOrNull()?.value)
         if (cursorUpperBound == null) {
             log.warn { "No cursor column value found in '${stream.label}'." }
             return
         }
         if (cursorUpperBound.isNull) {
             log.warn { "Maximum cursor column value in '${stream.label}' is NULL." }
+            streamState.cursorUpperBound = Jsons.nullNode()
             return
         }
         log.info { "Maximum cursor column value in '${stream.label}' is '$cursorUpperBound'." }
@@ -75,8 +100,8 @@ sealed class JdbcPartitionsCreator<
     }
 
     /** Collects a sample of rows in the unsplit partition. */
-    fun <T> collectSample(
-        recordMapper: (ObjectNode) -> T,
+    open fun <T> collectSample(
+        recordMapper: (SelectQuerier.ResultRow) -> T,
     ): Sample<T> {
         val values = mutableListOf<T>()
         var previousWeight = 0L
@@ -90,8 +115,8 @@ sealed class JdbcPartitionsCreator<
             values.clear()
             val samplingQuery: SelectQuery = partition.samplingQuery(sampleRateInvPow2)
             selectQuerier.executeQuery(samplingQuery).use {
-                for (record in it) {
-                    values.add(recordMapper(record))
+                for (row in it) {
+                    values.add(recordMapper(row))
                 }
             }
             if (values.size < sharedState.maxSampleSize) {
@@ -128,21 +153,26 @@ class JdbcSequentialPartitionsCreator<
         // Ensure that the cursor upper bound is known, if required.
         if (partition is JdbcCursorPartition<*>) {
             ensureCursorUpperBound()
-            if (streamState.cursorUpperBound?.isNull == true) {
+            if (
+                streamState.cursorUpperBound == null || streamState.cursorUpperBound?.isNull == true
+            ) {
                 log.info { "Maximum cursor column value query found that the table was empty." }
-                return listOf()
+                return listOf(CheckpointOnlyPartitionReader())
             }
         }
         if (streamState.fetchSize == null) {
             if (sharedState.withSampling) {
-                val rowByteSizeSample: Sample<Long> =
-                    collectSample(sharedState.rowByteSizeEstimator()::apply)
+                val rowByteSizeSample: Sample<Long> = collectSample {
+                    sharedState.rowByteSizeEstimator().apply(it.data.toJson())
+                }
                 val expectedTableByteSize: Long =
                     rowByteSizeSample.sampledValues.sum() * rowByteSizeSample.valueWeight
                 log.info { "Table memory size estimated at ${expectedTableByteSize shr 20} MiB." }
                 if (rowByteSizeSample.kind == Sample.Kind.EMPTY) {
                     log.info { "Sampling query found that the table was empty." }
-                    return listOf()
+                    // An empty table will checkpoint once in order to emit its complete state
+                    // Otherwise on each sync we would try to read this partition
+                    return listOf(CheckpointOnlyPartitionReader())
                 }
                 streamState.fetchSize =
                     sharedState.jdbcFetchSizeEstimator().apply(rowByteSizeSample)
@@ -158,13 +188,13 @@ class JdbcSequentialPartitionsCreator<
             return listOf(JdbcNonResumablePartitionReader(partition))
         }
         // Happy path.
-        log.info { "Table will be read by sequential partition reader(s)." }
+        log.info { "Table will be read by sequential partition reader." }
         return listOf(JdbcResumablePartitionReader(partition))
     }
 }
 
 /** Concurrent JDBC implementation of [PartitionsCreator]. */
-class JdbcConcurrentPartitionsCreator<
+open class JdbcConcurrentPartitionsCreator<
     A : JdbcSharedState,
     S : JdbcStreamState<A>,
     P : JdbcPartition<S>,
@@ -178,9 +208,11 @@ class JdbcConcurrentPartitionsCreator<
         // Ensure that the cursor upper bound is known, if required.
         if (partition is JdbcCursorPartition<*>) {
             ensureCursorUpperBound()
-            if (streamState.cursorUpperBound?.isNull == true) {
+            if (
+                streamState.cursorUpperBound == null || streamState.cursorUpperBound?.isNull == true
+            ) {
                 log.info { "Maximum cursor column value query found that the table was empty." }
-                return listOf()
+                return listOf(CheckpointOnlyPartitionReader())
             }
         }
         // Handle edge case where the table can't be sampled.
@@ -192,15 +224,17 @@ class JdbcConcurrentPartitionsCreator<
             return listOf(JdbcNonResumablePartitionReader(partition))
         }
         // Sample the table for partition split boundaries and for record byte sizes.
-        val sample: Sample<Pair<OpaqueStateValue?, Long>> = collectSample { record: ObjectNode ->
-            val boundary: OpaqueStateValue? =
-                (partition as? JdbcSplittablePartition<*>)?.incompleteState(record)
-            val rowByteSize: Long = sharedState.rowByteSizeEstimator().apply(record)
-            boundary to rowByteSize
-        }
+        val sample: Sample<Pair<OpaqueStateValue?, Long>> =
+            collectSample { record: SelectQuerier.ResultRow ->
+                val boundary: OpaqueStateValue? =
+                    (partition as? JdbcSplittablePartition<*>)?.incompleteState(record)
+                val rowByteSize: Long =
+                    sharedState.rowByteSizeEstimator().apply(record.data.toJson())
+                boundary to rowByteSize
+            }
         if (sample.kind == Sample.Kind.EMPTY) {
             log.info { "Sampling query found that the table was empty." }
-            return listOf()
+            return listOf(CheckpointOnlyPartitionReader())
         }
         val rowByteSizeSample: Sample<Long> = sample.map { (_, rowByteSize: Long) -> rowByteSize }
         streamState.fetchSize = sharedState.jdbcFetchSizeEstimator().apply(rowByteSizeSample)
@@ -233,6 +267,14 @@ class JdbcConcurrentPartitionsCreator<
                 .filter { random.nextDouble() < secondarySamplingRate }
                 .mapNotNull { (splitBoundary: OpaqueStateValue?, _) -> splitBoundary }
                 .distinct()
+
+        // Handle edge case with empty split boundaries when sampling rate is too low,
+        // causing random filtering to discard all sampled boundaries, which would
+        // lead to division by zero the in the split() function. Fall back to single partition.
+        if (splitBoundaries.isEmpty()) {
+            log.warn { "No split boundaries found, using single partition" }
+            return listOf(JdbcNonResumablePartitionReader(partition))
+        }
         val partitions: List<JdbcPartition<*>> = partitionFactory.split(partition, splitBoundaries)
         log.info { "Table will be read by ${partitions.size} concurrent partition reader(s)." }
         return partitions.map { JdbcNonResumablePartitionReader(it) }

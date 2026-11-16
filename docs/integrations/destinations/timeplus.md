@@ -1,18 +1,35 @@
 # Timeplus
 
+:::warning
+
+## Deprecation Notice
+
+The Timeplus destination connector is archived and no longer available in Airbyte Cloud or Airbyte Open Source.
+
+This connector only supported [Timeplus Cloud](https://us-west-2.timeplus.cloud/) (API-key authentication against `https://<region>.timeplus.cloud/<workspace_id>`), which has been discontinued by the vendor: the Timeplus Cloud endpoint now responds with "No new workspace can be created in Timeplus Cloud" and existing workspace hosts no longer resolve. Timeplus now offers [Timeplus Enterprise](https://www.timeplus.com/download) (self-hosted), whose [REST API](https://docs.timeplus.com/rest) uses basic authentication and is not compatible with this connector.
+
+### Recommended Actions
+
+Users who want to load data into Timeplus Enterprise are advised to use the [Timeplus ingest REST API](https://docs.timeplus.com/ingest-api) or to build a custom connector. For guidance, please visit our [Custom Connector documentation](https://docs.airbyte.com/connector-development/).
+
+:::
+
 This page guides you through the process of setting up the [Timeplus](https://timeplus.com)
 destination connector.
-
-## Features
-
-| Feature                   | Supported?\(Yes/No\) | Notes |
-| :------------------------ | :------------------- | :---- |
-| Overwrite                 | Yes                  |       |
-| Incremental - Append Sync | Yes                  |       |
 
 #### Output Schema
 
 Each stream will be output into its own stream in Timeplus, with corresponding schema/columns.
+
+## Supported sync modes
+
+| Sync mode | Supported? |
+| :--- | :--- |
+| [Full Refresh - Overwrite](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite) | Yes |
+| [Full Refresh - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-append) | Yes |
+| [Full Refresh - Overwrite + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite-deduped) | No |
+| [Incremental Sync - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append) | Yes |
+| [Incremental Sync - Append + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append-deduped) | No |
 
 ## Getting Started (Airbyte Cloud)
 
@@ -32,6 +49,10 @@ You'll need the following information to configure the Timeplus destination:
 
 ## Compatibility
 
+## Namespace support
+
+This destination does not support [namespaces](https://docs.airbyte.com/platform/using-airbyte/core-concepts/namespaces).
+
 ## Changelog
 
 <details>
@@ -39,6 +60,29 @@ You'll need the following information to configure the Timeplus destination:
 
 | Version | Date       | Pull Request                                              | Subject              |
 |:--------| :--------- | :-------------------------------------------------------- | :------------------- |
+| 0.1.46 | 2026-10-07 | [88314](https://github.com/airbytehq/airbyte/pull/88314) | Archive connector: Timeplus Cloud has been discontinued by the vendor; drop legacy `main.py` from poetry packages so the image builds |
+| 0.1.45 | 2025-05-10 | [59836](https://github.com/airbytehq/airbyte/pull/59836) | Update dependencies |
+| 0.1.44 | 2025-05-03 | [59343](https://github.com/airbytehq/airbyte/pull/59343) | Update dependencies |
+| 0.1.43 | 2025-04-26 | [58263](https://github.com/airbytehq/airbyte/pull/58263) | Update dependencies |
+| 0.1.42 | 2025-04-12 | [57625](https://github.com/airbytehq/airbyte/pull/57625) | Update dependencies |
+| 0.1.41 | 2025-04-05 | [57181](https://github.com/airbytehq/airbyte/pull/57181) | Update dependencies |
+| 0.1.40 | 2025-03-29 | [56620](https://github.com/airbytehq/airbyte/pull/56620) | Update dependencies |
+| 0.1.39 | 2025-03-22 | [56129](https://github.com/airbytehq/airbyte/pull/56129) | Update dependencies |
+| 0.1.38 | 2025-03-08 | [55371](https://github.com/airbytehq/airbyte/pull/55371) | Update dependencies |
+| 0.1.37 | 2025-03-01 | [54249](https://github.com/airbytehq/airbyte/pull/54249) | Update dependencies |
+| 0.1.36 | 2025-02-15 | [53867](https://github.com/airbytehq/airbyte/pull/53867) | Update dependencies |
+| 0.1.35 | 2025-02-08 | [53417](https://github.com/airbytehq/airbyte/pull/53417) | Update dependencies |
+| 0.1.34 | 2025-02-01 | [52897](https://github.com/airbytehq/airbyte/pull/52897) | Update dependencies |
+| 0.1.33 | 2025-01-25 | [52195](https://github.com/airbytehq/airbyte/pull/52195) | Update dependencies |
+| 0.1.32 | 2025-01-18 | [51717](https://github.com/airbytehq/airbyte/pull/51717) | Update dependencies |
+| 0.1.31 | 2025-01-11 | [51271](https://github.com/airbytehq/airbyte/pull/51271) | Update dependencies |
+| 0.1.30 | 2025-01-04 | [50907](https://github.com/airbytehq/airbyte/pull/50907) | Update dependencies |
+| 0.1.29 | 2024-12-28 | [50176](https://github.com/airbytehq/airbyte/pull/50176) | Update dependencies |
+| 0.1.28 | 2024-12-14 | [48930](https://github.com/airbytehq/airbyte/pull/48930) | Update dependencies |
+| 0.1.27 | 2024-11-25 | [48273](https://github.com/airbytehq/airbyte/pull/48273) | Update dependencies |
+| 0.1.26 | 2024-10-29 | [47059](https://github.com/airbytehq/airbyte/pull/47059) | Update dependencies |
+| 0.1.25 | 2024-10-12 | [46788](https://github.com/airbytehq/airbyte/pull/46788) | Update dependencies |
+| 0.1.24 | 2024-10-05 | [46443](https://github.com/airbytehq/airbyte/pull/46443) | Update dependencies |
 | 0.1.23 | 2024-09-28 | [46130](https://github.com/airbytehq/airbyte/pull/46130) | Update dependencies |
 | 0.1.22 | 2024-09-21 | [45826](https://github.com/airbytehq/airbyte/pull/45826) | Update dependencies |
 | 0.1.21 | 2024-09-14 | [45568](https://github.com/airbytehq/airbyte/pull/45568) | Update dependencies |

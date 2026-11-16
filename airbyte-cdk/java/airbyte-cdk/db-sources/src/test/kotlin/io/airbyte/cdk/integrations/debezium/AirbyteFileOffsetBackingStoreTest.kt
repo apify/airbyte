@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium
 
@@ -42,7 +42,7 @@ internal class AirbyteFileOffsetBackingStoreTest {
         Assertions.assertEquals(stateFromOffsetStore2, stateFromOffsetStore3)
         // verify that the file written by the offset store is identical to the template file.
         Assertions.assertTrue(
-            com.google.common.io.Files.equal(secondWriteFilePath.toFile(), writeFilePath.toFile())
+            com.google.common.io.Files.equal(secondWriteFilePath.toFile(), writeFilePath.toFile()),
         )
     }
 
@@ -73,7 +73,7 @@ internal class AirbyteFileOffsetBackingStoreTest {
         Assertions.assertEquals(stateFromOffsetStore2, stateFromOffsetStore3)
         // verify that the file written by the offset store is identical to the template file.
         Assertions.assertTrue(
-            com.google.common.io.Files.equal(secondWriteFilePath.toFile(), writeFilePath.toFile())
+            com.google.common.io.Files.equal(secondWriteFilePath.toFile(), writeFilePath.toFile()),
         )
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.util
 
@@ -40,9 +40,9 @@ internal class ConnectorExceptionHandlerTest {
                 CONNECTION_ERROR_MESSAGE_TEMPLATE,
                 testCode,
                 errorCode,
-                CONFIG_EXCEPTION_MESSAGE
+                CONFIG_EXCEPTION_MESSAGE,
             ),
-            actualDisplayMessage
+            actualDisplayMessage,
         )
     }
 

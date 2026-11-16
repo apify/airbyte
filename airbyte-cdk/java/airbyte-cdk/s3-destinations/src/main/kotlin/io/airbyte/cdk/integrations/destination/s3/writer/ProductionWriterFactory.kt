@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.s3.writer
 
@@ -24,7 +24,7 @@ class ProductionWriterFactory : S3WriterFactory {
         config: S3DestinationConfig,
         s3Client: AmazonS3,
         configuredStream: ConfiguredAirbyteStream,
-        uploadTimestamp: Timestamp
+        uploadTimestamp: Timestamp,
     ): DestinationFileWriter {
         val format = config.formatConfig!!.format
 
@@ -47,7 +47,7 @@ class ProductionWriterFactory : S3WriterFactory {
                     configuredStream,
                     uploadTimestamp,
                     avroSchema,
-                    AvroRecordFactory.createV1JsonToAvroConverter()
+                    AvroRecordFactory.createV1JsonToAvroConverter(),
                 )
             } else {
                 S3ParquetWriter(
@@ -56,7 +56,7 @@ class ProductionWriterFactory : S3WriterFactory {
                     configuredStream,
                     uploadTimestamp,
                     avroSchema,
-                    AvroRecordFactory.createV1JsonToAvroConverter()
+                    AvroRecordFactory.createV1JsonToAvroConverter(),
                 )
             }
         }

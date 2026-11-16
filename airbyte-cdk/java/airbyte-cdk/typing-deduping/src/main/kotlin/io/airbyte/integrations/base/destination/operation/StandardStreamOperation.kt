@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.base.destination.operation
@@ -17,17 +17,17 @@ import java.util.stream.Stream
 class StandardStreamOperation<DestinationState : MinimumDestinationState>(
     private val storageOperation: StorageOperation<Stream<PartialAirbyteMessage>>,
     destinationInitialStatus: DestinationInitialStatus<DestinationState>,
-    disableTypeDedupe: Boolean = false
+    disableTypeDedupe: Boolean = false,
 ) :
     AbstractStreamOperation<DestinationState, Stream<PartialAirbyteMessage>>(
         storageOperation,
         destinationInitialStatus,
-        disableTypeDedupe
+        disableTypeDedupe,
     ) {
     override fun writeRecordsImpl(
         streamConfig: StreamConfig,
         suffix: String,
-        stream: Stream<PartialAirbyteMessage>
+        stream: Stream<PartialAirbyteMessage>,
     ) {
         storageOperation.writeToStage(streamConfig, suffix, stream)
     }

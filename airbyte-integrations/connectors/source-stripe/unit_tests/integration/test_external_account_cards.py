@@ -1,4 +1,6 @@
-# Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+#
+# Copyright (c) 2025 Airbyte, Inc., all rights reserved.
+#
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -6,6 +8,8 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import freezegun
+from unit_tests.conftest import get_source
+
 from airbyte_cdk.models import AirbyteStateBlob, ConfiguredAirbyteCatalog, FailureType, StreamDescriptor, SyncMode
 from airbyte_cdk.sources.source import TState
 from airbyte_cdk.sources.streams.http.error_handlers.http_status_error_handler import HttpStatusErrorHandler
@@ -27,7 +31,7 @@ from integration.helpers import assert_stream_did_not_run
 from integration.pagination import StripePaginationStrategy
 from integration.request_builder import StripeRequestBuilder
 from integration.response_builder import a_response_with_status
-from source_stripe import SourceStripe
+
 
 _EVENT_TYPES = ["account.external_account.created", "account.external_account.updated", "account.external_account.deleted"]
 
@@ -52,15 +56,17 @@ def _events_request() -> StripeRequestBuilder:
 
 
 def _config() -> ConfigBuilder:
-    return ConfigBuilder().with_start_date(_NOW - timedelta(days=75)).with_account_id(_ACCOUNT_ID).with_client_secret(_CLIENT_SECRET)
+    return (
+        ConfigBuilder()
+        .with_start_date(_NOW - timedelta(days=75))
+        .with_account_id(_ACCOUNT_ID)
+        .with_client_secret(_CLIENT_SECRET)
+        .with_slice_range_in_days(365)
+    )
 
 
 def _catalog(sync_mode: SyncMode) -> ConfiguredAirbyteCatalog:
     return CatalogBuilder().with_stream(_STREAM_NAME, sync_mode).build()
-
-
-def _source(catalog: ConfiguredAirbyteCatalog, config: Dict[str, Any], state: Optional[TState]) -> SourceStripe:
-    return SourceStripe(catalog, config, state)
 
 
 def _an_event() -> RecordBuilder:
@@ -100,7 +106,7 @@ def _read(
 ) -> EntrypointOutput:
     catalog = _catalog(sync_mode)
     config = config_builder.build()
-    return read(_source(catalog, config, state), config, catalog, state, expecting_exception)
+    return read(get_source(config, state), config, catalog, state, expecting_exception)
 
 
 @freezegun.freeze_time(_NOW.isoformat())
@@ -142,7 +148,6 @@ class FullRefreshTest(TestCase):
         )
 
         output = self._read(_config().with_start_date(_A_START_DATE).with_lookback_window_in_days(10))
-
         assert output.records[0].record.data["updated"] == int(_NOW.timestamp())
 
     @HttpMocker()
@@ -201,6 +206,70 @@ class FullRefreshTest(TestCase):
 @freezegun.freeze_time(_NOW.isoformat())
 class IncrementalTest(TestCase):
     @HttpMocker()
+    def test_given_created_and_updated_events_in_same_second_when_read_then_updated_event_wins_cursor_tie(
+        self, http_mocker: HttpMocker
+    ) -> None:
+        state_datetime = _NOW - timedelta(days=5)
+        event_cursor = int(state_datetime.timestamp()) + 1
+        object_record = _an_external_account_card().with_id("card_same_second")
+
+        http_mocker.get(
+            _events_request().with_created_gte(state_datetime).with_created_lte(_NOW).with_limit(100).with_types(_EVENT_TYPES).build(),
+            _events_response()
+            .with_record(
+                _an_event()
+                .with_id("evt_updated")
+                .with_cursor(event_cursor)
+                .with_field(FieldPath("type"), "account.external_account.updated")
+                .with_field(_DATA_FIELD, object_record.build())
+            )
+            .with_record(
+                _an_event()
+                .with_id("evt_created")
+                .with_cursor(event_cursor)
+                .with_field(FieldPath("type"), "account.external_account.created")
+                .with_field(_DATA_FIELD, object_record.build())
+            )
+            .build(),
+        )
+
+        output = self._read(
+            _config(),
+            StateBuilder().with_stream_state(_STREAM_NAME, {"updated": int(state_datetime.timestamp())}).build(),
+        )
+
+        assert output.records[0].record.data["updated"] == event_cursor
+        assert output.records[1].record.data["updated"] == event_cursor - 1
+
+    @HttpMocker()
+    def test_given_created_event_at_state_boundary_when_read_then_emit_record_without_regressing_state(
+        self, http_mocker: HttpMocker
+    ) -> None:
+        state_value = int((_NOW - timedelta(days=5)).timestamp())
+        state_datetime = datetime.fromtimestamp(state_value, timezone.utc)
+
+        http_mocker.get(
+            _events_request().with_created_gte(state_datetime).with_created_lte(_NOW).with_limit(100).with_types(_EVENT_TYPES).build(),
+            _events_response()
+            .with_record(
+                _an_event()
+                .with_cursor(state_value)
+                .with_field(FieldPath("type"), "account.external_account.created")
+                .with_field(_DATA_FIELD, _an_external_account_card().build())
+            )
+            .build(),
+        )
+
+        output = self._read(
+            _config(),
+            StateBuilder().with_stream_state(_STREAM_NAME, {"updated": state_value}).build(),
+        )
+
+        assert len(output.records) == 1
+        assert output.records[0].record.data["updated"] == state_value - 1
+        assert int(output.most_recent_state.stream_state.updated) >= state_value
+
+    @HttpMocker()
     def test_given_no_state_when_read_then_use_external_accounts_endpoint(self, http_mocker: HttpMocker) -> None:
         http_mocker.get(
             _external_accounts_request().with_object(_OBJECT).with_limit(100).build(),
@@ -209,7 +278,7 @@ class IncrementalTest(TestCase):
         output = self._read(_config().with_start_date(_A_START_DATE), _NO_STATE)
         most_recent_state = output.most_recent_state
         assert most_recent_state.stream_descriptor == StreamDescriptor(name=_STREAM_NAME)
-        assert most_recent_state.stream_state == AirbyteStateBlob(updated=int(_NOW.timestamp()))
+        assert int(most_recent_state.stream_state.updated) == int(_NOW.timestamp())
 
     @HttpMocker()
     def test_given_state_when_read_then_query_events_using_types_and_state_value_plus_1(self, http_mocker: HttpMocker) -> None:
@@ -218,12 +287,7 @@ class IncrementalTest(TestCase):
         cursor_value = int(state_datetime.timestamp()) + 1
 
         http_mocker.get(
-            _events_request()
-            .with_created_gte(state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES)
-            .with_created_lte(_NOW)
-            .with_limit(100)
-            .with_types(_EVENT_TYPES)
-            .build(),
+            _events_request().with_created_gte(state_datetime).with_created_lte(_NOW).with_limit(100).with_types(_EVENT_TYPES).build(),
             _events_response()
             .with_record(_an_event().with_cursor(cursor_value).with_field(_DATA_FIELD, _an_external_account_card().build()))
             .build(),
@@ -236,7 +300,7 @@ class IncrementalTest(TestCase):
 
         most_recent_state = output.most_recent_state
         assert most_recent_state.stream_descriptor == StreamDescriptor(name=_STREAM_NAME)
-        assert most_recent_state.stream_state == AirbyteStateBlob(updated=cursor_value)
+        assert most_recent_state.stream_state.updated == str(cursor_value)
 
     @HttpMocker()
     def test_given_object_is_not_back_account_when_read_then_filter_out(self, http_mocker: HttpMocker) -> None:
@@ -259,12 +323,7 @@ class IncrementalTest(TestCase):
     def test_given_state_and_pagination_when_read_then_return_records(self, http_mocker: HttpMocker) -> None:
         state_datetime = _NOW - timedelta(days=5)
         http_mocker.get(
-            _events_request()
-            .with_created_gte(state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES)
-            .with_created_lte(_NOW)
-            .with_limit(100)
-            .with_types(_EVENT_TYPES)
-            .build(),
+            _events_request().with_created_gte(state_datetime).with_created_lte(_NOW).with_limit(100).with_types(_EVENT_TYPES).build(),
             _events_response()
             .with_pagination()
             .with_record(_an_event().with_id("last_record_id_from_first_page").with_field(_DATA_FIELD, _an_external_account_card().build()))
@@ -273,7 +332,7 @@ class IncrementalTest(TestCase):
         http_mocker.get(
             _events_request()
             .with_starting_after("last_record_id_from_first_page")
-            .with_created_gte(state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES)
+            .with_created_gte(state_datetime)
             .with_created_lte(_NOW)
             .with_limit(100)
             .with_types(_EVENT_TYPES)
@@ -292,24 +351,19 @@ class IncrementalTest(TestCase):
     def test_given_state_and_small_slice_range_when_read_then_perform_multiple_queries(self, http_mocker: HttpMocker) -> None:
         state_datetime = _NOW - timedelta(days=5)
         slice_range = timedelta(days=3)
-        slice_datetime = state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES + slice_range
+        slice_datetime = state_datetime + slice_range
 
         http_mocker.get(
             _events_request()
-            .with_created_gte(state_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES)
-            .with_created_lte(slice_datetime)
+            .with_created_gte(state_datetime)
+            .with_created_lte(slice_datetime - _AVOIDING_INCLUSIVE_BOUNDARIES)
             .with_limit(100)
             .with_types(_EVENT_TYPES)
             .build(),
             _events_response().with_record(self._an_external_account_event()).build(),
         )
         http_mocker.get(
-            _events_request()
-            .with_created_gte(slice_datetime + _AVOIDING_INCLUSIVE_BOUNDARIES)
-            .with_created_lte(_NOW)
-            .with_limit(100)
-            .with_types(_EVENT_TYPES)
-            .build(),
+            _events_request().with_created_gte(slice_datetime).with_created_lte(_NOW).with_limit(100).with_types(_EVENT_TYPES).build(),
             _events_response().with_record(self._an_external_account_event()).with_record(self._an_external_account_event()).build(),
         )
 

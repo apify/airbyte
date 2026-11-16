@@ -1,0 +1,130 @@
+---
+airbyte:
+  connector:
+    data-channel:
+      medium: ${DATA_CHANNEL_MEDIUM:STDIO}
+      format: ${DATA_CHANNEL_FORMAT:JSONL}
+      socket-paths: ${DATA_CHANNEL_SOCKET_PATHS}
+    output:
+      buffer-byte-size-threshold-for-flush: 4096
+
+    extract:
+      jdbc:
+        mode: concurrent
+        with-sampling: true
+        table-sample-size: 1024
+        throughput-bytes-per-second: 10000000
+        min-fetch-size: 10
+        default-fetch-size: 1000
+        max-fetch-size: 10000000
+        memory-capacity-ratio: 0.6
+        estimated-record-overhead-bytes: 16
+        estimated-field-overhead-bytes: 16
+        namespace-kind: CATALOG_AND_SCHEMA
+
+    check:
+      jdbc:
+        # The following queries are run during the CHECK operation [0].
+        # A query which returns anything will cause the check to fail.
+        # NULL values and empty strings are ignored.
+        #
+        # [0] https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/bulk/toolkits/extract-jdbc/src/main/kotlin/io/airbyte/cdk/check/JdbcCheckQueries.kt
+        #
+        queries:
+          - >-
+            SELECT 1 WHERE 1 = 0;
+    exception-classifiers:
+      regex:
+        rules:
+          - pattern: socket is closed
+            input-example: "Socket is closed"
+            error: transient
+            group: Transient Connection Error
+            output: Connection to database closed unexpectedly (TCP socket was closed). This is often a temporary network issue.
+
+          - pattern: (?i)JWT token is invalid
+            # 390144: Snowflake rejected the key pair login. The driver signs a new JWT, valid for 60
+            # seconds, for each login and uses it only to log in, so this is never an expired session
+            # (the driver renews session tokens itself). The causes are a private key that does not
+            # match the RSA public key registered on the user, a wrong username or account, or a host
+            # clock that is off. The driver does not retry a rejected login, and a retry would sign a
+            # new token with the same key, user, account and clock and be rejected again, so it is not
+            # transient. The ID in brackets is the login request ID that
+            # SYSTEM$GET_LOGIN_FAILURE_DETAILS takes to report the exact cause.
+            input-example: "JWT token is invalid. [0f811342-c5de-47a0-bd01-f2228f082876]"
+            error: config
+            group: Authentication Error
+            output: Key pair authentication failed. Check that the Username and Server URL are correct and that the Private Key matches the RSA public key registered on that user (DESCRIBE USER shows RSA_PUBLIC_KEY_FP; ALTER USER ... SET RSA_PUBLIC_KEY registers a new one). If they match, check that the clock on the machine running Airbyte is correct. For the exact cause, an administrator can run SELECT SYSTEM$GET_LOGIN_FAILURE_DETAILS('<id>') with the ID shown in brackets after "JWT token is invalid" in the error details.
+            reference-links:
+              - https://docs.snowflake.com/en/user-guide/key-pair-auth
+              - https://docs.snowflake.com/en/user-guide/key-pair-auth-troubleshooting
+
+      jdbc:
+        # The following rules are for the JdbcExceptionClassifier and are based on
+        # Snowflake's specific vendor error codes from a SQLException.
+        rules:
+          # --- Configuration Errors ---
+
+          - code: 390100
+            # Incorrect username or password was specified (observed from snowflake-jdbc 4.x).
+            error: config
+            group: Connection Error
+            output: Invalid credentials. Please check your username and password.
+
+          - code: 260004
+            # Incorrect username or password was specified (legacy code).
+            error: config
+            group: Connection Error
+            output: Invalid credentials. Please check your username and password.
+
+          - code: 2037
+            #  SQL compilation error: Failure during expansion of view '<view>' (session variable, view references not set, etc)
+            error: config
+            group: Configuration Error
+            output: A selected view could not be queried because it is invalid or inaccessible. Please deselect the view or fix its definition in Snowflake.
+
+          - code: 904
+            # SQL compilation error: invalid identifier '<column>'. Seen when a view's definition references a column that was dropped or renamed in its base table, so every query on the view fails to compile.
+            error: config
+            group: Configuration Error
+            output: A selected table or view references a column that no longer exists. If it is a view, update or recreate it in Snowflake so that it only references existing columns, or deselect the stream. Then refresh the source schema.
+
+          - code: 2003
+            # SQL compilation error: ... object ... does not exist or not authorized.
+            error: config
+            group: Configuration Error
+            output: An object (e.g., table, schema, or database) does not exist or the provided role does not have sufficient privileges to access it.
+
+          - code: 401
+            # No active warehouse selected in the current session. Select an active warehouse with the 'USE WAREHOUSE' command.
+            error: config
+            group: Configuration Error
+            output: No active warehouse is selected. Please specify a warehouse in the connection settings.
+
+          - code: 2043
+            # SQL compilation error: ... Object does not exist or not authorized.
+            # A more specific version of 2003, often for databases or schemas.
+            error: config
+            group: Configuration Error
+            output: The specified database or schema does not exist, or the role is not authorized to access it.
+
+          # --- Transient Errors ---
+
+          - code: 604
+            # Statement reached its statement_timeout_in_seconds limit.
+            error: transient
+            group: Query Timeout
+            output: The query timed out. This may be due to a temporary load on the warehouse. You can increase the statement timeout parameter if this persists.
+
+          - code: 390400
+            # Communication link failure.
+            # A generic network error.
+            error: transient
+            group: Connection Error
+            output: A network communication error occurred. This is typically a temporary issue.
+
+          - code: 390113
+            # Operation failed because of a transient error. Please try again.
+            error: transient
+            group: Transient Error
+            output: Snowflake reported a transient internal error. Retrying the operation should succeed.

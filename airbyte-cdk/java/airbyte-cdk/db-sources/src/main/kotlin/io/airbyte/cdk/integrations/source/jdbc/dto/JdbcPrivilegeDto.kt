@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.source.jdbc.dto
 
@@ -10,7 +10,7 @@ class JdbcPrivilegeDto(
     val grantee: String?,
     val tableName: String?,
     val schemaName: String?,
-    val privilege: String?
+    val privilege: String?,
 ) {
     class JdbcPrivilegeDtoBuilder {
         private var grantee: String? = null

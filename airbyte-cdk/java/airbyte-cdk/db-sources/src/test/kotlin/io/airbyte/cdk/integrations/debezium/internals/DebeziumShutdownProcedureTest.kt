@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.debezium.internals
 
@@ -20,7 +20,7 @@ class DebeziumShutdownProcedureTest {
             DebeziumShutdownProcedure(
                 sourceQueue,
                 { executorService.shutdown() },
-                { recordsInserted.get() >= 99 }
+                { recordsInserted.get() >= 99 },
             )
         executorService.execute {
             for (i in 0..99) {
@@ -43,7 +43,7 @@ class DebeziumShutdownProcedureTest {
         for (i in 0..99) {
             Assertions.assertEquals(
                 i,
-                debeziumShutdownProcedure.recordsRemainingAfterShutdown.poll()
+                debeziumShutdownProcedure.recordsRemainingAfterShutdown.poll(),
             )
         }
     }

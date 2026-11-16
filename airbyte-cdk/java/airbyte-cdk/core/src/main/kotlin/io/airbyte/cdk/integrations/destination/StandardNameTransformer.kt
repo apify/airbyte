@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination
 
@@ -73,7 +73,7 @@ open class StandardNameTransformer : NamingConventionTransformer {
                 return Jsons.jsonNode<Map<String, JsonNode>>(properties)
             } else if (root.isArray) {
                 return Jsons.jsonNode(
-                    MoreIterators.toList(root.elements()).map { r: JsonNode -> formatJsonPath(r) }
+                    MoreIterators.toList(root.elements()).map { r: JsonNode -> formatJsonPath(r) },
                 )
             } else {
                 return root

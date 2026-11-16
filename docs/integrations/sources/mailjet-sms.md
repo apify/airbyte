@@ -1,5 +1,19 @@
 # Mailjet - SMS API
 
+:::warning
+
+## Deprecation Notice
+
+The Mailjet SMS source connector has been archived and is no longer available in Airbyte Cloud or the OSS connector registry.
+
+Mailjet (Sinch) has removed its SMS API from its product and documentation: the SMS API reference and guides at [dev.mailjet.com/sms](https://dev.mailjet.com/sms/reference) now return 404, the current [Mailjet API Reference](https://dev.mailjet.com/docs/api-reference) only lists the Email API (`/v3`) and Content API (`/v1`), and the [Mailjet Help Center](https://documentation.mailjet.com/hc/en-us/search?query=SMS) has no SMS articles. The `/v4/sms` endpoint this connector relied on is undocumented and unsupported, and no Airbyte connection has ever completed a successful sync with this connector.
+
+### Recommended Actions
+
+Users who still need SMS message data from Sinch should consider building a custom connector against the [Sinch SMS API](https://developers.sinch.com/docs/sms/) using the [Connector Builder](https://docs.airbyte.com/platform/connector-development/connector-builder-ui/overview).
+
+:::
+
 ## Sync overview
 
 This source can sync data from the [Mailjet SMS API](https://dev.mailjet.com/sms/guides/). At present this connector only supports full refresh syncs meaning that each time you use the connector it will sync all available records from scratch. Please use cautiously if you expect your API to have a lot of records.
@@ -25,6 +39,10 @@ Mailjet APIs are under rate limits for the number of API calls allowed per API k
 
 - Mailjet SMS TOKEN
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -32,7 +50,31 @@ Mailjet APIs are under rate limits for the number of API calls allowed per API k
 
 | Version | Date       | Pull Request                                              | Subject                                                                         |
 | :------ | :--------- | :-------------------------------------------------------- | :------------------------------------------------------------------------------ |
-| 0.2.1   | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version   |
+| 0.2.25 | 2026-10-07 | [88328](https://github.com/airbytehq/airbyte/pull/88328) | Archive connector: Mailjet has discontinued its SMS API |
+| 0.2.24 | 2025-05-24 | [60724](https://github.com/airbytehq/airbyte/pull/60724) | Update dependencies |
+| 0.2.23 | 2025-05-10 | [59911](https://github.com/airbytehq/airbyte/pull/59911) | Update dependencies |
+| 0.2.22 | 2025-05-03 | [59294](https://github.com/airbytehq/airbyte/pull/59294) | Update dependencies |
+| 0.2.21 | 2025-04-26 | [58162](https://github.com/airbytehq/airbyte/pull/58162) | Update dependencies |
+| 0.2.20 | 2025-04-12 | [57750](https://github.com/airbytehq/airbyte/pull/57750) | Update dependencies |
+| 0.2.19 | 2025-04-05 | [57102](https://github.com/airbytehq/airbyte/pull/57102) | Update dependencies |
+| 0.2.18 | 2025-03-29 | [56645](https://github.com/airbytehq/airbyte/pull/56645) | Update dependencies |
+| 0.2.17 | 2025-03-22 | [56055](https://github.com/airbytehq/airbyte/pull/56055) | Update dependencies |
+| 0.2.16 | 2025-03-08 | [55459](https://github.com/airbytehq/airbyte/pull/55459) | Update dependencies |
+| 0.2.15 | 2025-03-01 | [54808](https://github.com/airbytehq/airbyte/pull/54808) | Update dependencies |
+| 0.2.14 | 2025-02-22 | [54351](https://github.com/airbytehq/airbyte/pull/54351) | Update dependencies |
+| 0.2.13 | 2025-02-15 | [53858](https://github.com/airbytehq/airbyte/pull/53858) | Update dependencies |
+| 0.2.12 | 2025-02-08 | [53255](https://github.com/airbytehq/airbyte/pull/53255) | Update dependencies |
+| 0.2.11 | 2025-02-01 | [52740](https://github.com/airbytehq/airbyte/pull/52740) | Update dependencies |
+| 0.2.10 | 2025-01-25 | [52286](https://github.com/airbytehq/airbyte/pull/52286) | Update dependencies |
+| 0.2.9 | 2025-01-18 | [51809](https://github.com/airbytehq/airbyte/pull/51809) | Update dependencies |
+| 0.2.8 | 2025-01-11 | [51208](https://github.com/airbytehq/airbyte/pull/51208) | Update dependencies |
+| 0.2.7 | 2024-12-28 | [50614](https://github.com/airbytehq/airbyte/pull/50614) | Update dependencies |
+| 0.2.6 | 2024-12-21 | [50111](https://github.com/airbytehq/airbyte/pull/50111) | Update dependencies |
+| 0.2.5 | 2024-12-14 | [49647](https://github.com/airbytehq/airbyte/pull/49647) | Update dependencies |
+| 0.2.4 | 2024-12-12 | [49235](https://github.com/airbytehq/airbyte/pull/49235) | Update dependencies |
+| 0.2.3 | 2024-12-11 | [47810](https://github.com/airbytehq/airbyte/pull/47810) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.2.2 | 2024-10-28 | [47489](https://github.com/airbytehq/airbyte/pull/47489) | Update dependencies |
+| 0.2.1 | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version |
 | 0.2.0 | 2024-08-15 | [44128](https://github.com/airbytehq/airbyte/pull/44128) | Refactor connector to manifest-only format |
 | 0.1.15 | 2024-08-10 | [43594](https://github.com/airbytehq/airbyte/pull/43594) | Update dependencies |
 | 0.1.14 | 2024-08-03 | [43179](https://github.com/airbytehq/airbyte/pull/43179) | Update dependencies |

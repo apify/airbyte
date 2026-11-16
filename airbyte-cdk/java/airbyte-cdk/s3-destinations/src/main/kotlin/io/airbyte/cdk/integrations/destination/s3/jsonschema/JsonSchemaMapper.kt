@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.destination.s3.jsonschema
@@ -34,22 +34,40 @@ abstract class JsonSchemaMapper {
     }
 
     abstract fun mapNull(schema: ObjectNode): ObjectNode
+
     abstract fun mapObjectWithProperties(schema: ObjectNode): ObjectNode
+
     abstract fun mapObjectWithoutProperties(schema: ObjectNode): ObjectNode
+
     abstract fun mapArrayWithItems(schema: ObjectNode): ObjectNode
+
     abstract fun mapArrayWithItem(schema: ObjectNode): ObjectNode
+
     abstract fun mapArrayWithoutItems(schema: ObjectNode): ObjectNode
+
     abstract fun mapDate(schema: ObjectNode): ObjectNode
+
     abstract fun mapTimeWithoutTimezone(schema: ObjectNode): ObjectNode
+
     abstract fun mapTimeWithTimezone(schema: ObjectNode): ObjectNode
+
     abstract fun mapDateTimeWithTimezone(schema: ObjectNode): ObjectNode
+
     abstract fun mapDateTimeWithoutTimezone(schema: ObjectNode): ObjectNode
+
     abstract fun mapString(schema: ObjectNode): ObjectNode
+
     abstract fun mapBinaryData(schema: ObjectNode): ObjectNode
+
     abstract fun mapBoolean(schema: ObjectNode): ObjectNode
+
     abstract fun mapInteger(schema: ObjectNode): ObjectNode
+
     abstract fun mapNumber(schema: ObjectNode): ObjectNode
+
     abstract fun mapCombined(schema: ObjectNode): ObjectNode
+
     abstract fun mapUnion(schema: ObjectNode): ObjectNode
+
     abstract fun mapUnknown(schema: ObjectNode): ObjectNode
 }

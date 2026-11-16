@@ -6,13 +6,16 @@ import http.client
 import logging
 import re
 import sys
+from datetime import timedelta
 from typing import Any
 
 import backoff
-import pendulum
+import requests
+from facebook_business.exceptions import FacebookRequestError
+
 from airbyte_cdk.models import FailureType
 from airbyte_cdk.utils import AirbyteTracedException
-from facebook_business.exceptions import FacebookRequestError
+
 
 # The Facebook API error codes indicating rate-limiting are listed at
 # https://developers.facebook.com/docs/graph-api/overview/rate-limiting/
@@ -34,7 +37,15 @@ FACEBOOK_TEMPORARY_OAUTH_ERROR_CODE = 2
 FACEBOOK_BATCH_ERROR_CODE = 960
 FACEBOOK_UNKNOWN_ERROR_CODE = 99
 FACEBOOK_CONNECTION_RESET_ERROR_CODE = 104
-DEFAULT_SLEEP_INTERVAL = pendulum.duration(minutes=1)
+DEFAULT_SLEEP_INTERVAL = timedelta(minutes=1)
+# Transport-level failures raised by `requests` inside the facebook_business SDK session
+# (dropped keep-alive connections, truncated chunked responses, read timeouts). The SDK bypasses
+# the CDK HttpClient, so these mirror the CDK's own transient exceptions.
+TRANSIENT_NETWORK_EXCEPTIONS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ReadTimeout,
+)
 
 logger = logging.getLogger("airbyte")
 
@@ -55,6 +66,10 @@ def retry_pattern(backoff_type, exception, **wait_gen_kwargs):
 
     def reduce_request_record_limit(details):
         _, exc, _ = sys.exc_info()
+        # Only attempt limit reduction for FacebookRequestError, not for
+        # network-level exceptions like ConnectionError which lack http_status().
+        if not isinstance(exc, FacebookRequestError):
+            return
         # the list of error patterns to track,
         # in order to reduce the request page size and retry
         error_patterns = [
@@ -64,12 +79,12 @@ def retry_pattern(backoff_type, exception, **wait_gen_kwargs):
         if (
             details.get("kwargs", {}).get("params", {}).get("limit")
             and exc.http_status() == http.client.INTERNAL_SERVER_ERROR
-            and exc.api_error_message() in error_patterns
+            and (exc.api_error_message() or "") in error_patterns
         ):
             # reduce the existing request `limit` param by a half and retry
             details["kwargs"]["params"]["limit"] = int(int(details["kwargs"]["params"]["limit"]) / 2)
             # set the flag to the api class that the last api call failed
-            details.get("args")[0].last_api_call_is_successfull = False
+            details.get("args")[0].last_api_call_is_successful = True
             # set the flag to the api class that the `limit` param was reduced
             details.get("args")[0].request_record_limit_is_reduced = True
 
@@ -81,19 +96,27 @@ def retry_pattern(backoff_type, exception, **wait_gen_kwargs):
         """
         # reference issue: https://github.com/airbytehq/airbyte/issues/25383
         # set the flag to the api class that the last api call was successful
-        details.get("args")[0].last_api_call_is_successfull = True
+        details.get("args")[0].last_api_call_is_successful = False
         # set the flag to the api class that the `limit` param is restored
         details.get("args")[0].request_record_limit_is_reduced = False
 
     def give_up(details):
-        if isinstance(details["exception"], FacebookRequestError):
-            raise traced_exception(details["exception"])
+        exc = details["exception"]
+        if isinstance(exc, FacebookRequestError):
+            raise traced_exception(exc)
+        if isinstance(exc, TRANSIENT_NETWORK_EXCEPTIONS):
+            raise AirbyteTracedException(
+                message="Network connection to the Facebook Marketing API was interrupted.",
+                internal_message=f"{type(exc).__name__} persisted after {details['tries']} attempts: {exc}",
+                failure_type=FailureType.transient_error,
+                exception=exc,
+            )
 
     def is_transient_cannot_include_error(exc: FacebookRequestError) -> bool:
         """After migration to API v19.0, some customers randomly face a BAD_REQUEST error (OAuthException) with the pattern:"Cannot include ..."
         According to the last comment in https://developers.facebook.com/community/threads/286697364476462/, this might be a transient issue that can be solved with a retry."""
         pattern = r"Cannot include .* in summary param because they weren't there while creating the report run."
-        return bool(exc.http_status() == http.client.BAD_REQUEST and re.search(pattern, exc.api_error_message()))
+        return bool(exc.http_status() == http.client.BAD_REQUEST and re.search(pattern, exc.api_error_message() or ""))
 
     def should_retry_api_error(exc):
         if isinstance(exc, FacebookRequestError):
@@ -146,6 +169,11 @@ def deep_merge(a: Any, b: Any) -> Any:
         return a if b is None else b
 
 
+FACEBOOK_CONFIG_ERRORS_TO_CATCH = [  # list of tuples (code, error_subcode)
+    (100, 2446289),
+]
+
+
 def traced_exception(fb_exception: FacebookRequestError):
     """Add user-friendly message for FacebookRequestError
 
@@ -154,7 +182,18 @@ def traced_exception(fb_exception: FacebookRequestError):
     """
     msg = fb_exception.api_error_message() or fb_exception.get_message()
 
-    if "Error validating access token" in msg:
+    if "Invalid OAuth access token" in msg:
+        failure_type = FailureType.config_error
+        friendly_msg = (
+            "The access token for this connection is invalid or corrupted. "
+            "This may be caused by browser autofill overwriting the OAuth token with saved credentials. "
+            "Please re-authenticate your Facebook connection by clicking 'Authenticate your account' and saving the configuration. "
+            "See https://docs.airbyte.com/integrations/sources/facebook-marketing#connection-check-fails-with-invalid-access-token-after-re-authenticating for details. "
+            "If re-authentication does not resolve the issue, go to facebook.com > Settings > Business Integrations, "
+            "remove the Airbyte app, and then re-authenticate again."
+        )
+
+    elif "Error validating access token" in msg:
         failure_type = FailureType.config_error
         friendly_msg = "Invalid access token. Re-authenticate if FB oauth is used or refresh access token with all required permissions"
 
@@ -190,6 +229,9 @@ def traced_exception(fb_exception: FacebookRequestError):
     elif "The start date of the time range cannot be beyond 37 months from the current date" in msg:
         failure_type = FailureType.config_error
         friendly_msg = "Please set the start date of your sync to be within the last 3 years."
+    elif (fb_exception.api_error_code(), fb_exception.api_error_subcode()) in FACEBOOK_CONFIG_ERRORS_TO_CATCH:
+        failure_type = FailureType.config_error
+        friendly_msg = msg
     elif fb_exception.api_error_code() in FACEBOOK_RATE_LIMIT_ERROR_CODES:
         return AirbyteTracedException(
             message="The maximum number of requests on the Facebook API has been reached. See https://developers.facebook.com/docs/graph-api/overview/rate-limiting/ for more information",
@@ -210,6 +252,11 @@ def traced_exception(fb_exception: FacebookRequestError):
         failure_type = FailureType.system_error
         error_code = fb_exception.api_error_code() if fb_exception.api_error_code() else fb_exception.http_status()
         friendly_msg = f"Error code {error_code}: {msg}."
+        user_facing_details = _get_user_facing_error_details(fb_exception)
+        if user_facing_details:
+            error_subcode = fb_exception.api_error_subcode()
+            subcode_part = f" (subcode {error_subcode})" if error_subcode else ""
+            friendly_msg = f"Error code {error_code}{subcode_part}: {msg}. Facebook details: {user_facing_details}"
 
     return AirbyteTracedException(
         message=friendly_msg or msg,
@@ -217,3 +264,16 @@ def traced_exception(fb_exception: FacebookRequestError):
         failure_type=failure_type,
         exception=fb_exception,
     )
+
+
+def _get_user_facing_error_details(fb_exception: FacebookRequestError) -> str:
+    """Return Meta's localized `error_user_title` / `error_user_msg` text, if the Graph API error includes it."""
+    error = fb_exception._error if isinstance(fb_exception._error, dict) else {}
+    parts = []
+    for key in ("error_user_title", "error_user_msg"):
+        value = error.get(key)
+        if isinstance(value, str) and value.strip():
+            text = value.strip().rstrip(".")
+            if text not in parts:
+                parts.append(text)
+    return f"{'. '.join(parts)}." if parts else ""

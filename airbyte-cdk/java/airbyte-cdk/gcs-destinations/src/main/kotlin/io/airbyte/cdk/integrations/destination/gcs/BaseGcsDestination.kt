@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs
 
@@ -42,7 +42,7 @@ abstract class BaseGcsDestination : BaseConnector(), Destination {
             testMultipartUpload(
                 s3Client,
                 destinationConfig.bucketName,
-                destinationConfig.bucketPath!!
+                destinationConfig.bucketPath!!,
             )
 
             return AirbyteConnectionStatus().withStatus(AirbyteConnectionStatus.Status.SUCCEEDED)
@@ -62,7 +62,7 @@ abstract class BaseGcsDestination : BaseConnector(), Destination {
                 .withStatus(AirbyteConnectionStatus.Status.FAILED)
                 .withMessage(
                     "Could not connect to the Gcs bucket with the provided configuration. \n" +
-                        e.message
+                        e.message,
                 )
         }
     }
@@ -70,7 +70,7 @@ abstract class BaseGcsDestination : BaseConnector(), Destination {
     override fun getConsumer(
         config: JsonNode,
         catalog: ConfiguredAirbyteCatalog,
-        outputRecordCollector: Consumer<AirbyteMessage>
+        outputRecordCollector: Consumer<AirbyteMessage>,
     ): AirbyteMessageConsumer? {
         val gcsConfig: GcsDestinationConfig = GcsDestinationConfig.getGcsDestinationConfig(config)
         return S3ConsumerFactory()
@@ -81,10 +81,10 @@ abstract class BaseGcsDestination : BaseConnector(), Destination {
                     gcsConfig,
                     Function<String, BufferStorage> { fileExtension: String ->
                         FileBuffer(fileExtension)
-                    }
+                    },
                 ),
                 gcsConfig,
-                catalog
+                catalog,
             )
     }
 

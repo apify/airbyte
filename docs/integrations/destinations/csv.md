@@ -26,18 +26,19 @@ Each stream will be output into its own file. Each file will contain 3 columns:
 - `_airbyte_emitted_at`: a timestamp representing when the event was pulled from the data source.
 - `_airbyte_data`: a json blob representing with the event data.
 
-#### Features
-
-| Feature                        | Supported |     |
-| :----------------------------- | :-------- | :-- |
-| Full Refresh Sync              | Yes       |     |
-| Incremental - Append Sync      | Yes       |     |
-| Incremental - Append + Deduped | No        |     |
-| Namespaces                     | No        |     |
-
 #### Performance considerations
 
 This integration will be constrained by the speed at which your filesystem accepts writes.
+
+## Supported sync modes
+
+| Sync mode | Supported? |
+| :--- | :--- |
+| [Full Refresh - Overwrite](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite) | Yes |
+| [Full Refresh - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-append) | Yes |
+| [Full Refresh - Overwrite + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/full-refresh-overwrite-deduped) | No |
+| [Incremental Sync - Append](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append) | Yes |
+| [Incremental Sync - Append + Deduped](https://docs.airbyte.com/platform/using-airbyte/core-concepts/sync-modes/incremental-append-deduped) | No |
 
 ## Getting Started
 
@@ -69,7 +70,11 @@ You can also copy the output file to your host machine, the following command wi
 docker cp airbyte-server:/tmp/airbyte_local/{destination_path}/{filename}.csv .
 ```
 
-Note: If you are running Airbyte on Windows with Docker backed by WSL2, you have to use similar step as above or refer to this [link](/integrations/locating-files-local-destination.md) for an alternative approach.
+Note: If you are running Airbyte on Windows with Docker backed by WSL2, you have to use similar step as above or refer to this [link](/integrations/locating-files-local-destination) for an alternative approach.
+
+## Namespace support
+
+This destination does not support [namespaces](https://docs.airbyte.com/platform/using-airbyte/core-concepts/namespaces).
 
 ## Changelog
 
@@ -77,7 +82,9 @@ Note: If you are running Airbyte on Windows with Docker backed by WSL2, you have
   <summary>Expand to review</summary>
 
 | Version | Date       | Pull Request                                             | Subject                                                                         |
-| :------ | :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------------ |
+|:--------|:-----------|:---------------------------------------------------------|:--------------------------------------------------------------------------------|
+| 1.0.2   | 2025-03-21 | [55906](https://github.com/airbytehq/airbyte/pull/55906) | Upgrade to airbyte/java-connector-base:2.0.1 for M4 compatibility.              |
+| 1.0.1   | 2024-12-18 | [49864](https://github.com/airbytehq/airbyte/pull/49864) | Use a base image: airbyte/java-connector-base:1.0.0                             |
 | 1.0.0   | 2022-12-20 | [17998](https://github.com/airbytehq/airbyte/pull/17998) | Breaking changes: non backwards compatible. Adds delimiter dropdown.            |
 | 0.2.10  | 2022-06-20 | [13932](https://github.com/airbytehq/airbyte/pull/13932) | Merging published connector changes                                             |
 | 0.2.9   | 2022-02-14 | [10256](https://github.com/airbytehq/airbyte/pull/10256) | Add ExitOnOutOfMemoryError to java connectors and bump versions                 |

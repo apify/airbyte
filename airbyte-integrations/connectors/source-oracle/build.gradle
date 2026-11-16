@@ -1,5 +1,7 @@
 plugins {
     id 'airbyte-java-connector'
+    id "io.airbyte.gradle.docker"
+    id 'airbyte-connector-docker-convention'
 }
 
 airbyteJavaConnector {
@@ -16,5 +18,5 @@ application {
 dependencies {
     implementation "com.oracle.database.jdbc:ojdbc8-production:19.7.0.0"
 
-    testImplementation 'org.testcontainers:oracle-xe:1.19.4'
+    testImplementation 'org.testcontainers:oracle-xe:1.21.4'
 }

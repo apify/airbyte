@@ -8,8 +8,8 @@ The GNews source supports full refresh syncs
 
 Two output streams are available from this source:
 
-_[Search](https://gnews.io/docs/v4?shell#search-endpoint).
-_[Top Headlines](https://gnews.io/docs/v4?shell#top-headlines-endpoint).
+- [Search](https://docs.gnews.io/endpoints/search-endpoint)
+- [Top Headlines](https://docs.gnews.io/endpoints/top-headlines-endpoint)
 
 ### Features
 
@@ -20,7 +20,7 @@ _[Top Headlines](https://gnews.io/docs/v4?shell#top-headlines-endpoint).
 
 ### Performance considerations
 
-Rate Limiting is based on the API Key tier subscription, get more info [here](https://gnews.io/#pricing).
+Rate limiting and the daily request quota depend on your GNews subscription, see the [pricing page](https://gnews.io/pricing) and the [error handling docs](https://docs.gnews.io/error-handling). Requests that exceed the per-second rate limit (HTTP 429) are retried automatically. If the daily quota is exceeded (HTTP 403) the sync fails with an explicit error; it will work again after the quota resets at 00:00 UTC.
 
 ## Getting started
 
@@ -30,8 +30,12 @@ Rate Limiting is based on the API Key tier subscription, get more info [here](ht
 
 ### Connect using `API Key`:
 
-1. Generate an API Key as described [here](https://gnews.io/docs/v4?shell#authentication).
+1. Generate an API Key as described [here](https://docs.gnews.io/authentication).
 2. Use the generated `API Key` in the Airbyte connection.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
 
 ## Changelog
 
@@ -40,6 +44,35 @@ Rate Limiting is based on the API Key tier subscription, get more info [here](ht
 
 | Version | Date       | Pull Request                                             | Subject                                          |
 | :------ | :--------- | :------------------------------------------------------- | :----------------------------------------------- |
+| 0.2.26 | 2026-11-09 | [91393](https://github.com/airbytehq/airbyte/pull/91393) | Upgrade to source-declarative-manifest 7.47.0 (Airbyte CDK 7) |
+| 0.2.25 | 2026-10-13 | [78726](https://github.com/airbytehq/airbyte/pull/78726) | Update dependencies |
+| 0.2.24 | 2026-10-07 | [88210](https://github.com/airbytehq/airbyte/pull/88210) | Replace the broken custom 403 backoff strategy (`components.py`) with declarative error handling and clearer 400/401/403 error messages |
+| 0.2.23 | 2025-05-24 | [60638](https://github.com/airbytehq/airbyte/pull/60638) | Update dependencies |
+| 0.2.22 | 2025-05-10 | [59267](https://github.com/airbytehq/airbyte/pull/59267) | Update dependencies |
+| 0.2.21 | 2025-04-26 | [58763](https://github.com/airbytehq/airbyte/pull/58763) | Update dependencies |
+| 0.2.20 | 2025-04-19 | [58197](https://github.com/airbytehq/airbyte/pull/58197) | Update dependencies |
+| 0.2.19 | 2025-04-12 | [57729](https://github.com/airbytehq/airbyte/pull/57729) | Update dependencies |
+| 0.2.18 | 2025-04-05 | [57216](https://github.com/airbytehq/airbyte/pull/57216) | Update dependencies |
+| 0.2.17 | 2025-03-29 | [56548](https://github.com/airbytehq/airbyte/pull/56548) | Update dependencies |
+| 0.2.16 | 2025-03-22 | [55930](https://github.com/airbytehq/airbyte/pull/55930) | Update dependencies |
+| 0.2.15 | 2025-03-08 | [55273](https://github.com/airbytehq/airbyte/pull/55273) | Update dependencies |
+| 0.2.14 | 2025-03-01 | [54964](https://github.com/airbytehq/airbyte/pull/54964) | Update dependencies |
+| 0.2.13 | 2025-02-22 | [54380](https://github.com/airbytehq/airbyte/pull/54380) | Update dependencies |
+| 0.2.12 | 2025-02-15 | [53745](https://github.com/airbytehq/airbyte/pull/53745) | Update dependencies |
+| 0.2.11 | 2025-02-08 | [53366](https://github.com/airbytehq/airbyte/pull/53366) | Update dependencies |
+| 0.2.10 | 2025-02-01 | [52861](https://github.com/airbytehq/airbyte/pull/52861) | Update dependencies |
+| 0.2.9 | 2025-01-25 | [52320](https://github.com/airbytehq/airbyte/pull/52320) | Update dependencies |
+| 0.2.8 | 2025-01-18 | [51622](https://github.com/airbytehq/airbyte/pull/51622) | Update dependencies |
+| 0.2.7 | 2025-01-11 | [51072](https://github.com/airbytehq/airbyte/pull/51072) | Update dependencies |
+| 0.2.6 | 2024-12-28 | [50535](https://github.com/airbytehq/airbyte/pull/50535) | Update dependencies |
+| 0.2.5 | 2024-12-21 | [50037](https://github.com/airbytehq/airbyte/pull/50037) | Update dependencies |
+| 0.2.4 | 2024-12-14 | [49521](https://github.com/airbytehq/airbyte/pull/49521) | Update dependencies |
+| 0.2.3 | 2024-12-12 | [48214](https://github.com/airbytehq/airbyte/pull/48214) | Update dependencies |
+| 0.2.2 | 2024-10-29 | [47918](https://github.com/airbytehq/airbyte/pull/47918) | Update dependencies |
+| 0.2.1 | 2024-10-28 | [47499](https://github.com/airbytehq/airbyte/pull/47499) | Update dependencies |
+| 0.2.0 | 2024-10-17 | [46959](https://github.com/airbytehq/airbyte/pull/46959) | Refactor connector to manifest-only format |
+| 0.1.25 | 2024-10-12 | [46802](https://github.com/airbytehq/airbyte/pull/46802) | Update dependencies |
+| 0.1.24 | 2024-10-05 | [46425](https://github.com/airbytehq/airbyte/pull/46425) | Update dependencies |
 | 0.1.23 | 2024-09-28 | [46209](https://github.com/airbytehq/airbyte/pull/46209) | Update dependencies |
 | 0.1.22 | 2024-09-21 | [45808](https://github.com/airbytehq/airbyte/pull/45808) | Update dependencies |
 | 0.1.21 | 2024-09-14 | [45541](https://github.com/airbytehq/airbyte/pull/45541) | Update dependencies |

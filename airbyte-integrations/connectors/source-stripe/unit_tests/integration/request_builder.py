@@ -1,4 +1,6 @@
-# Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+#
+# Copyright (c) 2025 Airbyte, Inc., all rights reserved.
+#
 
 from datetime import datetime
 from typing import List, Optional
@@ -21,6 +23,10 @@ class StripeRequestBuilder:
         return cls(f"application_fees/{application_fee_id}/refunds", account_id, client_secret)
 
     @classmethod
+    def balance_transactions_endpoint(cls, account_id: str, client_secret: str) -> "StripeRequestBuilder":
+        return cls("balance_transactions", account_id, client_secret)
+
+    @classmethod
     def customers_endpoint(cls, account_id: str, client_secret: str) -> "StripeRequestBuilder":
         return cls("customers", account_id, client_secret)
 
@@ -37,6 +43,10 @@ class StripeRequestBuilder:
         return cls(f"accounts/{account_id}/external_accounts", account_id, client_secret)
 
     @classmethod
+    def invoice_lines_endpoint(cls, invoice_id: str, account_id: str, client_secret: str) -> "StripeRequestBuilder":
+        return cls(f"invoices/{invoice_id}/lines", account_id, client_secret)
+
+    @classmethod
     def issuing_authorizations_endpoint(cls, account_id: str, client_secret: str) -> "StripeRequestBuilder":
         return cls("issuing/authorizations", account_id, client_secret)
 
@@ -51,6 +61,18 @@ class StripeRequestBuilder:
     @classmethod
     def payment_methods_endpoint(cls, customer_id: str, account_id: str, client_secret: str) -> "StripeRequestBuilder":
         return cls(f"customers/{customer_id}/payment_methods", account_id, client_secret)
+
+    @classmethod
+    def payouts_endpoint(cls, account_id: str, client_secret: str) -> "StripeRequestBuilder":
+        return cls("payouts", account_id, client_secret)
+
+    @classmethod
+    def setup_attempts_endpoint(cls, account_id: str, client_secret: str) -> "StripeRequestBuilder":
+        return cls("setup_attempts", account_id, client_secret)
+
+    @classmethod
+    def setup_intents_endpoint(cls, account_id: str, client_secret: str) -> "StripeRequestBuilder":
+        return cls("setup_intents", account_id, client_secret)
 
     @classmethod
     def persons_endpoint(
@@ -82,6 +104,8 @@ class StripeRequestBuilder:
         self._created_lte: Optional[datetime] = None
         self._limit: Optional[int] = None
         self._object: Optional[str] = None
+        self._payout: Optional[str] = None
+        self._setup_intent: Optional[str] = None
         self._starting_after_id: Optional[str] = None
         self._types: List[str] = []
         self._expands: List[str] = []
@@ -118,6 +142,14 @@ class StripeRequestBuilder:
         self._expands = expands
         return self
 
+    def with_payout(self, payout: str) -> "StripeRequestBuilder":
+        self._payout = payout
+        return self
+
+    def with_setup_intent(self, setup_intent: str) -> "StripeRequestBuilder":
+        self._setup_intent = setup_intent
+        return self
+
     def build(self) -> HttpRequest:
         query_params = {}
         if self._created_gte:
@@ -135,8 +167,12 @@ class StripeRequestBuilder:
                 query_params["type"] = self._types
         if self._object:
             query_params["object"] = self._object
+        if self._payout:
+            query_params["payout"] = self._payout
         if self._expands:
             query_params["expand[]"] = self._expands
+        if self._setup_intent:
+            query_params["setup_intent"] = self._setup_intent
 
         if self._any_query_params:
             if query_params:

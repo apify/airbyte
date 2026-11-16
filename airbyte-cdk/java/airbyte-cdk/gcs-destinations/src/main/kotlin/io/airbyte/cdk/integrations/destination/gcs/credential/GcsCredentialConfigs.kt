@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs.credential
 
@@ -12,7 +12,7 @@ object GcsCredentialConfigs {
         val credentialConfig = config["credential"]
         val credentialType =
             GcsCredentialType.valueOf(
-                credentialConfig["credential_type"].asText().uppercase(Locale.getDefault())
+                credentialConfig["credential_type"].asText().uppercase(Locale.getDefault()),
             )
 
         if (credentialType == GcsCredentialType.HMAC_KEY) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.db
 
@@ -55,7 +55,7 @@ object DataTypeUtils {
     @JvmStatic
     fun <T> returnNullIfInvalid(
         valueProducer: DataTypeSupplier<T>,
-        isValidFn: Function<T, Boolean>
+        isValidFn: Function<T, Boolean>,
     ): T? {
         // Some edge case values (e.g: Infinity, NaN) have no java or JSON equivalent, and will
         // throw an
@@ -78,7 +78,7 @@ object DataTypeUtils {
     @JvmStatic
     fun <T> throwExceptionIfInvalid(
         valueProducer: DataTypeSupplier<T>,
-        isValidFn: Function<T, Boolean>
+        isValidFn: Function<T, Boolean>,
     ): T? {
         // Some edge case values (e.g: Infinity, NaN) have no java or JSON equivalent, and will
         // throw an
@@ -156,9 +156,9 @@ object DataTypeUtils {
             Date.from(
                 Instant.ofEpochSecond(
                     abs(duration.seconds.toDouble()).toLong(),
-                    abs(duration.nano.toDouble()).toLong()
-                )
-            )
+                    abs(duration.nano.toDouble()).toLong(),
+                ),
+            ),
         )
     }
 }

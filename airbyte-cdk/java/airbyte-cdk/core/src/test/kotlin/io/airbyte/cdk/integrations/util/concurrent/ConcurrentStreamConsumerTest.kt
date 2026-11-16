@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.util.concurrent
 
@@ -99,8 +99,8 @@ internal class ConcurrentStreamConsumerTest {
             streams.add(
                 AutoCloseableIterators.fromIterator(
                     messages.iterator(),
-                    airbyteStreamNameNamespacePair
-                )
+                    airbyteStreamNameNamespacePair,
+                ),
             )
         }
         val streamConsumer: Consumer<AutoCloseableIterator<AirbyteMessage>> = mock()

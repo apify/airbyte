@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.async.deser
 
@@ -61,7 +61,7 @@ class AirbyteMessageDeserializer(
                 } else {
                     val obfuscated = Jsons.obfuscateDeserializationException(e)
                     throw RuntimeException(
-                        "ValueInstantiationException when deserializing PartialAirbyteMessage: $obfuscated"
+                        "ValueInstantiationException when deserializing PartialAirbyteMessage: $obfuscated",
                     )
                 }
             } catch (e: Exception) {

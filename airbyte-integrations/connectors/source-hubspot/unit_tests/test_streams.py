@@ -2,138 +2,117 @@
 # Copyright (c) 2023 Airbyte, Inc., all rights reserved.
 #
 
+import datetime
 import json
-from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
-import pendulum
+import freezegun
 import pytest
-from airbyte_cdk.models import SyncMode
-from source_hubspot.streams import (
-    Campaigns,
-    Companies,
-    ContactLists,
-    Contacts,
-    ContactsListMemberships,
-    ContactsMergedAudit,
-    ContactsPropertyHistory,
-    ContactsWebAnalytics,
-    CustomObject,
-    DealPipelines,
-    Deals,
-    DealsArchived,
-    DealSplits,
-    EmailEvents,
-    EmailSubscriptions,
-    EngagementsCalls,
-    EngagementsEmails,
-    EngagementsMeetings,
-    EngagementsNotes,
-    EngagementsTasks,
-    Forms,
-    FormSubmissions,
-    Goals,
-    LineItems,
-    MarketingEmails,
-    Owners,
-    OwnersArchived,
-    Products,
-    RecordUnnester,
-    TicketPipelines,
-    Tickets,
-    Workflows,
+
+from airbyte_cdk.models import (
+    AirbyteStateBlob,
+    AirbyteStateMessage,
+    AirbyteStateType,
+    AirbyteStreamState,
+    ConfiguredAirbyteCatalogSerializer,
+    StreamDescriptor,
+    SyncMode,
 )
+from airbyte_cdk.sources.types import Record
+from airbyte_cdk.test.entrypoint_wrapper import discover, read
+from airbyte_cdk.test.state_builder import StateBuilder
+from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 
-from .utils import read_full_refresh, read_incremental
+from .conftest import find_stream, get_source, mock_dynamic_schema_requests_with_skip, mock_v3_properties, read_from_stream
+from .utils import run_read
 
 
-@pytest.fixture(autouse=True)
-def time_sleep_mock(mocker):
-    time_mock = mocker.patch("time.sleep", lambda x: None)
-    yield time_mock
-
-
-def test_updated_at_field_non_exist_handler(requests_mock, common_params, fake_properties_list):
-    stream = ContactLists(**common_params)
-
+def test_updated_at_field_non_exist_handler(requests_mock, config, fake_properties_list, custom_object_schema):
+    requests_mock.register_uri("GET", "/crm/v3/schemas", json={"results": [custom_object_schema]})
+    stream = find_stream("contact_lists", config)
+    created_at = "2022-03-25T16:43:11Z"
     responses = [
         {
             "json": {
-                stream.data_field: [
+                "lists": [
                     {
                         "id": "test_id",
-                        "createdAt": "2022-03-25T16:43:11Z",
+                        "createdAt": created_at,
                     },
                 ],
             }
         }
     ]
-    properties_response = [
-        {
-            "json": [
-                {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
-                for property_name in fake_properties_list
-            ],
-            "status_code": 200,
-        }
-    ]
 
-    requests_mock.register_uri("GET", stream.url, responses)
-    requests_mock.register_uri("GET", "/properties/v2/contact/properties", properties_response)
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", responses)
 
-    _, stream_state = read_incremental(stream, {})
+    partitions = list(stream._stream_partition_generator.generate())
+    assert len(partitions) == 1
 
-    expected = int(pendulum.parse(common_params["start_date"]).timestamp() * 1000)
-
-    assert stream_state[stream.updated_at_field] == expected
+    records = list(partitions[0].read())
+    assert len(records) == 1
+    assert records[0]["updatedAt"] == created_at
 
 
 @pytest.mark.parametrize(
-    "stream, endpoint, cursor_value",
+    "stream_class, endpoint, cursor_value",
     [
-        (Campaigns, "campaigns", {"lastUpdatedTime": 1675121674226}),
-        (Companies, "company", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (ContactLists, "contact", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Contacts, "contact", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (ContactsMergedAudit, "contact", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Deals, "deal", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (DealsArchived, "deal", {"archivedAt": "2022-02-25T16:43:11Z"}),
-        (DealPipelines, "deal", {"updatedAt": 1675121674226}),
-        (DealSplits, "deal_split", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EmailEvents, "", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EmailSubscriptions, "", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EngagementsCalls, "calls", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EngagementsEmails, "emails", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EngagementsMeetings, "meetings", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EngagementsNotes, "notes", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (EngagementsTasks, "tasks", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Forms, "form", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (FormSubmissions, "form", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Goals, "goal_targets", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (LineItems, "line_item", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (MarketingEmails, "", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Owners, "", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (OwnersArchived, "", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Products, "product", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (TicketPipelines, "", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Tickets, "ticket", {"updatedAt": "2022-02-25T16:43:11Z"}),
-        (Workflows, "", {"updatedAt": 1675121674226}),
+        ("campaigns", "campaigns", {"lastUpdatedTime": 1675121674226}),
+        ("companies", "company", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("contact_lists", "contact", {"createdAt": "2021-02-25T16:43:11Z", "updatedAt": "2022-02-25T16:43:11Z"}),
+        ("contacts", "contact", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("deals", "deal", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("deals_archived", "deal", {"archivedAt": "2022-02-25T16:43:11Z"}),
+        ("deal_pipelines", "deal", {"updatedAt": 1675121674226}),
+        ("deal_splits", "deal_split", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("email_events", "", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("email_subscriptions", "", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("engagements_calls", "calls", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("engagements_emails", "emails", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("engagements_meetings", "meetings", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("engagements_notes", "notes", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("engagements_tasks", "tasks", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("forms", "form", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("form_submissions", "form", {"updatedAt": 1675121674227}),
+        ("goals", "goal_targets", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("leads", "leads", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("line_items", "line_item", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("listings", "listings", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("marketing_emails", "", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("owners", "", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("owners_archived", "", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("products", "product", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("ticket_pipelines", "", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("tickets", "ticket", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("workflows", "", {"updatedAt": 1675121674226}),
     ],
 )
-def test_streams_read(stream, endpoint, cursor_value, requests_mock, common_params, fake_properties_list):
-    stream = stream(**common_params)
-    responses = [
+def test_streams_read(stream_class, endpoint, cursor_value, requests_mock, fake_properties_list, config):
+    mock_dynamic_schema_requests_with_skip(requests_mock, [])
+    stream = find_stream(stream_class, config)
+    stream_retriever = stream._stream_partition_generator._partition_factory._retriever
+    data_field = (
+        stream_retriever.record_selector.extractor.field_path[0] if len(stream_retriever.record_selector.extractor.field_path) > 0 else None
+    )
+    list_entities = [
         {
-            "json": {
-                stream.data_field: [
-                    {
-                        "id": "test_id",
-                        "created": "2022-02-25T16:43:11Z",
-                    }
-                    | cursor_value
-                ],
-            }
+            "id": "test_id",
+            "created": "2022-02-25T16:43:11Z",
         }
+        | cursor_value
     ]
+    responses = [{"json": {data_field: list_entities} if data_field else list_entities}]
+
+    is_form_submission = stream_class == "form_submissions"
+
+    if is_form_submission:
+        forms_response = [
+            {
+                "json": {
+                    data_field: [{"id": "test_id", "created": "2022-02-25T16:43:11Z", "updatedAt": "2022-02-25T16:43:11Z"}],
+                }
+            }
+        ]
 
     properties_response = [
         {
@@ -148,7 +127,7 @@ def test_streams_read(stream, endpoint, cursor_value, requests_mock, common_para
     contact_response = [
         {
             "json": {
-                stream.data_field: [
+                data_field: [
                     {"id": "test_id", "created": "2022-06-25T16:43:11Z", "properties": {"hs_merged_object_ids": "test_id"}} | cursor_value
                 ],
             }
@@ -167,63 +146,357 @@ def test_streams_read(stream, endpoint, cursor_value, requests_mock, common_para
     contact_lists_v1_response = [
         {
             "json": {
-                "contacts": [
-                    {"vid": "test_id", "merge-audits": [{"canonical-vid": 2, "vid-to-merge": 5608, "timestamp": 1653322839932}]}
-                ]
+                "contacts": [{"vid": "test_id", "merge-audits": [{"canonical-vid": 2, "vid-to-merge": 5608, "timestamp": 1653322839932}]}]
             },
             "status_code": 200,
         }
     ]
 
-    is_form_submission = isinstance(stream, FormSubmissions)
     stream._sync_mode = SyncMode.full_refresh
-    stream_url = stream.url + "/test_id" if is_form_submission else stream.url
+    stream_slice = {}
+    if is_form_submission:
+        stream_slice = {"form_id": ["test_id"]}
+    stream_url = stream_retriever.requester.url_base + "/" + stream_retriever.requester.get_path(stream_slice=stream_slice)
     stream._sync_mode = None
 
-    requests_mock.register_uri("GET", stream_url, responses)
+    requests_mock.register_uri(stream_retriever.requester._http_method.value, stream_url, responses)
+    # mock associations calls
+    if stream_retriever.requester._http_method.value == "POST":
+        for association in stream_retriever.requester._parameters.get("associations", []):
+            requests_mock.register_uri(
+                "POST",
+                f"https://api.hubapi.com/crm/v4/associations/{endpoint}/{association}/batch/read",
+                [{"json": {"results": []}, "status_code": 200}],
+            )
+    if stream_class == "contacts":
+        for association in ("contacts", "companies"):
+            requests_mock.register_uri(
+                "POST",
+                f"https://api.hubapi.com/crm/v4/associations/contact/{association}/batch/read",
+                [{"json": {"results": []}, "status_code": 200}],
+            )
     requests_mock.register_uri("GET", "/crm/v3/objects/contact", contact_response)
     requests_mock.register_uri("GET", "/contacts/v1/lists/all/contacts/all", contact_lists_v1_response)
-    requests_mock.register_uri("GET", "/marketing/v3/forms", responses)
+    requests_mock.register_uri("GET", "/marketing/v3/forms", responses if not is_form_submission else forms_response)
     requests_mock.register_uri("GET", "/email/public/v1/campaigns/test_id", responses)
+    requests_mock.register_uri("GET", "/email/public/v1/campaigns?count=500", [{"json": {"campaigns": list_entities}}])
     requests_mock.register_uri("GET", f"/properties/v2/{endpoint}/properties", properties_response)
     requests_mock.register_uri("GET", "/contacts/v1/contact/vids/batch/", read_batch_contact_v1_response)
+    requests_mock.register_uri("POST", "/crm/v3/lists/search", responses)
 
-    records = read_full_refresh(stream)
+    records = run_read(stream)
     assert records
 
-@pytest.mark.parametrize("sync_mode", [SyncMode.full_refresh, SyncMode.incremental])
-def test_crm_search_streams_with_no_associations(sync_mode, common_params,  requests_mock, fake_properties_list):
-    stream = DealSplits(**common_params)
-    stream_state = {
-        "type": "STREAM",
-        "stream": {
-            "stream_descriptor": { "name": "deal_splits" },
-            "stream_state": { "updatedAt": "2021-01-01T00:00:00.000000Z" }
-        }
+
+@freezegun.freeze_time("2022-03-10T14:42:00Z")
+def test_contacts_full_refresh_reads_list_endpoint_and_merges_property_chunks(requests_mock, config, fake_properties_list):
+    mock_dynamic_schema_requests_with_skip(requests_mock, ["contact"])
+    mock_v3_properties(
+        requests_mock,
+        "contact",
+        [{"name": property_name, "type": "string"} for property_name in fake_properties_list],
+    )
+    requests_mock.get(
+        "https://api.hubapi.com/properties/v2/contact/properties",
+        json=[{"name": "hs_object_id", "type": "number"}],
+    )
+    property_values = {property_name: f"value-{property_name}" for property_name in (fake_properties_list[0], fake_properties_list[-1])}
+
+    def list_response(request, context):
+        requested_properties = parse_qs(urlparse(request.url).query)["properties"][0].split(",")
+        requested_values = {name: property_values[name] for name in requested_properties if name in property_values}
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "id": "123",
+                        "createdAt": "2022-03-01T00:00:00Z",
+                        "updatedAt": "2022-03-10T14:42:00Z",
+                        "archived": False,
+                        "properties": requested_values,
+                    }
+                ],
+                "paging": {},
+            }
+        )
+
+    requests_mock.get("https://api.hubapi.com/crm/v3/objects/contact", text=list_response)
+    requests_mock.post("https://api.hubapi.com/crm/v3/objects/contact/search", json={"results": []})
+    for association in ("contacts", "companies"):
+        requests_mock.post(
+            f"https://api.hubapi.com/crm/v4/associations/contact/{association}/batch/read",
+            json={"results": [{"from": {"id": "123"}, "to": [{"toObjectId": association}]}]},
+        )
+
+    config["start_date"] = "2022-03-09T14:42:00Z"
+    output = read_from_stream(config, "contacts", SyncMode.full_refresh)
+
+    list_requests = [
+        request
+        for request in requests_mock.request_history
+        if request.method == "GET" and urlparse(request.url).path == "/crm/v3/objects/contact"
+    ]
+    search_requests = [
+        request
+        for request in requests_mock.request_history
+        if request.method == "POST" and urlparse(request.url).path == "/crm/v3/objects/contact/search"
+    ]
+    assert len(list_requests) > 1
+    assert all(parse_qs(urlparse(request.url).query)["archived"] == ["false"] for request in list_requests)
+    assert not search_requests
+    assert len(output.records) == 1
+    record = output.records[0].record.data
+    assert record["updatedAt"] == "2022-03-10T14:42:00Z"
+    assert record["contacts"] == ["contacts"]
+    assert record["companies"] == ["companies"]
+    assert record["properties"][fake_properties_list[0]] == property_values[fake_properties_list[0]]
+    assert record["properties"][fake_properties_list[-1]] == property_values[fake_properties_list[-1]]
+    assert record[f"properties_{fake_properties_list[0]}"] == property_values[fake_properties_list[0]]
+    assert record[f"properties_{fake_properties_list[-1]}"] == property_values[fake_properties_list[-1]]
+
+
+@pytest.mark.parametrize("with_state", [False, True], ids=["without-state", "with-state"])
+def test_contacts_discover_schema_without_state(requests_mock, config, with_state):
+    mock_dynamic_schema_requests_with_skip(requests_mock, ["contact"])
+    dynamic_properties = [{"name": "my_custom_prop", "type": "string"}]
+    mock_v3_properties(requests_mock, "contact", dynamic_properties)
+    requests_mock.get("https://api.hubapi.com/properties/v2/contact/properties", json=dynamic_properties)
+
+    state = StateBuilder().with_stream_state("contacts", {"updatedAt": "2022-03-01T00:00:00Z"}).build() if with_state else None
+    output = discover(get_source(config, state), config)
+    schema = next(stream.json_schema for stream in output.catalog.catalog.streams if stream.name == "contacts")
+    schema_properties = schema.get("properties", {})
+
+    assert schema_properties, f"Expected a non-empty contacts schema, got {schema!r}"
+    assert {"id", "updatedAt"}.issubset(schema_properties)
+    assert "my_custom_prop" in schema_properties["properties"]["properties"]
+    assert "properties_my_custom_prop" in schema_properties
+
+
+@freezegun.freeze_time("2022-03-10T14:42:00Z")
+def test_contacts_incremental_with_state_uses_search_endpoint(requests_mock, config):
+    mock_dynamic_schema_requests_with_skip(requests_mock, ["contact"])
+    mock_v3_properties(requests_mock, "contact", [{"name": "hs_object_id", "type": "number"}])
+    requests_mock.get(
+        "https://api.hubapi.com/properties/v2/contact/properties",
+        json=[{"name": "hs_object_id", "type": "number"}],
+    )
+    requests_mock.post("https://api.hubapi.com/crm/v3/objects/contact/search", json={"results": []})
+
+    state = StateBuilder().with_stream_state("contacts", {"updatedAt": "2022-03-01T00:00:00Z"}).build()
+    read_from_stream(config, "contacts", SyncMode.incremental, state)
+
+    assert any(
+        request.method == "POST" and urlparse(request.url).path == "/crm/v3/objects/contact/search"
+        for request in requests_mock.request_history
+    )
+    assert not any(
+        request.method == "GET" and urlparse(request.url).path == "/crm/v3/objects/contact" for request in requests_mock.request_history
+    )
+
+
+def _contact(contact_id, updated_at):
+    return {
+        "id": contact_id,
+        "createdAt": "2022-03-01T00:00:00.000Z",
+        "updatedAt": updated_at,
+        "archived": False,
+        "properties": {"hs_object_id": contact_id, "lastmodifieddate": updated_at},
     }
-    cursor_value = {"updatedAt": "2022-02-25T16:43:11Z"}
+
+
+def _to_ms(timestamp):
+    return int(datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp() * 1000)
+
+
+def _mock_contacts_metadata(requests_mock):
+    mock_dynamic_schema_requests_with_skip(requests_mock, ["contact"])
+    mock_v3_properties(requests_mock, "contact", [{"name": "hs_object_id", "type": "number"}])
+    requests_mock.get(
+        "https://api.hubapi.com/properties/v2/contact/properties",
+        json=[{"name": "hs_object_id", "type": "number"}],
+    )
+    for association in ("contacts", "companies"):
+        requests_mock.post(f"https://api.hubapi.com/crm/v4/associations/contact/{association}/batch/read", json={"results": []})
+
+
+def _filtered_contact_search(contacts, on_request=None):
+    """Answer CRM Search like HubSpot does: apply the request's `lastmodifieddate` and `hs_object_id` filters."""
+
+    def search_response(request, context):
+        if on_request:
+            on_request()
+        bounds = {(f["propertyName"], f["operator"]): int(f["value"]) for f in request.json()["filters"]}
+        results = [
+            record
+            for record in contacts
+            if bounds[("lastmodifieddate", "GTE")] <= _to_ms(record["updatedAt"]) <= bounds[("lastmodifieddate", "LTE")]
+            and int(record["id"]) >= bounds[("hs_object_id", "GTE")]
+        ]
+        return json.dumps({"results": results, "total": len(results)})
+
+    return search_response
+
+
+SYNC_START = "2022-03-10T14:00:00.000Z"
+SCAN_END = "2022-03-10T14:10:00.000Z"
+
+
+@pytest.mark.parametrize(
+    "lookback_minutes, edited_contact_recovered",
+    [(0, False), (10, True)],
+    ids=["no-lookback-loses-mid-scan-edit", "lookback-covering-first-sync-recovers-edit"],
+)
+def test_contacts_first_sync_state_overshoot_is_covered_by_lookback_window(
+    requests_mock, config, lookback_minutes, edited_contact_recovered
+):
+    """Without state, contacts reads the list endpoint and saves the newest `updatedAt` it saw, which can be after the
+    sync started. A contact read early and edited later in the same scan is then below the saved state, so the next
+    incremental search skips it unless `lookback_window` covers the length of the first sync. The docs recommend that
+    setting; this test pins both the loss and the mitigation.
+    """
+    _mock_contacts_metadata(requests_mock)
+    config["start_date"] = "2022-03-01T00:00:00Z"
+    config["lookback_window"] = lookback_minutes
+
+    # Sync 1 starts at 14:00 with no state, and the scan takes until 14:10. Contact 1 is read before its 14:03 edit;
+    # contact 2 is edited at 14:08, before the scan reaches it, so it is read with that newer timestamp.
+    with freezegun.freeze_time(SYNC_START) as clock:
+
+        def list_response(request, context):
+            clock.move_to(SCAN_END)
+            return json.dumps(
+                {"results": [_contact("1", "2022-03-03T00:00:00.000Z"), _contact("2", "2022-03-10T14:08:00.000Z")], "paging": {}}
+            )
+
+        requests_mock.get("https://api.hubapi.com/crm/v3/objects/contact", text=list_response)
+        first_sync = read_from_stream(config, "contacts", SyncMode.incremental)
+
+    assert {record.record.data["id"] for record in first_sync.records} == {"1", "2"}
+    first_sync_state = first_sync.state_messages[-1].state.stream.stream_state.__dict__
+    assert _to_ms(first_sync_state["updatedAt"]) > _to_ms(SYNC_START), "the list path should save a cursor past the sync start"
+
+    # Sync 2 uses CRM Search and starts from the saved cursor, minus the lookback window.
+    contacts_now = [_contact("1", "2022-03-10T14:03:00.000Z"), _contact("2", "2022-03-10T14:08:00.000Z")]
+    requests_mock.post("https://api.hubapi.com/crm/v3/objects/contact/search", text=_filtered_contact_search(contacts_now))
+    state = StateBuilder().with_stream_state("contacts", first_sync_state).build()
+    with freezegun.freeze_time("2022-03-10T15:00:00Z"):
+        second_sync = read_from_stream(config, "contacts", SyncMode.incremental, state)
+
+    second_sync_ids = {record.record.data["id"] for record in second_sync.records}
+    assert ("1" in second_sync_ids) is edited_contact_recovered
+    assert "2" in second_sync_ids
+
+
+def test_contacts_search_path_state_stays_at_or_before_sync_start(requests_mock, config):
+    """With state, contacts uses CRM Search, whose `lastmodifieddate` upper bound is the sync start. A contact edited
+    during the scan is left for the next sync instead of moving the cursor past earlier edits, so the overshoot above
+    is specific to the no-state list path.
+    """
+    _mock_contacts_metadata(requests_mock)
+    config["start_date"] = "2022-03-01T00:00:00Z"
+    contacts_now = [_contact("1", "2022-03-03T00:00:00.000Z"), _contact("2", "2022-03-10T14:08:00.000Z")]
+
+    with freezegun.freeze_time(SYNC_START) as clock:
+        requests_mock.post(
+            "https://api.hubapi.com/crm/v3/objects/contact/search",
+            text=_filtered_contact_search(contacts_now, on_request=lambda: clock.move_to(SCAN_END)),
+        )
+        state = StateBuilder().with_stream_state("contacts", {"updatedAt": "2022-03-02T00:00:00.000Z"}).build()
+        output = read_from_stream(config, "contacts", SyncMode.incremental, state)
+
+    assert {record.record.data["id"] for record in output.records} == {"1"}
+    saved_state = output.state_messages[-1].state.stream.stream_state.__dict__
+    assert _to_ms(saved_state["updatedAt"]) <= _to_ms(SYNC_START)
+
+
+def test_deal_pipelines_read_uses_2026_09_response_shape(requests_mock, config):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    requests_mock.get(
+        "https://api.hubapi.com/crm/pipelines/2026-09/deals",
+        json={
+            "results": [
+                {
+                    "id": "b9152945-a594-4835-9676-a6f405fecd71",
+                    "label": "New Business Pipeline",
+                    "displayOrder": 3,
+                    "createdAt": "2021-01-14T14:52:53.956Z",
+                    "updatedAt": "2023-04-04T14:59:14.263Z",
+                    "archived": False,
+                    "stages": [
+                        {
+                            "id": "9567448",
+                            "label": "Initial Qualification",
+                            "displayOrder": 0,
+                            "createdAt": "2021-01-14T14:52:53.956Z",
+                            "updatedAt": "2023-04-04T14:59:14.263Z",
+                            "metadata": {"isClosed": "false", "probability": "0.1"},
+                            "writePermissions": "CRM_PERMISSIONS_ENFORCEMENT",
+                            "archived": False,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    output = read_from_stream(config, "deal_pipelines", SyncMode.full_refresh)
+
+    assert len(output.records) == 1
+    record = output.records[0].record.data
+    assert record["pipelineId"] == "b9152945-a594-4835-9676-a6f405fecd71"
+    assert record["updatedAt"] == 1680620354263
+    assert record["objectType"] == "DEAL"
+    assert record["stages"][0]["stageId"] == "9567448"
+
+
+@pytest.mark.parametrize(
+    "stream_class, endpoint, cursor_value",
+    [
+        ("contacts", "contact", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("deals", "deal", {"updatedAt": "2022-02-25T16:43:11Z"}),
+        ("deals_archived", "deal", {"archivedAt": "2022-02-25T16:43:11Z"}),
+    ],
+    ids=[
+        "Contacts stream with v2 field transformations",
+        "Deals stream with v2 field transformations",
+        "DealsArchived stream with v2 field transformations",
+    ],
+)
+def test_stream_read_with_legacy_field_transformation(
+    stream_class,
+    endpoint,
+    cursor_value,
+    requests_mock,
+    fake_properties_list,
+    migrated_properties_list,
+    config,
+):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    stream = find_stream(stream_class, config)
+    stream_retriever = stream._stream_partition_generator._partition_factory._retriever
+    data_field = stream_retriever.record_selector.extractor.field_path[0]
     responses = [
         {
             "json": {
-                stream.data_field: [
+                data_field: [
                     {
                         "id": "test_id",
                         "created": "2022-02-25T16:43:11Z",
+                        "properties": {
+                            "hs_v2_latest_time_in_prospect": "1 month",
+                            "hs_v2_date_entered_prospect": "2024-01-01T00:00:00Z",
+                            "hs_v2_date_exited_prospect": "2024-02-01T00:00:00Z",
+                            "hs_v2_cumulative_time_in_prsopect": "1 month",
+                            "hs_v2_some_other_property_in_prospect": "Great property",
+                        },
                     }
                     | cursor_value
                 ],
             }
         }
     ]
-    if sync_mode == SyncMode.full_refresh:
-        stream.set_sync(SyncMode.full_refresh, stream_state=None)
-        endpoint_path = f"/crm/v3/objects/{stream.entity}"
-        requests_mock.register_uri("GET", endpoint_path, responses)
-    else:
-        stream.set_sync(SyncMode.incremental, stream_state)
-        endpoint_path = f"/crm/v3/objects/{stream.entity}/search"
-        requests_mock.register_uri("POST", endpoint_path, responses)
-    properties_path = f"/properties/v2/{stream.entity}/properties"
+    fake_properties_list.extend(migrated_properties_list)
     properties_response = [
         {
             "json": [
@@ -233,15 +506,209 @@ def test_crm_search_streams_with_no_associations(sync_mode, common_params,  requ
             "status_code": 200,
         }
     ]
-    stream._sync_mode = sync_mode
+    stream._sync_mode = SyncMode.full_refresh
+
+    stream_url = stream_retriever.requester.url_base + "/" + stream_retriever.requester.get_path()
+
+    requests_mock.register_uri(stream_retriever.requester._http_method.value, stream_url, responses)
+    requests_mock.register_uri("GET", f"/properties/v2/{endpoint}/properties", properties_response)
+    mock_v3_properties(
+        requests_mock,
+        endpoint,
+        [
+            {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
+            for property_name in fake_properties_list
+        ],
+    )
+
+    # Also mock v2/v3 properties for all other entities (needed by dynamic schema loader)
+    mock_dynamic_schema_requests_with_skip(requests_mock, [endpoint])
+
+    # mock associations calls
+    if stream_retriever.requester._http_method.value == "POST":
+        for association in stream_retriever.requester._parameters.get("associations", []):
+            requests_mock.register_uri(
+                "POST",
+                f"https://api.hubapi.com/crm/v4/associations/{endpoint}/{association}/batch/read",
+                [{"json": {"results": []}, "status_code": 200}],
+            )
+    if stream_class == "contacts":
+        for association in ("contacts", "companies"):
+            requests_mock.register_uri(
+                "POST",
+                f"https://api.hubapi.com/crm/v4/associations/contact/{association}/batch/read",
+                [{"json": {"results": []}, "status_code": 200}],
+            )
+
+    records = run_read(stream)
+    assert records
+    expected_record = {
+        "id": "test_id",
+        "created": "2022-02-25T16:43:11Z",
+        "properties": {
+            "hs_v2_date_entered_prospect": "2024-01-01T00:00:00Z",
+            "hs_v2_date_exited_prospect": "2024-02-01T00:00:00Z",
+            "hs_v2_latest_time_in_prospect": "1 month",
+            "hs_v2_cumulative_time_in_prsopect": "1 month",
+            "hs_v2_some_other_property_in_prospect": "Great property",
+            "hs_time_in_prospect": "1 month",
+            "hs_date_exited_prospect": "2024-02-01T00:00:00Z",
+        },
+        "properties_hs_v2_date_entered_prospect": "2024-01-01T00:00:00Z",
+        "properties_hs_v2_date_exited_prospect": "2024-02-01T00:00:00Z",
+        "properties_hs_v2_latest_time_in_prospect": "1 month",
+        "properties_hs_v2_cumulative_time_in_prsopect": "1 month",
+        "properties_hs_v2_some_other_property_in_prospect": "Great property",
+        "properties_hs_time_in_prospect": "1 month",
+        "properties_hs_date_exited_prospect": "2024-02-01T00:00:00Z",
+    } | cursor_value
+    if stream_class == "contacts":
+        expected_record = expected_record | {"properties_hs_lifecyclestage_prospect_date": "2024-01-01T00:00:00Z"}
+        expected_record["properties"] = expected_record["properties"] | {"hs_lifecyclestage_prospect_date": "2024-01-01T00:00:00Z"}
+    else:
+        expected_record = expected_record | {"properties_hs_date_entered_prospect": "2024-01-01T00:00:00Z"}
+        expected_record["properties"] = expected_record["properties"] | {"hs_date_entered_prospect": "2024-01-01T00:00:00Z"}
+    record = records[0].data if isinstance(records[0], Record) else records[0]
+    assert json.dumps(record, sort_keys=True) == json.dumps(expected_record, sort_keys=True)
+
+
+@pytest.mark.parametrize("sync_mode", [SyncMode.full_refresh, SyncMode.incremental])
+def test_crm_search_streams_with_no_associations(sync_mode, requests_mock, fake_properties_list, config):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    stream_state = AirbyteStateMessage(
+        type=AirbyteStateType.STREAM,
+        stream=AirbyteStreamState(
+            stream_descriptor=StreamDescriptor(name="deal_splits"),
+            stream_state=AirbyteStateBlob(updatedAt="2021-01-01T00:00:00.000000Z"),
+        ),
+    )
+
+    if sync_mode == SyncMode.incremental:
+        stream = find_stream("deal_splits", config, [stream_state])
+    else:
+        stream = find_stream("deal_splits", config)
+    data_field = stream._stream_partition_generator._partition_factory._retriever.record_selector.extractor.field_path[0]
+
+    cursor_value = {"updatedAt": "2022-02-25T16:43:11Z"}
+    responses = [
+        {
+            "json": {
+                data_field: [
+                    {
+                        "id": "test_id",
+                        "created": "2022-02-25T16:43:11Z",
+                    }
+                    | cursor_value
+                ],
+            }
+        }
+    ]
+
+    endpoint_path = "https://api.hubapi.com/crm/v3/objects/deal_split/search"
+    requests_mock.register_uri("POST", endpoint_path, responses)
+
+    properties_path = "https://api.hubapi.com/properties/v2/deal_split/properties"
+    properties_response = [
+        {
+            "json": [
+                {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
+                for property_name in fake_properties_list
+            ],
+            "status_code": 200,
+        }
+    ]
     requests_mock.register_uri("POST", endpoint_path, responses)
     requests_mock.register_uri("GET", properties_path, properties_response)
-    if sync_mode == SyncMode.incremental:
-        records, state = read_incremental(stream, stream_state=stream_state)
-        assert state
-    else:
-        records = read_full_refresh(stream)
+    mock_v3_properties(
+        requests_mock,
+        "deal_split",
+        [
+            {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
+            for property_name in fake_properties_list
+        ],
+    )
+    mock_dynamic_schema_requests_with_skip(requests_mock, ["deal_split"])
+
+    records = run_read(stream)
     assert records
+
+    state = stream.cursor.state
+    assert state == {"updatedAt": "2022-02-25T16:43:11.000000Z"}
+
+
+@freezegun.freeze_time("2022-02-25T17:00:00Z")
+def test_crm_search_streams_requests_contain_custom_properties(requests_mock, fake_properties_list, config):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    stream_state = AirbyteStateMessage(
+        type=AirbyteStateType.STREAM,
+        stream=AirbyteStreamState(
+            stream_descriptor=StreamDescriptor(name="deal_splits"), stream_state=AirbyteStateBlob(updatedAt="2022-02-01T00:00:00.000000Z")
+        ),
+    )
+
+    config["lookback_window"] = 10
+    stream = find_stream("deal_splits", config, [stream_state])
+
+    data_field = stream._stream_partition_generator._partition_factory._retriever.record_selector.extractor.field_path[0]
+
+    cursor_value = {"updatedAt": "2022-02-25T16:43:11Z"}
+    responses = [
+        {
+            "json": {
+                data_field: [
+                    {
+                        "id": "test_id",
+                        "created": "2022-02-25T16:43:11Z",
+                    }
+                    | cursor_value
+                ],
+            }
+        }
+    ]
+
+    # Validates that the json request body contains all the custom properties that are injected via the
+    # `fetch_properties_from_endpoint` component definition so that they are included in the API response
+    def match_request_body(request):
+        return request.json() == {
+            "limit": 200,
+            "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+            "filters": [
+                {"propertyName": "hs_lastmodifieddate", "operator": "GTE", "value": 1643673000000},
+                {"propertyName": "hs_lastmodifieddate", "operator": "LTE", "value": 1645808400000},
+                {"propertyName": "hs_object_id", "operator": "GTE", "value": 0},
+            ],
+            "properties": fake_properties_list,
+            "after": 0,
+        }
+
+    endpoint_path = "https://api.hubapi.com/crm/v3/objects/deal_split/search"
+    requests_mock.register_uri("POST", endpoint_path, responses, additional_matcher=match_request_body)
+    properties_path = "https://api.hubapi.com/properties/v2/deal_split/properties"
+    properties_response = [
+        {
+            "json": [
+                {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
+                for property_name in fake_properties_list
+            ],
+            "status_code": 200,
+        }
+    ]
+    stream._sync_mode = SyncMode.incremental
+    requests_mock.register_uri("GET", properties_path, properties_response)
+    mock_v3_properties(
+        requests_mock,
+        "deal_split",
+        [
+            {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
+            for property_name in fake_properties_list
+        ],
+    )
+    mock_dynamic_schema_requests_with_skip(requests_mock, ["deal_split"])
+    records = run_read(stream)
+
+    assert records
+    state = stream.cursor.state
+    assert state == {"updatedAt": "2022-02-25T16:43:11.000000Z"}
 
 
 @pytest.mark.parametrize(
@@ -250,11 +717,12 @@ def test_crm_search_streams_with_no_associations(sync_mode, common_params,  requ
         {"json": {}, "status_code": 429},
         {"json": {}, "status_code": 502},
         {"json": {}, "status_code": 504},
-        {"text": "Not a JSON", "status_code": 200},
     ],
 )
-def test_common_error_retry(error_response, requests_mock, common_params, fake_properties_list):
+def test_common_error_retry(error_response, requests_mock, config, fake_properties_list, mock_dynamic_schema_requests):
     """Error once, check that we retry and not fail"""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
     properties_response = [
         {"name": property_name, "type": "string", "updatedAt": 1571085954360, "createdAt": 1565059306048}
         for property_name in fake_properties_list
@@ -267,10 +735,11 @@ def test_common_error_retry(error_response, requests_mock, common_params, fake_p
         },
     ]
 
-    stream = Companies(**common_params)
+    stream = find_stream("companies", config)
+    data_field = stream._stream_partition_generator._partition_factory._retriever.record_selector.extractor.field_path[0]
 
     response = {
-        stream.data_field: [
+        data_field: [
             {
                 "id": "test_id",
                 "created": "2022-02-25T16:43:11Z",
@@ -280,59 +749,57 @@ def test_common_error_retry(error_response, requests_mock, common_params, fake_p
         ],
     }
     requests_mock.register_uri("GET", "/properties/v2/company/properties", responses)
-    stream._sync_mode = SyncMode.full_refresh
-    stream_url = stream.url
-    stream._sync_mode = None
-    requests_mock.register_uri("GET", stream_url, [{"json": response}])
-    records = read_full_refresh(stream)
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/objects/company/search", [{"json": response}])
+    associations_responses = [{"json": {"results": []}, "status_code": 200}]
 
-    assert [response[stream.data_field][0]] == records
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v4/associations/company/contacts/batch/read", associations_responses)
+    records = run_read(stream)
+
+    expected_record = response[data_field][0]
+    record = records[0].data if isinstance(records[0], Record) else records[0]
+    assert json.dumps(record, sort_keys=True) == json.dumps(expected_record, sort_keys=True)
     assert len(requests_mock.request_history) > 1
 
 
-def test_contact_lists_transform(requests_mock, common_params):
-    stream = ContactLists(**common_params)
-
+def test_contact_lists_transform(requests_mock, config, custom_object_schema, mock_dynamic_schema_requests):
+    requests_mock.register_uri("GET", "/crm/v3/schemas", json={"results": [custom_object_schema]})
     responses = [
         {
             "json": {
-                stream.data_field: [
+                "lists": [
                     {
                         "listId": 1,
-                        "createdAt": 1654117200000,
-                        "filters": [[{"value": "@hubspot"}]],
+                        "createdAt": "2022-02-25T16:43:11Z",
                     },
                     {
                         "listId": 2,
-                        "createdAt": 1654117200001,
-                        "filters": [[{"value": True}, {"value": "FORM_ABUSE"}]],
+                        "createdAt": "2022-02-25T16:43:11Z",
                     },
                     {
                         "listId": 3,
-                        "createdAt": 1654117200002,
-                        "filters": [[{"value": 1000}]],
+                        "createdAt": "2022-02-25T16:43:11Z",
                     },
                 ]
             }
         }
     ]
 
-    requests_mock.register_uri("GET", stream.url, responses)
-    records = read_full_refresh(stream)
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", responses)
+    records = read_from_stream(config, "contact_lists", SyncMode.full_refresh).records
 
-    assert records[0]["filters"][0][0]["value"] == "@hubspot"
-    assert records[1]["filters"][0][0]["value"] == "True"
-    assert records[1]["filters"][0][1]["value"] == "FORM_ABUSE"
-    assert records[2]["filters"][0][0]["value"] == "1000"
+    assert len(records) > 0
+    for record in records:
+        assert isinstance(record.record.data["updatedAt"], str)
 
 
-def test_client_side_incremental_stream(requests_mock, common_params, fake_properties_list):
-    stream = Forms(**common_params)
-    latest_cursor_value = "2030-01-30T23:46:36.287Z"
+def test_client_side_incremental_stream(mock_dynamic_schema_requests, requests_mock, fake_properties_list, config):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    data_field = "results"
+    latest_cursor_value = "2024-01-30T23:46:36.287000Z"
     responses = [
         {
             "json": {
-                stream.data_field: [
+                data_field: [
                     {"id": "test_id_1", "createdAt": "2022-03-25T16:43:11Z", "updatedAt": "2023-01-30T23:46:36.287Z"},
                     {"id": "test_id_2", "createdAt": "2022-03-25T16:43:11Z", "updatedAt": latest_cursor_value},
                     {"id": "test_id_3", "createdAt": "2022-03-25T16:43:11Z", "updatedAt": "2023-02-20T23:46:36.287Z"},
@@ -350,310 +817,676 @@ def test_client_side_incremental_stream(requests_mock, common_params, fake_prope
         }
     ]
 
-    requests_mock.register_uri("GET", stream.url, responses)
+    requests_mock.register_uri("GET", "https://api.hubapi.com/marketing/v3/forms", responses)
     requests_mock.register_uri("GET", "/properties/v2/form/properties", properties_response)
 
-    list(stream.read_records(SyncMode.incremental))
-    assert stream.state == {stream.cursor_field: pendulum.parse(latest_cursor_value).to_rfc3339_string()}
+    output = read_from_stream(config, "forms", SyncMode.incremental)
+    assert output.state_messages[-1].state.stream.stream_state.__dict__["updatedAt"] == latest_cursor_value
+
+
+def test_custom_object_stream_doesnt_call_hubspot_to_get_json_schema_if_available(
+    requests_mock, custom_object_schema, config, expected_custom_object_json_schema, mock_dynamic_schema_requests
+):
+    adapter = requests_mock.register_uri("GET", "/crm/v3/schemas", json={"results": [custom_object_schema]})
+    streams = discover(get_source(config), config)
+    json_schema = [s.json_schema for s in streams.catalog.catalog.streams if s.name == "animals"][0]
+
+    assert json_schema == expected_custom_object_json_schema
+    # called only once when creating dynamic streams
+    assert adapter.call_count == 1
+
+
+def test_get_custom_objects_metadata_success(
+    requests_mock, custom_object_schema, expected_custom_object_json_schema, config, mock_dynamic_schema_requests
+):
+    requests_mock.register_uri("GET", "/crm/v3/schemas", json={"results": [custom_object_schema]})
+    source_hubspot = get_source(config)
+    streams = discover(source_hubspot, config)
+    custom_stream = [s for s in source_hubspot.streams(config) if s.name == "animals"][0]
+    custom_stream_json_schema = [s.json_schema for s in streams.catalog.catalog.streams if s.name == "animals"][0]
+
+    assert custom_stream_json_schema == expected_custom_object_json_schema
+    assert custom_stream._stream_partition_generator._partition_factory._retriever._parameters["entity"] == "p19936848_Animal"
 
 
 @pytest.mark.parametrize(
-    "state, record, expected",
+    "stream_class, endpoint, cursor_value, fake_properties_list_response, data_to_cast, expected_casted_data",
     [
         (
-            {"updatedAt": ""},
-            {"id": "test_id_1", "updatedAt": "2023-01-30T23:46:36.287Z"},
-            (True, {"updatedAt": "2023-01-30T23:46:36.287000+00:00"}),
+            "deals",
+            "deal",
+            {"updatedAt": "2022-02-25T16:43:11Z"},
+            [("hs_closed_amount", "string")],
+            {"hs_closed_amount": 123456},
+            {"hs_closed_amount": "123456"},
         ),
         (
-            {"updatedAt": "2023-01-30T23:46:36.287000+00:00"},
-            {"id": "test_id_1", "updatedAt": "2023-01-29T01:02:03.123Z"},
-            (False, {"updatedAt": "2023-01-30T23:46:36.287000+00:00"}),
+            "deals",
+            "deal",
+            {"updatedAt": "2022-02-25T16:43:11Z"},
+            [("hs_closed_amount", "integer")],
+            {"hs_closed_amount": "123456"},
+            {"hs_closed_amount": 123456},
+        ),
+        (
+            "deals",
+            "deal",
+            {"updatedAt": "2022-02-25T16:43:11Z"},
+            [("hs_closed_amount", "number")],
+            {"hs_closed_amount": "123456.10"},
+            {"hs_closed_amount": 123456.10},
+        ),
+        (
+            "deals",
+            "deal",
+            {"updatedAt": "2022-02-25T16:43:11Z"},
+            [("hs_closed_amount", "boolean")],
+            {"hs_closed_amount": "1"},
+            {"hs_closed_amount": True},
         ),
     ],
-    ids=[
-        "Empty Sting in state + new record",
-        "State + old record",
-    ],
 )
-def test_empty_string_in_state(state, record, expected, requests_mock, common_params, fake_properties_list):
-    stream = Forms(**common_params)
-    stream.state = state
-    # overcome the availability strartegy issues by mocking the responses
-    # A.K.A: not related to the test at all, but definetely required.
+def test_cast_record_fields_if_needed(
+    stream_class,
+    endpoint,
+    cursor_value,
+    fake_properties_list_response,
+    requests_mock,
+    data_to_cast,
+    expected_casted_data,
+    custom_object_schema,
+    config,
+    mock_dynamic_schema_requests,
+):
+    """
+    Test that the stream cast record fields in properties key with properties endpoint response if needed
+    """
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    stream = find_stream(stream_class, config)
+    data_field = stream._stream_partition_generator._partition_factory._retriever.record_selector.extractor.field_path[0]
+
+    responses = [
+        {
+            "json": {
+                data_field: [{"id": "test_id", "created": "2022-02-25T16:43:11Z", "properties": data_to_cast} | cursor_value],
+            }
+        }
+    ]
+
     properties_response = [
         {
             "json": [
-                {"name": property_name, "type": "string", "CreatedAt": "2023-01-30T23:46:24.355Z", "updatedAt": "2023-01-30T23:46:36.287Z"}
-                for property_name in fake_properties_list
+                {"name": property_name, "type": property_type, "updatedAt": 1571085954360, "createdAt": 1565059306048}
+                for property_name, property_type in fake_properties_list_response
             ],
             "status_code": 200,
         }
     ]
-    requests_mock.register_uri("GET", stream.url, json=record)
-    requests_mock.register_uri("GET", "/properties/v2/form/properties", properties_response)
-    # end of mocking `availability strategy`
 
-    result = stream.filter_by_state(stream.state, record)
-    assert result == expected[0]
-    assert stream.state == expected[1]
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/objects/deal/search", responses)
+    requests_mock.register_uri("GET", f"/properties/v2/{endpoint}/properties", properties_response)
 
+    associations_responses = [{"json": {"results": []}, "status_code": 200}]
 
-@pytest.fixture(name="custom_object_schema")
-def custom_object_schema_fixture():
-    return {
-        "labels": {"this": "that"},
-        "requiredProperties": ["name"],
-        "searchableProperties": ["name"],
-        "primaryDisplayProperty": "name",
-        "secondaryDisplayProperties": [],
-        "archived": False,
-        "restorable": True,
-        "metaType": "PORTAL_SPECIFIC",
-        "id": "7232155",
-        "fullyQualifiedName": "p19936848_Animal",
-        "createdAt": "2022-06-17T18:40:27.019Z",
-        "updatedAt": "2022-06-17T18:40:27.019Z",
-        "objectTypeId": "2-7232155",
-        "properties": [
-            {
-                "name": "name",
-                "label": "Animal name",
-                "type": "string",
-                "fieldType": "text",
-                "description": "The animal name.",
-                "groupName": "animal_information",
-                "options": [],
-                "displayOrder": -1,
-                "calculated": False,
-                "externalOptions": False,
-                "hasUniqueValue": False,
-                "hidden": False,
-                "hubspotDefined": False,
-                "modificationMetadata": {"archivable": True, "readOnlyDefinition": True, "readOnlyValue": False},
-                "formField": True,
-            }
-        ],
-        "associations": [],
-        "name": "animals",
-    }
-
-
-@pytest.fixture(name="expected_custom_object_json_schema")
-def expected_custom_object_json_schema():
-    return {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": ["null", "object"],
-        "additionalProperties": True,
-        "properties": {
-            "id": {"type": ["null", "string"]},
-            "createdAt": {"type": ["null", "string"], "format": "date-time"},
-            "updatedAt": {"type": ["null", "string"], "format": "date-time"},
-            "archived": {"type": ["null", "boolean"]},
-            "properties": {"type": ["null", "object"], "properties": {"name": {"type": ["null", "string"]}}},
-            "properties_name": {"type": ["null", "string"]},
-        },
-    }
-
-
-def test_custom_object_stream_doesnt_call_hubspot_to_get_json_schema_if_available(
-    requests_mock, custom_object_schema, expected_custom_object_json_schema, common_params
-):
-    stream = CustomObject(
-        entity="animals",
-        schema=expected_custom_object_json_schema,
-        fully_qualified_name="p123_animals",
-        custom_properties={"name": {"type": ["null", "string"]}},
-        **common_params,
-    )
-
-    adapter = requests_mock.register_uri("GET", "/crm/v3/schemas", [{"json": {"results": [custom_object_schema]}}])
-    json_schema = stream.get_json_schema()
-
-    assert json_schema == expected_custom_object_json_schema
-    assert not adapter.called
-
-
-def test_contacts_merged_audit_stream_doesnt_call_hubspot_to_get_json_schema(requests_mock, common_params):
-    stream = ContactsMergedAudit(**common_params)
-
-    adapter = requests_mock.register_uri(
-        "GET",
-        f"/properties/v2/{stream.entity}/properties",
-        [
-            {
-                "json": [
-                    {
-                        "name": "hs_object_id",
-                        "label": "Record ID",
-                        "type": "number",
-                    }
-                ]
-            }
-        ],
-    )
-    _ = stream.get_json_schema()
-
-    assert not adapter.called
-
-
-def test_get_custom_objects_metadata_success(requests_mock, custom_object_schema, expected_custom_object_json_schema, api):
-    requests_mock.register_uri("GET", "/crm/v3/schemas", json={"results": [custom_object_schema]})
-    for (entity, fully_qualified_name, schema, custom_properties) in api.get_custom_objects_metadata():
-        assert entity == "animals"
-        assert fully_qualified_name == "p19936848_Animal"
-        assert schema == expected_custom_object_json_schema
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v4/associations/deal/companies/batch/read", associations_responses)
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v4/associations/deal/contacts/batch/read", associations_responses)
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v4/associations/deal/line_items/batch/read", associations_responses)
+    records = read_from_stream(config, "deals", SyncMode.full_refresh).records
+    assert records
+    record = records[0]
+    for casted_key, casted_value in expected_casted_data.items():
+        assert record.record.data["properties"][casted_key] == casted_value
 
 
 @pytest.mark.parametrize(
-    "input_data, unnest_fields, expected_output",
-    (
+    "stream, scopes, url, method",
+    [
+        ("campaigns", "crm.lists.read", "https://api.hubapi.com/email/public/v1/campaigns", "GET"),
         (
-            [{"id": 1, "createdAt": "2020-01-01", "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"}}],
-            [],
-            [{"id": 1, "createdAt": "2020-01-01", "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"}}],
+            "companies",
+            "crm.objects.contacts.read, crm.objects.companies.read",
+            "https://api.hubapi.com/crm/v3/objects/company/search",
+            "POST",
         ),
+        ("companies_property_history", "crm.objects.companies.read", "https://api.hubapi.com/properties/v2/companies/properties", "GET"),
+        ("contact_lists", "crm.lists.read", "https://api.hubapi.com/crm/v3/lists/search", "POST"),
+        ("contacts_property_history", "crm.objects.contacts.read", "https://api.hubapi.com/properties/v2/contacts/properties", "GET"),
+        ("deal_pipelines", "crm.objects.contacts.read", "https://api.hubapi.com/crm/pipelines/2026-09/deals", "GET"),
+        ("deals", "crm.objects.deals.read", "https://api.hubapi.com/crm/v3/objects/deal/search", "POST"),
+        ("deals_property_history", "crm.objects.deals.read", "https://api.hubapi.com/properties/v2/deals/properties", "GET"),
+        ("email_events", "content", "https://api.hubapi.com/email/public/v1/events", "GET"),
+        ("email_subscriptions", "content", "https://api.hubapi.com/email/public/v1/subscriptions", "GET"),
         (
-            [
-                {
-                    "id": 1,
-                    "createdAt": "2020-01-01",
-                    "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"},
-                    "properties": {"phone": "+38044-111-111", "address": "31, Cleveland str, Washington DC"},
-                }
-            ],
-            [],
-            [
-                {
-                    "id": 1,
-                    "createdAt": "2020-01-01",
-                    "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"},
-                    "properties": {"phone": "+38044-111-111", "address": "31, Cleveland str, Washington DC"},
-                    "properties_phone": "+38044-111-111",
-                    "properties_address": "31, Cleveland str, Washington DC",
-                }
-            ],
+            "engagements",
+            "crm.objects.companies.read, crm.objects.contacts.read, crm.objects.deals.read, tickets, e-commerce",
+            "https://api.hubapi.com/engagements/v1/engagements/paged",
+            "GET",
         ),
+        ("engagements_calls", "crm.objects.contacts.read", "https://api.hubapi.com/crm/v3/objects/calls/search", "POST"),
         (
-            [
-                {
-                    "id": 1,
-                    "createdAt": "2020-01-01",
-                    "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"},
-                }
-            ],
-            ["email"],
-            [
-                {
-                    "id": 1,
-                    "createdAt": "2020-01-01",
-                    "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"},
-                    "email_from": "integration-test@airbyte.io",
-                    "email_to": "michael_scott@gmail.com",
-                }
-            ],
+            "engagements_emails",
+            "crm.objects.contacts.read, sales-email-read",
+            "https://api.hubapi.com/crm/v3/objects/emails/search",
+            "POST",
         ),
+        ("engagements_meetings", "crm.objects.contacts.read", "https://api.hubapi.com/crm/v3/objects/meetings/search", "POST"),
+        ("engagements_notes", "crm.objects.contacts.read", "https://api.hubapi.com/crm/v3/objects/notes/search", "POST"),
+        ("engagements_tasks", "crm.objects.contacts.read", "https://api.hubapi.com/crm/v3/objects/tasks/search", "POST"),
+        ("engagements_task_pipelines", "crm.objects.contacts.read", "https://api.hubapi.com/crm/v3/pipelines/tasks", "GET"),
+        ("marketing_emails", "content", "https://api.hubapi.com/marketing/v3/emails", "GET"),
+        ("deals_archived", "contacts, crm.objects.deals.read", "https://api.hubapi.com/crm/v3/objects/deals", "GET"),
+        ("forms", "forms", "https://api.hubapi.com/marketing/v3/forms", "GET"),
+        # form_submissions have parent stream forms
+        # ("form_submissions", "forms", "https://api.hubapi.com/marketing/v3/forms", "GET"),
+        ("goals", "crm.objects.goals.read", "https://api.hubapi.com/crm/v3/objects/goal_targets", "GET"),
+        ("line_items", "e-commerce, crm.objects.line_items.read", "https://api.hubapi.com/crm/v3/objects/line_item", "GET"),
+        ("owners", "crm.objects.owners.read", "https://api.hubapi.com/crm/v3/owners", "GET"),
+        ("owners_archived", "crm.objects.owners.read", "https://api.hubapi.com/crm/v3/owners", "GET"),
+        ("products", "e-commerce", "https://api.hubapi.com/crm/v3/objects/product", "GET"),
+        ("subscription_changes", "content", "https://api.hubapi.com/email/public/v1/subscriptions/timeline", "GET"),
         (
-            [
-                {
-                    "id": 1,
-                    "createdAt": "2020-01-01",
-                    "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"},
-                    "properties": {"phone": "+38044-111-111", "address": "31, Cleveland str, Washington DC"},
-                }
-            ],
-            ["email"],
-            [
-                {
-                    "id": 1,
-                    "createdAt": "2020-01-01",
-                    "email": {"from": "integration-test@airbyte.io", "to": "michael_scott@gmail.com"},
-                    "email_from": "integration-test@airbyte.io",
-                    "email_to": "michael_scott@gmail.com",
-                    "properties": {"phone": "+38044-111-111", "address": "31, Cleveland str, Washington DC"},
-                    "properties_phone": "+38044-111-111",
-                    "properties_address": "31, Cleveland str, Washington DC",
-                }
-            ],
+            "ticket_pipelines",
+            "media_bridge.read, tickets, crm.schemas.custom.read, e-commerce, timeline, contacts, crm.schemas.contacts.read, crm.objects.contacts.read, crm.objects.contacts.write, crm.objects.deals.read, crm.schemas.quotes.read, crm.objects.deals.write, crm.objects.companies.read, crm.schemas.companies.read, crm.schemas.deals.read, crm.schemas.line_items.read, crm.objects.companies.write",
+            "https://api.hubapi.com/crm/v3/pipelines/tickets",
+            "GET",
         ),
-    ),
+        ("workflows", "automation", "https://api.hubapi.com/automation/v3/workflows", "GET"),
+        ("contacts", "crm.objects.contacts.read", "https://api.hubapi.com/crm/v3/objects/contact", "GET"),
+        ("deal_splits", "crm.objects.deals.read", "https://api.hubapi.com/crm/v3/objects/deal_split/search", "POST"),
+        (
+            "leads",
+            "crm.objects.contacts.read, crm.objects.companies.read, crm.objects.leads.read",
+            "https://api.hubapi.com/crm/v3/objects/leads/search",
+            "POST",
+        ),
+        ("listings", "crm.objects.listings.read", "https://api.hubapi.com/crm/v3/objects/listings/search", "POST"),
+        ("tickets", "tickets", "https://api.hubapi.com/crm/v3/objects/ticket/search", "POST"),
+        ("users", "crm.objects.users.read, settings.users.read", "https://api.hubapi.com/settings/v3/users", "GET"),
+    ],
 )
-def test_records_unnester(input_data, unnest_fields, expected_output):
-    unnester = RecordUnnester(fields=unnest_fields)
-    assert list(unnester.unnest(input_data)) == expected_output
+def test_streams_raise_error_message_if_scopes_missing(stream, scopes, url, method, requests_mock, config, mock_dynamic_schema_requests):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    requests_mock.register_uri(method, url, [{"status_code": 403}])
+    catalog = ConfiguredAirbyteCatalogSerializer.load(
+        {
+            "streams": [
+                {
+                    "stream": {"name": stream, "json_schema": {}, "supported_sync_modes": ["full_refresh"]},
+                    "sync_mode": "full_refresh",
+                    "destination_sync_mode": "append",
+                }
+            ]
+        }
+    )
+    state_builder = StateBuilder()
+    if stream != "contacts":
+        state_builder.with_stream_state(stream, {})
+    state = state_builder.build()
+    source_hubspot = get_source(config)
+    output = read(source_hubspot, config=config, catalog=catalog, state=state)
+    assert output.errors[0].trace.error.message == (
+        "Access denied (403). The authenticated user does not have permissions to access the resource. "
+        f"Verify your scopes: {scopes} to access stream {stream}. "
+        f"See details: https://docs.airbyte.com/integrations/sources/hubspot#step-2-configure-the-scopes-for-your-streams-private-app-only"
+    )
 
 
-def test_web_analytics_stream_slices(common_params, mocker):
-    parent_slicer_mock = mocker.patch("airbyte_cdk.sources.streams.http.HttpSubStream.stream_slices")
-    parent_slicer_mock.return_value = (_ for _ in [{"parent": {"id": 1}}])
-
-    pendulum_now_mock = mocker.patch("pendulum.now")
-    pendulum_now_mock.return_value = pendulum.parse(common_params["start_date"]).add(days=50)
-
-    stream = ContactsWebAnalytics(**common_params)
-    slices = list(stream.stream_slices(SyncMode.incremental, cursor_field="occurredAt"))
-
-    assert len(slices) == 2
-    assert all(map(lambda slice: slice["objectId"] == 1, slices))
-
-    assert [("2021-01-10T00:00:00Z", "2021-02-09T00:00:00Z"), ("2021-02-09T00:00:00Z", "2021-03-01T00:00:00Z")] == [
-        (s["occurredAfter"], s["occurredBefore"]) for s in slices
-    ]
+def test_discover_if_scopes_missing(config, requests_mock, mock_dynamic_schema_requests):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    requests_mock.register_uri("GET", "https://api.hubapi.com/properties/v2/companies/properties", [{"status_code": 403}])
+    source_hubspot = get_source(config)
+    output = discover(source_hubspot, config=config)
+    assert output.catalog
 
 
-def test_web_analytics_latest_state(common_params, mocker):
-    parent_slicer_mock = mocker.patch("airbyte_cdk.sources.streams.http.HttpSubStream.stream_slices")
-    parent_slicer_mock.return_value = (_ for _ in [{"parent": {"id": "1"}}])
+def test_read_catalog_with_missing_scopes(config, requests_mock, mock_dynamic_schema_requests):
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    requests_mock.get("https://api.hubapi.com/marketing/v3/emails", json={}, status_code=403)
+    requests_mock.get("https://api.hubapi.com/email/public/v1/subscriptions", json={}, status_code=403)
+    catalog = ConfiguredAirbyteCatalogSerializer.load(
+        {
+            "streams": [
+                {
+                    "stream": {"name": "marketing_emails", "json_schema": {}, "supported_sync_modes": ["full_refresh"]},
+                    "sync_mode": "full_refresh",
+                    "destination_sync_mode": "append",
+                },
+                {
+                    "stream": {"name": "email_subscriptions", "json_schema": {}, "supported_sync_modes": ["full_refresh"]},
+                    "sync_mode": "full_refresh",
+                    "destination_sync_mode": "append",
+                },
+            ]
+        }
+    )
+    state = (
+        StateBuilder()
+        .with_stream_state(
+            "marketing_emails",
+            {},
+        )
+        .with_stream_state(
+            "email_subscriptions",
+            {},
+        )
+        .build()
+    )
+    source_hubspot = get_source(config)
+    output = read(source_hubspot, config=config, catalog=catalog, state=state)
+    assert output.errors
+    assert not output.records
+    error_messages = [error.trace.error.message for error in output.errors]
+    assert error_messages
+    assert (
+        "Access denied (403). The authenticated user does not have permissions to access the resource. "
+        "Verify your scopes: content to access stream email_subscriptions. See details: "
+        "https://docs.airbyte.com/integrations/sources/hubspot#step-2-configure-the-scopes-for-your-streams-private-app-only"
+    ) in error_messages
+    assert (
+        "Access denied (403). The authenticated user does not have permissions to access the resource. "
+        "Verify your scopes: content to access stream marketing_emails. See details: "
+        "https://docs.airbyte.com/integrations/sources/hubspot#step-2-configure-the-scopes-for-your-streams-private-app-only"
+    ) in error_messages
 
-    pendulum_now_mock = mocker.patch("pendulum.now")
-    pendulum_now_mock.return_value = pendulum.parse(common_params["start_date"]).add(days=10)
 
-    parent_slicer_mock = mocker.patch("source_hubspot.streams.Stream.read_records")
-    parent_slicer_mock.return_value = (_ for _ in [{"objectId": "1", "occurredAt": "2021-01-02T00:00:00Z"}])
+def test_list_memberships_stream_exists(config, requests_mock, mock_dynamic_schema_requests):
+    """Test that the list_memberships stream is discovered and has the correct configuration."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    stream = find_stream("list_memberships", config)
+    assert stream.name == "list_memberships"
 
-    stream = ContactsWebAnalytics(**common_params)
-    stream.state = {"1": {"occurredAt": "2021-01-01T00:00:00Z"}}
-    slices = list(stream.stream_slices(SyncMode.incremental, cursor_field="occurredAt"))
-    records = [
-        list(stream.read_records(SyncMode.incremental, cursor_field="occurredAt", stream_slice=stream_slice)) for stream_slice in slices
-    ]
 
-    assert len(slices) == 1
+def test_list_memberships_schema(config, requests_mock, mock_dynamic_schema_requests):
+    """Test that the list_memberships schema contains expected fields."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    stream = find_stream("list_memberships", config)
+    schema = stream.get_json_schema()
+    properties = schema["properties"]
+    assert "recordId" in properties
+    assert "listId" in properties
+    assert "membershipTimestamp" in properties
+    assert properties["membershipTimestamp"].get("format") == "date-time"
+
+
+def test_list_memberships_read(requests_mock, config, mock_dynamic_schema_requests):
+    """Test that list_memberships reads records from the parent contact_lists stream."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    # Mock parent stream (contact_lists)
+    contact_lists_response = {
+        "lists": [
+            {
+                "listId": "42",
+                "createdAt": "2022-02-25T16:43:11Z",
+                "updatedAt": "2022-02-25T16:43:11Z",
+            },
+        ],
+    }
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", json=contact_lists_response)
+
+    # Mock memberships endpoint for list 42
+    memberships_response = {
+        "results": [
+            {
+                "recordId": "101",
+                "membershipTimestamp": "2023-06-15T10:30:00Z",
+            },
+            {
+                "recordId": "102",
+                "membershipTimestamp": "2023-06-16T11:00:00Z",
+            },
+        ],
+    }
+    requests_mock.register_uri("GET", "https://api.hubapi.com/crm/v3/lists/42/memberships", json=memberships_response)
+
+    stream = find_stream("list_memberships", config)
+    records = run_read(stream)
+    assert len(records) == 2
+    assert records[0]["recordId"] == "101"
+    assert records[0]["listId"] == "42"
+    assert isinstance(records[0]["listId"], str)
+    assert records[1]["recordId"] == "102"
+    assert records[1]["listId"] == "42"
+    assert isinstance(records[1]["listId"], str)
+
+
+def test_list_memberships_pagination(requests_mock, config, mock_dynamic_schema_requests):
+    """Test that list_memberships handles cursor-based pagination."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    # Mock parent stream
+    contact_lists_response = {
+        "lists": [
+            {
+                "listId": "1",
+                "createdAt": "2022-02-25T16:43:11Z",
+                "updatedAt": "2022-02-25T16:43:11Z",
+            },
+        ],
+    }
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", json=contact_lists_response)
+
+    # Mock paginated memberships responses
+    page1 = {
+        "results": [{"recordId": "1", "membershipTimestamp": "2023-01-01T00:00:00Z"}],
+        "paging": {"next": {"after": "cursor_abc"}},
+    }
+    page2 = {
+        "results": [{"recordId": "2", "membershipTimestamp": "2023-01-02T00:00:00Z"}],
+    }
+    requests_mock.register_uri(
+        "GET",
+        "https://api.hubapi.com/crm/v3/lists/1/memberships",
+        [{"json": page1}, {"json": page2}],
+    )
+
+    stream = find_stream("list_memberships", config)
+    records = run_read(stream)
+    assert len(records) == 2
+    assert records[0]["recordId"] == "1"
+    assert records[1]["recordId"] == "2"
+
+
+def test_list_memberships_multiple_parent_lists(requests_mock, config, mock_dynamic_schema_requests):
+    """Test that list_memberships iterates over all parent contact lists."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    # Mock parent stream with two lists
+    contact_lists_response = {
+        "lists": [
+            {"listId": "10", "createdAt": "2022-01-01T00:00:00Z", "updatedAt": "2022-01-01T00:00:00Z"},
+            {"listId": "20", "createdAt": "2022-01-01T00:00:00Z", "updatedAt": "2022-01-01T00:00:00Z"},
+        ],
+    }
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", json=contact_lists_response)
+
+    # Mock memberships for list 10
+    requests_mock.register_uri(
+        "GET",
+        "https://api.hubapi.com/crm/v3/lists/10/memberships",
+        json={"results": [{"recordId": "a1", "membershipTimestamp": "2023-01-01T00:00:00Z"}]},
+    )
+    # Mock memberships for list 20
+    requests_mock.register_uri(
+        "GET",
+        "https://api.hubapi.com/crm/v3/lists/20/memberships",
+        json={"results": [{"recordId": "b1", "membershipTimestamp": "2023-02-01T00:00:00Z"}]},
+    )
+
+    stream = find_stream("list_memberships", config)
+    records = run_read(stream)
+    assert len(records) == 2
+    list_ids = {r["listId"] for r in records}
+    assert list_ids == {"10", "20"}
+    for record in records:
+        assert isinstance(record["listId"], str)
+
+
+def test_list_memberships_listid_is_string_for_numeric_values(requests_mock, config, mock_dynamic_schema_requests):
+    """Regression test for oncall #11995.
+
+    The parent `contact_lists` stream returns numeric-looking `listId` values (e.g. "885").
+    When the `list_memberships` stream injects `listId` into child records via an AddFields
+    transformation, the value must remain a string so Avro destinations (which declare the
+    schema as [null, string]) can serialize the records without union-resolution failures.
+
+    Without `value_type: string` on the AddFields transformation, JinjaInterpolation's
+    `_literal_eval` coerces a numeric-looking string like "885" into a Python int, which
+    then fails Avro union resolution against `[null, string]` at the destination.
+    """
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    contact_lists_response = {
+        "lists": [
+            {
+                "listId": "885",
+                "createdAt": "2022-02-25T16:43:11Z",
+                "updatedAt": "2022-02-25T16:43:11Z",
+            },
+        ],
+    }
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", json=contact_lists_response)
+
+    memberships_response = {
+        "results": [
+            {"recordId": "101", "membershipTimestamp": "2023-06-15T10:30:00Z"},
+        ],
+    }
+    requests_mock.register_uri("GET", "https://api.hubapi.com/crm/v3/lists/885/memberships", json=memberships_response)
+
+    stream = find_stream("list_memberships", config)
+    records = run_read(stream)
     assert len(records) == 1
-    assert len(records[0]) == 1
-    assert records[0][0]["objectId"] == "1"
-    assert stream.state["1"]["occurredAt"] == "2021-01-02T00:00:00Z"
+    assert records[0]["listId"] == "885"
+    assert isinstance(records[0]["listId"], str), (
+        f"listId should be a string to match the schema type [null, string], "
+        f"but got {type(records[0]['listId']).__name__} with value {records[0]['listId']!r}"
+    )
 
 
-def test_property_history_transform(common_params):
-    stream = ContactsPropertyHistory(**common_params)
-    versions = [{"value": "Georgia", "timestamp": 1645135236625}]
-    records = [
-        {
-            "vid": 1,
-            "canonical-vid": 1,
-            "portal-id": 1,
-            "is-contact": True,
-            "properties": {"hs_country": {"versions": versions}, "lastmodifieddate": {"value": 1645135236625}},
-        }
-    ]
-    assert [
-        {"vid": 1, "canonical-vid": 1, "portal-id": 1, "is-contact": True, "property": "hs_country", **version} for version in versions
-    ] == list(stream._transform(records=records))
+def test_list_memberships_ignores_invalid_object_type_for_list_400(requests_mock, config, mock_dynamic_schema_requests):
+    """Regression test for oncall #11995 (HTTP 400 `INVALID_OBJECT_TYPE_FOR_LIST`).
+
+    The `/crm/v3/lists/{listId}/memberships` endpoint rejects lists whose `objectTypeId`
+    is not active for the portal (notably Leads, `0-136`) with a 400 response whose body
+    contains `"category": "VALIDATION_ERROR"` and
+    `"subCategory": "ListError.INVALID_OBJECT_TYPE_FOR_LIST"`, even though those same
+    lists are returned by `POST /crm/v3/lists/search`.
+
+    The `list_memberships` stream declares a dedicated error handler that matches this
+    specific 400 response via `error_message_contains: "ListError.INVALID_OBJECT_TYPE_FOR_LIST"`
+    and ignores it so the list is skipped without failing the rest of the stream.
+
+    This test verifies the IGNORE behaviour by:
+    1. Having the parent `contact_lists` endpoint return both a CONTACT list (`0-1`)
+       and a LEADS list (`0-136`).
+    2. Registering the Leads memberships endpoint with the exact 400 response body
+       HubSpot returns in this case.
+    3. Asserting the sync succeeds, returns only the contact-list's memberships, and
+       does call the Leads memberships endpoint exactly once (no retry, no failure).
+    """
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    contact_lists_response = {
+        "lists": [
+            {
+                "listId": "10",
+                "objectTypeId": "0-1",
+                "createdAt": "2022-01-01T00:00:00Z",
+                "updatedAt": "2022-01-01T00:00:00Z",
+            },
+            {
+                "listId": "20",
+                "objectTypeId": "0-136",
+                "createdAt": "2022-01-01T00:00:00Z",
+                "updatedAt": "2022-01-01T00:00:00Z",
+            },
+        ],
+    }
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", json=contact_lists_response)
+
+    requests_mock.register_uri(
+        "GET",
+        "https://api.hubapi.com/crm/v3/lists/10/memberships",
+        json={"results": [{"recordId": "r1", "membershipTimestamp": "2023-01-01T00:00:00Z"}]},
+    )
+    leads_memberships_mock = requests_mock.register_uri(
+        "GET",
+        "https://api.hubapi.com/crm/v3/lists/20/memberships",
+        status_code=400,
+        json={
+            "status": "error",
+            "message": "The objectTypeId 0-136 provided for the list is not valid for this portal.",
+            "category": "VALIDATION_ERROR",
+            "subCategory": "ListError.INVALID_OBJECT_TYPE_FOR_LIST",
+        },
+    )
+
+    stream = find_stream("list_memberships", config)
+    records = run_read(stream)
+
+    assert len(records) == 1
+    assert records[0]["listId"] == "10"
+    assert records[0]["recordId"] == "r1"
+    assert leads_memberships_mock.call_count >= 1, (
+        "The memberships endpoint for the Leads list (objectTypeId=0-136) should be called; "
+        "the 400 VALIDATION_ERROR / ListError.INVALID_OBJECT_TYPE_FOR_LIST response is then ignored."
+    )
 
 
-def test_contacts_membership_transform(common_params):
-    stream = ContactsListMemberships(**common_params)
-    versions = [{"value": "Georgia", "timestamp": 1645135236625}]
-    memberships = [{"membership": 1}]
-    records = [
-        {
-            "vid": 1,
-            "canonical-vid": 1,
-            "portal-id": 1,
-            "is-contact": True,
-            "properties": {"hs_country": {"versions": versions}, "lastmodifieddate": {"value": 1645135236625}},
-            "list-memberships": memberships,
-        }
-    ]
-    assert [{"membership": 1, "canonical-vid": 1} for _ in versions] == list(stream._transform(records=records))
+def test_list_memberships_fails_on_unrelated_400(requests_mock, config, mock_dynamic_schema_requests):
+    """Guard test for the `error_handler_ignore_invalid_object_type_for_list` error handler on
+    `list_memberships_stream`. Ensures the trailing `FAIL` filter on 400 responses is not
+    shadowed by the earlier `IGNORE` filter: a 400 whose body does NOT contain the
+    `ListError.INVALID_OBJECT_TYPE_FOR_LIST` marker must still fail the stream.
+    """
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+
+    contact_lists_response = {
+        "lists": [
+            {
+                "listId": "30",
+                "objectTypeId": "0-1",
+                "createdAt": "2022-01-01T00:00:00Z",
+                "updatedAt": "2022-01-01T00:00:00Z",
+            },
+        ],
+    }
+    requests_mock.register_uri("POST", "https://api.hubapi.com/crm/v3/lists/search", json=contact_lists_response)
+
+    unrelated_400_mock = requests_mock.register_uri(
+        "GET",
+        "https://api.hubapi.com/crm/v3/lists/30/memberships",
+        status_code=400,
+        json={
+            "status": "error",
+            "message": "Invalid request payload.",
+            "category": "VALIDATION_ERROR",
+        },
+    )
+
+    stream = find_stream("list_memberships", config)
+    with pytest.raises(AirbyteTracedException):
+        run_read(stream)
+
+    assert unrelated_400_mock.call_count >= 1
+
+
+@pytest.mark.parametrize(
+    "stream_name,lookback_minutes,expected_timedelta",
+    [
+        pytest.param("companies_property_history", 0, datetime.timedelta(0), id="companies-default-no-lookback"),
+        pytest.param("contacts_property_history", 0, datetime.timedelta(0), id="contacts-default-no-lookback"),
+        pytest.param("deals_property_history", 0, datetime.timedelta(0), id="deals-default-no-lookback"),
+        pytest.param("companies_property_history", 60, datetime.timedelta(minutes=60), id="companies-60min-lookback"),
+        pytest.param("contacts_property_history", 1440, datetime.timedelta(minutes=1440), id="contacts-1day-lookback"),
+        pytest.param("deals_property_history", 43200, datetime.timedelta(minutes=43200), id="deals-30day-lookback"),
+    ],
+)
+def test_property_history_streams_lookback_window(
+    requests_mock, config, stream_name, lookback_minutes, expected_timedelta, mock_dynamic_schema_requests
+):
+    """Property history streams use the `property_history_lookback_window` config
+    to set lookback and prevent cursor drift from HubSpot calculated properties."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    config["property_history_lookback_window"] = lookback_minutes
+    stream = find_stream(stream_name, config)
+    cursor = stream._cursor
+    assert (
+        cursor._lookback_window == expected_timedelta
+    ), f"{stream_name} with {lookback_minutes}min config: expected {expected_timedelta}, got {cursor._lookback_window}"
+
+
+PROPERTY_HISTORY_STREAMS = [
+    pytest.param("deals_property_history", "deals", "deals_property_history_properties", id="deals"),
+    pytest.param("contacts_property_history", "contacts", "contacts_property_history_properties", id="contacts"),
+    pytest.param("companies_property_history", "companies", "companies_property_history_properties", id="companies"),
+]
+
+
+def _mock_property_history_stream(requests_mock, entity, properties):
+    """Mock the properties endpoint and the CRM objects endpoint for a property history stream."""
+    requests_mock.get("https://api.hubapi.com/crm/v3/schemas", json={}, status_code=200)
+    requests_mock.get(
+        f"https://api.hubapi.com/properties/v2/{entity}/properties",
+        json=[{"name": name, "type": "string"} for name in properties],
+        status_code=200,
+    )
+    objects_mock = requests_mock.get(
+        f"https://api.hubapi.com/crm/v3/objects/{entity}",
+        json={
+            "results": [
+                {
+                    "id": "123",
+                    "propertiesWithHistory": {
+                        name: [{"value": "value", "timestamp": "2021-01-10T00:00:00.000Z", "sourceType": "CRM"}] for name in properties
+                    },
+                }
+            ]
+        },
+        status_code=200,
+    )
+    return objects_mock
+
+
+def _requested_properties_with_history(objects_mock):
+    """Return the flattened list of `propertiesWithHistory` values sent on requests to the objects endpoint."""
+    requested = []
+    for request in objects_mock.request_history:
+        for value in request.qs.get("propertieswithhistory", []):
+            requested.extend(value.split(","))
+    return requested
+
+
+@pytest.mark.parametrize("stream_name,entity,config_key", PROPERTY_HISTORY_STREAMS)
+def test_property_history_streams_filter_properties(requests_mock, config, stream_name, entity, config_key):
+    """When `<entity>_property_history_properties` is set, only the configured
+    properties are requested in `propertiesWithHistory`."""
+    config[config_key] = ["dealstage"]
+    objects_mock = _mock_property_history_stream(requests_mock, entity, ["dealstage", "amount", "hs_analytics_source"])
+
+    output = read_from_stream(config, stream_name, SyncMode.full_refresh)
+
+    assert objects_mock.call_count >= 1
+    assert _requested_properties_with_history(objects_mock) == ["dealstage"]
+    assert output.records
+
+
+@pytest.mark.parametrize("stream_name,entity,config_key", PROPERTY_HISTORY_STREAMS)
+def test_property_history_streams_all_properties_by_default(requests_mock, config, stream_name, entity, config_key):
+    """Without the config option, history is requested for every property."""
+    all_properties = ["dealstage", "amount", "hs_analytics_source"]
+    objects_mock = _mock_property_history_stream(requests_mock, entity, all_properties)
+
+    output = read_from_stream(config, stream_name, SyncMode.full_refresh)
+
+    assert objects_mock.call_count >= 1
+    assert sorted(_requested_properties_with_history(objects_mock)) == sorted(all_properties)
+    assert output.records
+
+
+@pytest.mark.parametrize("stream_name,entity,config_key", PROPERTY_HISTORY_STREAMS)
+def test_property_history_streams_empty_list_config(requests_mock, config, stream_name, entity, config_key):
+    """An empty list behaves like an unset config: all properties are requested."""
+    config[config_key] = []
+    all_properties = ["dealstage", "amount"]
+    objects_mock = _mock_property_history_stream(requests_mock, entity, all_properties)
+
+    read_from_stream(config, stream_name, SyncMode.full_refresh)
+
+    assert sorted(_requested_properties_with_history(objects_mock)) == sorted(all_properties)
+
+
+@pytest.mark.parametrize("stream_name,entity,config_key", PROPERTY_HISTORY_STREAMS)
+def test_property_history_streams_nonexistent_property(requests_mock, config, stream_name, entity, config_key):
+    """A configured property absent from the properties endpoint filters out
+    everything; the sync must not crash. The objects request is still sent,
+    with an empty `propertiesWithHistory` parameter."""
+    config[config_key] = ["nonexistent_property"]
+    objects_mock = _mock_property_history_stream(requests_mock, entity, ["dealstage", "amount"])
+
+    read_from_stream(config, stream_name, SyncMode.full_refresh)
+
+    assert objects_mock.call_count >= 1
+    assert _requested_properties_with_history(objects_mock) == [""]

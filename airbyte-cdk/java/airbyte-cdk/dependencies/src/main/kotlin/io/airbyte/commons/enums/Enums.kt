@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.commons.enums
@@ -60,7 +60,7 @@ class Enums {
 
         inline fun <T1 : Enum<T1>, reified T2 : Enum<T2>> convertListTo(
             ies: List<T1>,
-            oe: Class<T2>
+            oe: Class<T2>,
         ): List<T2?> {
             return ies.map { convertTo(it, oe) }
         }

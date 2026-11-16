@@ -7,7 +7,11 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, List, Mapping
 
+import orjson
+
 from airbyte_cdk import AirbyteEntrypoint, Source, create_connector_config_control_message
+from airbyte_cdk.models import AirbyteMessageSerializer
+
 
 logger = logging.getLogger("airbyte_logger")
 
@@ -15,13 +19,11 @@ logger = logging.getLogger("airbyte_logger")
 class MigrateConfig(ABC):
     @classmethod
     @abstractmethod
-    def should_migrate(cls, config: Mapping[str, Any]) -> bool:
-        ...
+    def should_migrate(cls, config: Mapping[str, Any]) -> bool: ...
 
     @classmethod
     @abstractmethod
-    def migrate_config(cls, config: Mapping[str, Any]) -> Mapping[str, Any]:
-        ...
+    def migrate_config(cls, config: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
     @classmethod
     def modify_and_save(cls, config_path: str, source: Source, config: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -48,7 +50,7 @@ class MigrateConfig(ABC):
         Args:
         - migrated_config (Mapping[str, Any]): The migrated configuration.
         """
-        print(create_connector_config_control_message(migrated_config).json(exclude_unset=True))
+        print((orjson.dumps(AirbyteMessageSerializer.dump(create_connector_config_control_message(migrated_config))).decode()))
 
     @classmethod
     def migrate(cls, args: List[str], source: Source) -> None:

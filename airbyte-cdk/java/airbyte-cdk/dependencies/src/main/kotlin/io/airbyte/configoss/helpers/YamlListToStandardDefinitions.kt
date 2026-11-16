@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.configoss.helpers
 
@@ -31,12 +31,12 @@ object YamlListToStandardDefinitions {
         java.util.Map.ofEntries(
             AbstractMap.SimpleImmutableEntry(
                 StandardDestinationDefinition::class.java.canonicalName,
-                "destinationDefinitionId"
+                "destinationDefinitionId",
             ),
             AbstractMap.SimpleImmutableEntry(
                 StandardSourceDefinition::class.java.canonicalName,
-                "sourceDefinitionId"
-            )
+                "sourceDefinitionId",
+            ),
         )
 
     fun toStandardSourceDefinitions(yamlStr: String?): List<StandardSourceDefinition?> {

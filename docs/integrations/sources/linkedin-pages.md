@@ -104,16 +104,56 @@ The source LinkedIn Pages can use either the `client_id`, `client_secret` and `r
    * Click **Request access token** and once generated, **save your Refresh token**
 
 6. **Use the `client_id`, `client_secret` and `refresh_token`** from Steps 2 and 5 to autorize the LinkedIn Pages connector within the Airbyte UI.
-   * As mentioned earlier, you can also simply use the Access token auth method for 60-day access.
+   - As mentioned earlier, you can also simply use the Access token auth method for 60-day access.
+
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
+## Troubleshooting
+
+- **Invalid or expired access token (401):** Re-authenticate the source to obtain a valid LinkedIn access token.
+- **Organization access denied (403):** Re-authenticate with the scope named in the error. If LinkedIn does not name a scope, authorize `r_organization_social` and `rw_organization_admin`, and ensure the authorized member has the `ADMINISTRATOR` role on the configured organization.
+- **Organization not found or inaccessible (404):** Verify the Organization ID, that the page is active, the member's admin role, and the app's API access. The connection check requests this single organization by ID; it does not list the member's organizations.
 
 ## Changelog
 
 <details>
   <summary>Expand to review</summary>
 
-| Version | Date       | Pull Request                                             | Subject                                              |
-|:--------|:-----------| :------------------------------------------------------- | :--------------------------------------------------- |
-| 1.1.1   | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version   |
+| Version | Date | Pull Request | Subject |
+| :------ | :--- | :----------- | :------ |
+| 1.2.3 | 2026-11-10 | [91631](https://github.com/airbytehq/airbyte/pull/91631) | Update dependencies |
+| 1.2.2 | 2026-11-03 | [78804](https://github.com/airbytehq/airbyte/pull/78804) | Update dependencies |
+| 1.2.1 | 2026-10-30 | [90259](https://github.com/airbytehq/airbyte/pull/90259) | Explain missing LinkedIn scopes and organization access failures in connection checks without echoing raw API errors |
+| 1.2.0 | 2026-10-26 | [89710](https://github.com/airbytehq/airbyte/pull/89710) | Retry rate limits and server errors with backoff, report expired tokens, missing permissions and retired API versions clearly, request only whole days for `DAY` and complete months for `MONTH` time-bound statistics (each month now arrives 2 days after it ends), add a concurrency option, and migrate legacy configs |
+| 1.1.27 | 2026-10-20 | [89366](https://github.com/airbytehq/airbyte/pull/89366) | Update LinkedIn API version to 202610 |
+| 1.1.26 | 2026-09-14 | [85905](https://github.com/airbytehq/airbyte/pull/85905) | Update LinkedIn Marketing API version from 202503 to 202608 |
+| 1.1.25 | 2025-05-24 | [60685](https://github.com/airbytehq/airbyte/pull/60685) | Update dependencies |
+| 1.1.24 | 2025-05-10 | [59786](https://github.com/airbytehq/airbyte/pull/59786) | Update dependencies |
+| 1.1.23 | 2025-05-03 | [58801](https://github.com/airbytehq/airbyte/pull/58801) | Update dependencies |
+| 1.1.22 | 2025-04-19 | [58174](https://github.com/airbytehq/airbyte/pull/58174) | Update dependencies |
+| 1.1.21 | 2025-04-12 | [57721](https://github.com/airbytehq/airbyte/pull/57721) | Update dependencies |
+| 1.1.20 | 2025-04-05 | [56679](https://github.com/airbytehq/airbyte/pull/56679) | Update dependencies |
+| 1.1.19 | 2025-03-22 | [56029](https://github.com/airbytehq/airbyte/pull/56029) | Update dependencies |
+| 1.1.18 | 2025-03-18 | [55816](https://github.com/airbytehq/airbyte/pull/55816) | Bump LinkedIn API to 202503 |
+| 1.1.17 | 2025-03-08 | [55441](https://github.com/airbytehq/airbyte/pull/55441) | Update dependencies |
+| 1.1.16 | 2025-03-01 | [54775](https://github.com/airbytehq/airbyte/pull/54775) | Update dependencies |
+| 1.1.15 | 2025-02-22 | [54339](https://github.com/airbytehq/airbyte/pull/54339) | Update dependencies |
+| 1.1.14 | 2025-02-15 | [53859](https://github.com/airbytehq/airbyte/pull/53859) | Update dependencies |
+| 1.1.13 | 2025-02-08 | [53256](https://github.com/airbytehq/airbyte/pull/53256) | Update dependencies |
+| 1.1.12 | 2025-02-01 | [52767](https://github.com/airbytehq/airbyte/pull/52767) | Update dependencies |
+| 1.1.11 | 2025-01-25 | [52246](https://github.com/airbytehq/airbyte/pull/52246) | Update dependencies |
+| 1.1.10 | 2025-01-18 | [51798](https://github.com/airbytehq/airbyte/pull/51798) | Update dependencies |
+| 1.1.9 | 2025-01-11 | [51149](https://github.com/airbytehq/airbyte/pull/51149) | Update dependencies |
+| 1.1.8 | 2024-12-28 | [50645](https://github.com/airbytehq/airbyte/pull/50645) | Update dependencies |
+| 1.1.7 | 2024-12-21 | [50114](https://github.com/airbytehq/airbyte/pull/50114) | Update dependencies |
+| 1.1.6 | 2024-12-14 | [49593](https://github.com/airbytehq/airbyte/pull/49593) | Update dependencies |
+| 1.1.5 | 2024-12-12 | [49272](https://github.com/airbytehq/airbyte/pull/49272) | Update dependencies |
+| 1.1.4 | 2024-12-11 | [48924](https://github.com/airbytehq/airbyte/pull/48924) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 1.1.3 | 2024-10-29 | [47749](https://github.com/airbytehq/airbyte/pull/47749) | Update dependencies |
+| 1.1.2 | 2024-10-28 | [47455](https://github.com/airbytehq/airbyte/pull/47455) | Update dependencies |
+| 1.1.1 | 2024-08-16 | [44196](https://github.com/airbytehq/airbyte/pull/44196) | Bump source-declarative-manifest version |
 | 1.1.0 | 2024-08-15 | [44132](https://github.com/airbytehq/airbyte/pull/44132) | Refactor connector to manifest-only format |
 | 1.0.17 | 2024-08-10 | [43560](https://github.com/airbytehq/airbyte/pull/43560) | Update dependencies |
 | 1.0.16 | 2024-08-03 | [43281](https://github.com/airbytehq/airbyte/pull/43281) | Update dependencies |

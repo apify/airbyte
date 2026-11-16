@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
 import pendulum
+
 
 ACCESS_TOKEN = "test_access_token"
 LWA_APP_ID = "amazon_app_id"
@@ -18,8 +19,7 @@ REFRESH_TOKEN = "amazon_refresh_token"
 
 CONFIG_START_DATE = "2023-01-01T00:00:00Z"
 CONFIG_END_DATE = "2023-01-30T00:00:00Z"
-VENDOR_TRAFFIC_REPORT_CONFIG_END_DATE = "2023-01-01T23:59:59Z"
-NOW = pendulum.now(tz="utc")
+NOW = pendulum.datetime(year=2024, month=6, day=1)
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
@@ -42,6 +42,51 @@ class ConfigBuilder:
 
     def with_end_date(self, end_date: datetime) -> ConfigBuilder:
         self._config["replication_end_date"] = end_date.strftime(TIME_FORMAT)
+        return self
+
+    def without_end_date(self) -> ConfigBuilder:
+        """Drop the default end date so the stream's own end_datetime expression decides the bound."""
+        self._config.pop("replication_end_date", None)
+        return self
+
+    def with_asin_granularity(self, granularity: str) -> ConfigBuilder:
+        self._config["sales_and_traffic_report_asin_granularity"] = granularity
+        return self
+
+    def with_max_done_report_age_hours(self, hours: int) -> ConfigBuilder:
+        self._config["max_done_report_age_hours"] = hours
+        return self
+
+    def with_failed_retry_wait_time_in_seconds(self, seconds: int) -> ConfigBuilder:
+        self._config["failed_retry_wait_time_in_seconds"] = seconds
+        return self
+
+    def with_account_type(self, account_type: str) -> ConfigBuilder:
+        self._config["account_type"] = account_type
+        return self
+
+    def with_report_stream_lookback_window_in_hours(self, hours: int) -> ConfigBuilder:
+        self._config["report_stream_lookback_window_in_hours"] = hours
+        return self
+
+    def with_period_in_days(self, days: int) -> ConfigBuilder:
+        self._config["period_in_days"] = days
+        return self
+
+    def with_report_options_list(self, options_list: list) -> ConfigBuilder:
+        self._config["report_options_list"] = options_list
+        return self
+
+    def with_inbound_rolling_days(self, days: int) -> ConfigBuilder:
+        self._config["inbound_replication_mode"] = "rolling_days"
+        self._config["inbound_rolling_days"] = days
+        return self
+
+    def with_inbound_fixed_window(self, start_datetime: datetime, end_datetime: Optional[datetime] = None) -> ConfigBuilder:
+        self._config["inbound_replication_mode"] = "fixed"
+        self._config["inbound_start_datetime"] = start_datetime.strftime(TIME_FORMAT)
+        if end_datetime is not None:
+            self._config["inbound_end_datetime"] = end_datetime.strftime(TIME_FORMAT)
         return self
 
     def build(self) -> Dict[str, str]:

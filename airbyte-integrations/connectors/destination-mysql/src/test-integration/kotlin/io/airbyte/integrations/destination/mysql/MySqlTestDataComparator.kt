@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.integrations.destination.mysql
 
@@ -27,7 +27,7 @@ class MySqlTestDataComparator : AdvancedTestDataComparator() {
 
     override fun compareBooleanValues(
         firstBooleanValue: String,
-        secondBooleanValue: String
+        secondBooleanValue: String,
     ): Boolean {
         return if (
             secondBooleanValue.equals("true", ignoreCase = true) ||

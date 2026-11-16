@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.standardtest.destination.typing_deduping
 
@@ -106,7 +106,7 @@ abstract class JdbcTypingDedupingTest(dialect: SQLDialect = SQLDialect.DEFAULT) 
     @Throws(Exception::class)
     override fun dumpFinalTableRecords(
         streamNamespace: String?,
-        streamName: String
+        streamName: String,
     ): List<JsonNode> {
         var streamNamespace = streamNamespace
         if (streamNamespace == null) {
@@ -115,7 +115,7 @@ abstract class JdbcTypingDedupingTest(dialect: SQLDialect = SQLDialect.DEFAULT) 
         return database!!.queryJsons(
             dslContext
                 .selectFrom(name(streamNamespace, Names.toAlphanumericAndUnderscore(streamName)))
-                .sql
+                .sql,
         )
     }
 

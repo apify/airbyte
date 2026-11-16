@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.commons.stream
 
@@ -27,7 +27,7 @@ internal class AirbyteStreamStatusHolderTest {
             StreamDescriptor()
                 .withName(airbyteStreamNameAndNamespacePair.name)
                 .withNamespace(airbyteStreamNameAndNamespacePair.namespace),
-            traceMessage.streamStatus.streamDescriptor
+            traceMessage.streamStatus.streamDescriptor,
         )
     }
 
@@ -46,7 +46,7 @@ internal class AirbyteStreamStatusHolderTest {
             StreamDescriptor()
                 .withName(airbyteStreamNameAndNamespacePair.name)
                 .withNamespace(airbyteStreamNameAndNamespacePair.namespace),
-            traceMessage.streamStatus.streamDescriptor
+            traceMessage.streamStatus.streamDescriptor,
         )
     }
 }

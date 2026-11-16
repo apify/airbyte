@@ -1,109 +1,94 @@
-# Faker
+# Sample Data (Faker)
 
-## Sync overview
+The Sample Data source generates realistic fake data using the Python [`mimesis`](https://mimesis.name/en/master/) library. It produces an e-commerce-like dataset useful for testing, demos, and development.
 
-The Sample Data (Faker) source generates sample data using the python
-[`mimesis`](https://mimesis.name/en/master/) package.
+## Prerequisites
 
-### Output schema
+None. This connector generates data locally and does not connect to an external API.
 
-This source will generate an "e-commerce-like" dataset with users, products, and purchases. Here's
-what is produced at a Postgres destination connected to this source:
+If you run this connector as a Python package, for example with [PyAirbyte](https://docs.airbyte.com/developers/pyairbyte), you need Python 3.11 or 3.12. Starting with version 7.2.2, the connector no longer supports Python 3.10.
 
-```sql
-CREATE TABLE "public"."users" (
-    "address" jsonb,
-    "occupation" text,
-    "gender" text,
-    "academic_degree" text,
-    "weight" int8,
-    "created_at" timestamptz,
-    "language" text,
-    "telephone" text,
-    "title" text,
-    "updated_at" timestamptz,
-    "nationality" text,
-    "blood_type" text,
-    "name" text,
-    "id" float8,
-    "age" int8,
-    "email" text,
-    "height" text,
-    -- "_airbyte_ab_id" varchar,
-    -- "_airbyte_emitted_at" timestamptz,
-    -- "_airbyte_normalized_at" timestamptz,
-    -- "_airbyte_users_hashid" text
-);
+## Supported streams
 
-CREATE TABLE "public"."users_address" (
-    "_airbyte_users_hashid" text,
-    "country_code" text,
-    "province" text,
-    "city" text,
-    "street_number" text,
-    "state" text,
-    "postal_code" text,
-    "street_name" text,
-    -- "_airbyte_ab_id" varchar,
-    -- "_airbyte_emitted_at" timestamptz,
-    -- "_airbyte_normalized_at" timestamptz,
-    -- "_airbyte_address_hashid" text
-);
+This source has three streams: `users`, `products`, and `purchases`. All streams support full refresh and incremental sync, with `id` as the primary key and `updated_at` as the cursor field.
 
-CREATE TABLE "public"."products" (
-    "id" float8,
-    "make" text,
-    "year" float8,
-    "model" text,
-    "price" float8,
-    "created_at" timestamptz,
-    -- "_airbyte_ab_id" varchar,
-    -- "_airbyte_emitted_at" timestamptz,
-    -- "_airbyte_normalized_at" timestamptz,
-    -- "_airbyte_dev_products_hashid" text,
-);
+### Users
 
-CREATE TABLE "public"."purchases" (
-    "id" float8,
-    "user_id" float8,
-    "product_id" float8,
-    "purchased_at" timestamptz,
-    "added_to_cart_at" timestamptz,
-    "returned_at" timestamptz,
-    -- "_airbyte_ab_id" varchar,
-    -- "_airbyte_emitted_at" timestamptz,
-    -- "_airbyte_normalized_at" timestamptz,
-    -- "_airbyte_dev_purchases_hashid" text,
-);
+Each user record contains identity and demographic fields: `id`, `created_at`, `updated_at`, `name`, `title`, `age`, `email`, `telephone`, `gender`, `language`, `academic_degree`, `nationality`, `occupation`, `height`, `blood_type`, `weight`, and an embedded `address` object with `street_number`, `street_name`, `city`, `state`, `province`, `postal_code`, and `country_code`. The number of user records is controlled by the `count` configuration option.
 
-```
+### Products
 
-### Features
+Product records represent vehicles with fields: `id`, `make`, `model`, `year`, `price`, `created_at`, and `updated_at`. The products stream draws from a fixed catalog of 100 products. The `count` option limits how many of those 100 products are emitted; setting `count` higher than 100 still produces at most 100 products.
 
-| Feature           | Supported?\(Yes/No\) | Notes |
-| :---------------- | :------------------- | :---- |
-| Full Refresh Sync | Yes                  |       |
-| Incremental Sync  | Yes                  |       |
-| Namespaces        | No                   |       |
+### Purchases
 
-Of note, if you choose `Incremental Sync`, state will be maintained between syncs, and once you hit
-`count` records, no new records will be added.
+Each purchase record includes: `id`, `user_id`, `product_id`, `created_at`, `updated_at`, `added_to_cart_at`, `purchased_at`, and `returned_at`. Items added to a cart have a 70% chance of being purchased, and purchased items have a 15% chance of being returned. The `purchased_at` and `returned_at` fields are nullable. The connector generates roughly one purchase per user, so the total number of purchases scales with `count`.
 
-You can choose a specific `seed` (integer) as an option for this connector which will guarantee that
-the same fake records are generated each time. Otherwise, random data will be created on each
-subsequent sync.
+## Features
 
-### Requirements
+| Feature           | Supported? |
+| :---------------- | :--------- |
+| Full Refresh Sync | Yes        |
+| Incremental Sync  | Yes        |
+| Namespaces        | No         |
 
-None!
+## Configuration
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| **Count** | integer | 1000 | The total number of user records to generate. The purchases stream scales proportionally. Also limits how many of the 100 available products are emitted (setting `count` above 100 has no additional effect on products). |
+| **Seed** | integer | -1 | Controls random data generation. Set a specific value to produce the same records on each sync. Leave at `-1` for random data. |
+| **Always Updated** | boolean | true | When `true`, every sync emits all records with fresh `updated_at` timestamps. When `false`, the connector stops emitting records after the initial sync produces `count` records. |
+| **Records Per Stream Slice** | integer | 1000 | The number of records per stream slice before a state checkpoint is emitted. |
+| **Parallelism** | integer | 4 | The number of parallel workers for data generation. Set this to the number of CPUs allocated to the connector. |
 
 ## Changelog
 
 <details>
   <summary>Expand to review</summary>
 
-| Version | Date       | Pull Request                                                                                                          | Subject                                                                                                         |
-| :------ | :--------- | :-------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| Version     | Date       | Pull Request                                                                                                          | Subject                                                                                                         |
+|:------------|:-----------| :-------------------------------------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------|
+| 7.2.3 | 2026-11-12 | [89529](https://github.com/airbytehq/airbyte/pull/89529) | Add support for Python 3.13 and upgrade to Airbyte CDK 7 |
+| 7.2.2 | 2026-11-10 | [90918](https://github.com/airbytehq/airbyte/pull/90918) | Raised the minimum supported Python version to 3.11 |
+| 7.2.1 | 2026-07-10 | [81653](https://github.com/airbytehq/airbyte/pull/81653) | chore(source-faker): dummy version bump for progressive rollout (autopilot) testing |
+| 7.2.0 | 2026-07-09 | [81556](https://github.com/airbytehq/airbyte/pull/81556) | Promoted release candidate to GA |
+| 7.2.0-rc.2 | 2026-06-24 | [80776](https://github.com/airbytehq/airbyte/pull/80776) | Test autopilot progressive rollout lifecycle |
+| 7.2.0-rc.1 | 2026-06-09 | [79331](https://github.com/airbytehq/airbyte/pull/79331) | Progressive rollout e2e test |
+| 7.1.1 | 2026-05-13 | [78075](https://github.com/airbytehq/airbyte/pull/78075) | Re-release to verify PyPI README publishing |
+| 7.1.0 | 2026-03-31 | [75941](https://github.com/airbytehq/airbyte/pull/75941) | Promoted release candidate to GA |
+| 7.1.0-rc.2 | 2026-03-31 | [75926](https://github.com/airbytehq/airbyte/pull/75926) | Bump source-faker to RC2 for progressive rollout e2e test |
+| 7.1.0-rc.1 | 2026-03-31 | [75908](https://github.com/airbytehq/airbyte/pull/75908) | test: progressive rollout e2e test on source-faker |
+| 7.0.4 | 2026-03-31 | [75657](https://github.com/airbytehq/airbyte/pull/75657) | Patch version bump (test publish) |
+| 7.0.3 | 2026-03-20 | [75256](https://github.com/airbytehq/airbyte/pull/75256) | Re-release to verify yank/un-yank behavior in ops CLI registry pipeline |
+| 7.0.2 | 2026-03-19 | [75232](https://github.com/airbytehq/airbyte/pull/75232) | Patch version bump (ops CLI registry post-launch test) |
+| 7.0.1 | 2026-03-13 | [74818](https://github.com/airbytehq/airbyte/pull/74818) | Patch version bump (publish test) |
+| 7.0.0 | 2026-03-05 | [74318](https://github.com/airbytehq/airbyte/pull/74318) | Test breaking change to validate breaking change infrastructure |
+| 6.2.38 | 2025-11-12 | [69289](https://github.com/airbytehq/airbyte/pull/69289) | Add externalDocumentationUrls field to metadata |
+| 6.2.37 | 2025-10-21 | [68572](https://github.com/airbytehq/airbyte/pull/68572) | Update dependencies |
+| 6.2.36 | 2025-10-14 | [67806](https://github.com/airbytehq/airbyte/pull/67806) | Update dependencies |
+| 6.2.35 | 2025-10-07 | [67290](https://github.com/airbytehq/airbyte/pull/67290) | Update dependencies |
+| 6.2.34 | 2025-09-30 | [65779](https://github.com/airbytehq/airbyte/pull/65779) | Update dependencies |
+| 6.2.33 | 2025-09-03 | [65914](https://github.com/airbytehq/airbyte/pull/65914) | Upgrade CDK to 6.28.0 and remove pendulum dependency |
+| 6.2.32 | 2025-08-23 | [65273](https://github.com/airbytehq/airbyte/pull/65273) | Update dependencies |
+| 6.2.31 | 2025-08-16 | [65006](https://github.com/airbytehq/airbyte/pull/65006) | Update dependencies |
+| 6.2.30 | 2025-08-09 | [64799](https://github.com/airbytehq/airbyte/pull/64799) | Update dependencies |
+| 6.2.29 | 2025-07-26 | [63953](https://github.com/airbytehq/airbyte/pull/63953) | Update dependencies |
+| 6.2.28 | 2025-07-19 | [63534](https://github.com/airbytehq/airbyte/pull/63534) | Update dependencies |
+| 6.2.27 | 2025-07-17 | [63354](https://github.com/airbytehq/airbyte/pull/63354) | Updated icon |
+| 6.2.26 | 2025-07-16 | [63342](https://github.com/airbytehq/airbyte/pull/63342) | Rendered name changed to `Sample Data` |
+| 6.2.26-rc.1 | 2025-06-16 | [61645](https://github.com/airbytehq/airbyte/pull/61645) | Update for testing |
+| 6.2.25-rc.1 | 2025-04-07 | [57500](https://github.com/airbytehq/airbyte/pull/57500) | Update for testing |
+| 6.2.24 | 2025-04-05 | [57263](https://github.com/airbytehq/airbyte/pull/57263) | Update dependencies |
+| 6.2.23 | 2025-03-29 | [56502](https://github.com/airbytehq/airbyte/pull/56502) | Update dependencies |
+| 6.2.22 | 2025-03-22 | [46821](https://github.com/airbytehq/airbyte/pull/46821) | Update dependencies |
+| 6.2.21 | 2025-03-11 | [55705](https://github.com/airbytehq/airbyte/pull/55705) | Promoting release candidate 6.2.21-rc.1 to a main version. |
+| 6.2.21-rc.1 | 2024-11-13 | [48013](https://github.com/airbytehq/airbyte/pull/48013) | Update for testing. |
+| 6.2.20 | 2024-10-30 | [48013](https://github.com/airbytehq/airbyte/pull/48013) | Promoting release candidate 6.2.20-rc.1 to a main version. |
+| 6.2.20-rc.1 | 2024-10-21 | [46678](https://github.com/airbytehq/airbyte/pull/46678) | Testing release candidate with RC suffix versioning. |
+| 6.2.19-rc.1 | 2024-10-21 | [47221](https://github.com/airbytehq/airbyte/pull/47221) | Testing release candidate with RC suffix versioning. |
+| 6.2.18-rc.1 | 2024-10-09 | [46678](https://github.com/airbytehq/airbyte/pull/46678) | Testing release candidate with RC suffix versioning. |
+| 6.2.17 | 2024-10-05 | [46398](https://github.com/airbytehq/airbyte/pull/46398) | Update dependencies |
 | 6.2.16 | 2024-09-28 | [46207](https://github.com/airbytehq/airbyte/pull/46207) | Update dependencies |
 | 6.2.15 | 2024-09-21 | [45740](https://github.com/airbytehq/airbyte/pull/45740) | Update dependencies |
 | 6.2.14 | 2024-09-14 | [45567](https://github.com/airbytehq/airbyte/pull/45567) | Update dependencies |
@@ -133,28 +118,28 @@ None!
 | 6.0.1 | 2024-02-12 | [35172](https://github.com/airbytehq/airbyte/pull/35172) | Base image migration: remove Dockerfile and use the python-connector-base image |
 | 6.0.0 | 2024-01-30 | [34644](https://github.com/airbytehq/airbyte/pull/34644) | Declare 'id' columns as primary keys. |
 | 5.0.2 | 2024-01-17 | [34344](https://github.com/airbytehq/airbyte/pull/34344) | Ensure unique state messages |
-| 5.0.1 | 2023-01-08 | [34033](https://github.com/airbytehq/airbyte/pull/34033) | Add standard entrypoints for usage with AirbyteLib |
+| 5.0.1 | 2024-01-11 | [34033](https://github.com/airbytehq/airbyte/pull/34033) | Add standard entrypoints for usage with AirbyteLib |
 | 5.0.0 | 2023-08-08 | [29213](https://github.com/airbytehq/airbyte/pull/29213) | Change all `*id` fields and `products.year` to be integer |
 | 4.0.0 | 2023-07-19 | [28485](https://github.com/airbytehq/airbyte/pull/28485) | Bump to test publication |
-| 3.0.2   | 2023-07-07 | [27807](https://github.com/airbytehq/airbyte/pull/28060)                                                              | Bump to test publication                                                                                        |
-| 3.0.1   | 2023-06-28 | [27807](https://github.com/airbytehq/airbyte/pull/27807)                                                              | Fix bug with purchase stream updated_at                                                                         |
-| 3.0.0   | 2023-06-23 | [27684](https://github.com/airbytehq/airbyte/pull/27684)                                                              | Stream cursor is now `updated_at` & remove `records_per_sync` option                                            |
-| 2.1.0   | 2023-05-08 | [25903](https://github.com/airbytehq/airbyte/pull/25903)                                                              | Add user.address (object)                                                                                       |
-| 2.0.3   | 2023-02-20 | [23259](https://github.com/airbytehq/airbyte/pull/23259)                                                              | bump to test publication                                                                                        |
-| 2.0.2   | 2023-02-20 | [23259](https://github.com/airbytehq/airbyte/pull/23259)                                                              | bump to test publication                                                                                        |
-| 2.0.1   | 2023-01-30 | [22117](https://github.com/airbytehq/airbyte/pull/22117)                                                              | `source-faker` goes beta                                                                                        |
-| 2.0.0   | 2022-12-14 | [20492](https://github.com/airbytehq/airbyte/pull/20492) and [20741](https://github.com/airbytehq/airbyte/pull/20741) | Decouple stream states for better parallelism                                                                   |
-| 1.0.0   | 2022-11-28 | [19490](https://github.com/airbytehq/airbyte/pull/19490)                                                              | Faker uses the CDK; rename streams to be lower-case (breaking), add determinism to random purchases, and rename |
-| 0.2.1   | 2022-10-14 | [19197](https://github.com/airbytehq/airbyte/pull/19197)                                                              | Emit `AirbyteEstimateTraceMessage`                                                                              |
-| 0.2.0   | 2022-10-14 | [18021](https://github.com/airbytehq/airbyte/pull/18021)                                                              | Move to mimesis for speed!                                                                                      |
-| 0.1.8   | 2022-10-12 | [17889](https://github.com/airbytehq/airbyte/pull/17889)                                                              | Bump to test publish command (2)                                                                                |
-| 0.1.7   | 2022-10-11 | [17848](https://github.com/airbytehq/airbyte/pull/17848)                                                              | Bump to test publish command                                                                                    |
-| 0.1.6   | 2022-09-07 | [16418](https://github.com/airbytehq/airbyte/pull/16418)                                                              | Log start of each stream                                                                                        |
-| 0.1.5   | 2022-06-10 | [13695](https://github.com/airbytehq/airbyte/pull/13695)                                                              | Emit timestamps in the proper ISO format                                                                        |
-| 0.1.4   | 2022-05-27 | [13298](https://github.com/airbytehq/airbyte/pull/13298)                                                              | Test publication flow                                                                                           |
-| 0.1.3   | 2022-05-27 | [13248](https://github.com/airbytehq/airbyte/pull/13248)                                                              | Add options for records_per_sync and page_size                                                                  |
-| 0.1.2   | 2022-05-26 | [13248](https://github.com/airbytehq/airbyte/pull/13293)                                                              | Test publication flow                                                                                           |
-| 0.1.1   | 2022-05-26 | [13235](https://github.com/airbytehq/airbyte/pull/13235)                                                              | Publish for AMD and ARM (M1 Macs) & remove User.birthdate                                                       |
-| 0.1.0   | 2022-04-12 | [11738](https://github.com/airbytehq/airbyte/pull/11738)                                                              | The Faker Source is created                                                                                     |
+| 3.0.2 | 2023-07-07 | [28060](https://github.com/airbytehq/airbyte/pull/28060) | Bump to test publication |
+| 3.0.1 | 2023-06-28 | [27807](https://github.com/airbytehq/airbyte/pull/27807) | Fix bug with purchase stream updated_at |
+| 3.0.0 | 2023-06-23 | [27684](https://github.com/airbytehq/airbyte/pull/27684) | Stream cursor is now `updated_at` & remove `records_per_sync` option |
+| 2.1.0 | 2023-05-08 | [25903](https://github.com/airbytehq/airbyte/pull/25903) | Add user.address (object) |
+| 2.0.3 | 2023-02-20 | [23259](https://github.com/airbytehq/airbyte/pull/23259) | bump to test publication |
+| 2.0.2 | 2023-02-20 | [23259](https://github.com/airbytehq/airbyte/pull/23259) | bump to test publication |
+| 2.0.1 | 2023-01-30 | [22117](https://github.com/airbytehq/airbyte/pull/22117) | `source-faker` goes beta |
+| 2.0.0       | 2022-12-14 | [20492](https://github.com/airbytehq/airbyte/pull/20492) and [20741](https://github.com/airbytehq/airbyte/pull/20741) | Decouple stream states for better parallelism                                                                   |
+| 1.0.0       | 2022-11-28 | [19490](https://github.com/airbytehq/airbyte/pull/19490)                                                              | Faker uses the CDK; rename streams to be lower-case (breaking), add determinism to random purchases, and rename |
+| 0.2.1       | 2022-10-14 | [19197](https://github.com/airbytehq/airbyte/pull/19197)                                                              | Emit `AirbyteEstimateTraceMessage`                                                                              |
+| 0.2.0       | 2022-10-14 | [18021](https://github.com/airbytehq/airbyte/pull/18021)                                                              | Move to mimesis for speed!                                                                                      |
+| 0.1.8       | 2022-10-12 | [17889](https://github.com/airbytehq/airbyte/pull/17889)                                                              | Bump to test publish command (2)                                                                                |
+| 0.1.7       | 2022-10-11 | [17848](https://github.com/airbytehq/airbyte/pull/17848)                                                              | Bump to test publish command                                                                                    |
+| 0.1.6       | 2022-09-07 | [16418](https://github.com/airbytehq/airbyte/pull/16418)                                                              | Log start of each stream                                                                                        |
+| 0.1.5       | 2022-06-10 | [13695](https://github.com/airbytehq/airbyte/pull/13695)                                                              | Emit timestamps in the proper ISO format                                                                        |
+| 0.1.4       | 2022-05-27 | [13298](https://github.com/airbytehq/airbyte/pull/13298)                                                              | Test publication flow                                                                                           |
+| 0.1.3       | 2022-05-27 | [13248](https://github.com/airbytehq/airbyte/pull/13248)                                                              | Add options for records_per_sync and page_size                                                                  |
+| 0.1.2       | 2022-05-26 | [13293](https://github.com/airbytehq/airbyte/pull/13293)                                                              | Test publication flow                                                                                           |
+| 0.1.1       | 2022-05-26 | [13235](https://github.com/airbytehq/airbyte/pull/13235)                                                              | Publish for AMD and ARM (M1 Macs) & remove User.birthdate                                                       |
+| 0.1.0       | 2022-04-12 | [11738](https://github.com/airbytehq/airbyte/pull/11738)                                                              | The Faker Source is created                                                                                     |
 
 </details>

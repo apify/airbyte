@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.testutils
 
@@ -22,7 +22,7 @@ object PostgreSQLContainerHelper {
                 db.username,
                 "-a",
                 "-f",
-                scriptPath
+                scriptPath,
             )
         } catch (e: InterruptedException) {
             throw RuntimeException(e)

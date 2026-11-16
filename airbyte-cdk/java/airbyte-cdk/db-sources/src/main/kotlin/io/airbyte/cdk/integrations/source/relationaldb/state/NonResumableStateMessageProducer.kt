@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.cdk.integrations.source.relationaldb.state
@@ -12,17 +12,17 @@ import io.airbyte.protocol.models.v0.StreamDescriptor
 
 class NonResumableStateMessageProducer<T>(
     private val isCdc: Boolean,
-    private val sourceStateMessageProducer: SourceStateMessageProducer<T>
+    private val sourceStateMessageProducer: SourceStateMessageProducer<T>,
 ) : SourceStateMessageProducer<AirbyteMessage> {
     override fun generateStateMessageAtCheckpoint(
-        stream: ConfiguredAirbyteStream?
+        stream: ConfiguredAirbyteStream?,
     ): AirbyteStateMessage? {
         return null
     }
 
     override fun processRecordMessage(
         stream: ConfiguredAirbyteStream?,
-        message: AirbyteMessage
+        message: AirbyteMessage,
     ): AirbyteMessage {
         return message
     }

@@ -70,6 +70,10 @@ The Zenloop connector should not run into Zenloop API limitations under normal u
 | `array`          | `array`      |
 | `object`         | `object`     |
 
+## IP allow list
+
+If you use Airbyte Cloud and your organization restricts access to specific IPs, add the [Airbyte Cloud IP addresses](https://docs.airbyte.com/platform/operating-airbyte/ip-allowlist) to your allow list.
+
 ## Changelog
 
 <details>
@@ -77,6 +81,24 @@ The Zenloop connector should not run into Zenloop API limitations under normal u
 
 | Version | Date       | Pull Request                                             | Subject                                                                         |
 | :------ | :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------------ |
+| 0.1.49 | 2026-11-10 | [91597](https://github.com/airbytehq/airbyte/pull/91597) | Promoted release candidate to GA |
+| 0.1.49-rc.1 | 2026-11-03 | [90879](https://github.com/airbytehq/airbyte/pull/90879) | Enable Python 3.11 support with base image 4.0.2 and CDK 1.3.0 while preserving incremental state compatibility. |
+| 0.1.48 | 2026-11-03 | [90795](https://github.com/airbytehq/airbyte/pull/90795) | Update dependencies |
+| 0.1.47 | 2026-10-27 | [90101](https://github.com/airbytehq/airbyte/pull/90101) | Update dependencies |
+| 0.1.46 | 2026-10-20 | [89457](https://github.com/airbytehq/airbyte/pull/89457) | Update dependencies |
+| 0.1.45 | 2026-10-13 | [79068](https://github.com/airbytehq/airbyte/pull/79068) | Update dependencies |
+| 0.1.44 | 2026-10-07 | [88264](https://github.com/airbytehq/airbyte/pull/88264) | Fix `answers`/`answers_survey_group` crash when `date_from` is empty or in `YYYY-MM-DDTHH:mm:ssZ` format |
+| 0.1.43 | 2025-02-01 | [53113](https://github.com/airbytehq/airbyte/pull/53113) | Update dependencies |
+| 0.1.42 | 2025-01-25 | [52551](https://github.com/airbytehq/airbyte/pull/52551) | Update dependencies |
+| 0.1.41 | 2025-01-18 | [51929](https://github.com/airbytehq/airbyte/pull/51929) | Update dependencies |
+| 0.1.40 | 2025-01-11 | [51465](https://github.com/airbytehq/airbyte/pull/51465) | Update dependencies |
+| 0.1.39 | 2024-12-28 | [50827](https://github.com/airbytehq/airbyte/pull/50827) | Update dependencies |
+| 0.1.38 | 2024-12-21 | [50383](https://github.com/airbytehq/airbyte/pull/50383) | Update dependencies |
+| 0.1.37 | 2024-12-14 | [49801](https://github.com/airbytehq/airbyte/pull/49801) | Update dependencies |
+| 0.1.36 | 2024-12-12 | [49443](https://github.com/airbytehq/airbyte/pull/49443) | Starting with this version, the Docker image is now rootless. Please note that this and future versions will not be compatible with Airbyte versions earlier than 0.64 |
+| 0.1.35 | 2024-11-04 | [47107](https://github.com/airbytehq/airbyte/pull/47107) | Update dependencies |
+| 0.1.34 | 2024-10-12 | [46780](https://github.com/airbytehq/airbyte/pull/46780) | Update dependencies |
+| 0.1.33 | 2024-10-05 | [46431](https://github.com/airbytehq/airbyte/pull/46431) | Update dependencies |
 | 0.1.32 | 2024-09-28 | [46141](https://github.com/airbytehq/airbyte/pull/46141) | Update dependencies |
 | 0.1.31 | 2024-09-21 | [45823](https://github.com/airbytehq/airbyte/pull/45823) | Update dependencies |
 | 0.1.30 | 2024-09-14 | [45485](https://github.com/airbytehq/airbyte/pull/45485) | Update dependencies |

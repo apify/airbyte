@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2026 Airbyte, Inc., all rights reserved.
  */
 package io.airbyte.cdk.integrations.destination.gcs
 
@@ -15,11 +15,12 @@ private val LOGGER = KotlinLogging.logger {}
 class GcsStorageOperations(
     nameTransformer: NamingConventionTransformer,
     s3Client: AmazonS3,
-    s3Config: S3DestinationConfig
+    s3Config: S3DestinationConfig,
 ) : S3StorageOperations(nameTransformer, s3Client, s3Config) {
     /** GCS only supports the legacy AmazonS3#doesBucketExist method. */
     override fun doesBucketExist(bucket: String?): Boolean {
-        @Suppress("deprecation") return s3Client.doesBucketExist(bucket)
+        @Suppress("deprecation")
+        return s3Client.doesBucketExist(bucket)
     }
 
     /**
@@ -29,7 +30,7 @@ class GcsStorageOperations(
      */
     override fun cleanUpObjects(
         bucket: String?,
-        keysToDelete: List<DeleteObjectsRequest.KeyVersion>
+        keysToDelete: List<DeleteObjectsRequest.KeyVersion>,
     ) {
         for (keyToDelete in keysToDelete) {
             LOGGER.info { "Deleting object ${keyToDelete.key}" }
